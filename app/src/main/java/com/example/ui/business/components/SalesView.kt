@@ -1237,7 +1237,7 @@ private fun PendingCustomerOrderCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "CLIENT • ${order.assignedClient.ifBlank { "Rina" }.uppercase()}",
+                        text = "CLIENT • ${order.assignedClient.ifBlank { "Client non assigné" }.uppercase()}",
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
                         fontSize = 10.sp,
@@ -1299,7 +1299,7 @@ private fun PendingCustomerOrderCard(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "${order.stockCount.coerceAtLeast(order.quantityBought)} pcs • ${order.variants.ifBlank { "Noir Pro" }}",
+                            text = "${order.stockCount.coerceAtLeast(order.quantityBought)} pcs • ${order.variants.ifBlank { "Standard" }}",
                             fontFamily = Inter,
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

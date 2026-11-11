@@ -10,6 +10,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -928,8 +929,9 @@ fun OrderDetailDialog(
                                                 fontSize = 18.sp,
                                                 color = Color(0xFF131B2E)
                                             )
+                                            val parsedVarList = VariantColorUtils.parseVariants(order.variants)
                                             Text(
-                                                text = "3 déclinaisons",
+                                                text = "${if (parsedVarList.isNotEmpty()) parsedVarList.size else 1} déclinaison(s)",
                                                 fontFamily = PlusJakartaSans,
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.SemiBold,
@@ -957,49 +959,50 @@ fun OrderDetailDialog(
                                             letterSpacing = 0.5.sp
                                         )
 
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF131B2E)))
-                                                Text("10× Noir Pro", fontFamily = Inter, fontSize = 13.sp, color = Color(0xFF131B2E))
+                                        val parsedVarList = VariantColorUtils.parseVariants(order.variants)
+                                        if (parsedVarList.isNotEmpty()) {
+                                            parsedVarList.forEachIndexed { idx, varText ->
+                                                val dotColor = VariantColorUtils.getVariantColor(varText, idx)
+                                                val isLight = VariantColorUtils.isLightColor(dotColor)
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(10.dp)
+                                                                .clip(CircleShape)
+                                                                .background(dotColor)
+                                                                .then(
+                                                                    if (isLight) Modifier.border(0.5.dp, Color(0xFFCCCCCC), CircleShape)
+                                                                    else Modifier
+                                                                )
+                                                        )
+                                                        Text(varText, fontFamily = Inter, fontSize = 13.sp, color = Color(0xFF131B2E))
+                                                    }
+                                                    Text("¥ ${String.format(java.util.Locale.US, "%.0f", order.priceYuan)}", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                                                }
                                             }
-                                            Text("¥ 280", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                                        }
-
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
+                                        } else {
                                             Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(Color(0xFFBCC9CD)))
-                                                Text("5× Blanc Pur", fontFamily = Inter, fontSize = 13.sp, color = Color(0xFF131B2E))
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF00687A)))
+                                                    Text("1× Standard", fontFamily = Inter, fontSize = 13.sp, color = Color(0xFF131B2E))
+                                                }
+                                                Text("¥ ${String.format(java.util.Locale.US, "%.0f", order.priceYuan)}", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                                             }
-                                            Text("¥ 140", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                                        }
-
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(Color(0xFFBA1A1A)))
-                                                Text("5× Rouge Sport", fontFamily = Inter, fontSize = 13.sp, color = Color(0xFF131B2E))
-                                            }
-                                            Text("¥ 140", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                                         }
                                     }
                                 }
@@ -1909,14 +1912,14 @@ fun OrderDetailDialog(
 
                                                 Column {
                                                     Text(
-                                                        text = "Client : ${order.assignedClient.ifBlank { "Rina" }}",
+                                                        text = "Client : ${order.assignedClient.ifBlank { "Client non assigné" }}",
                                                         fontFamily = PlusJakartaSans,
                                                         fontWeight = FontWeight.SemiBold,
                                                         fontSize = 14.sp,
                                                         color = Color(0xFF131B2E)
                                                     )
                                                     Text(
-                                                        text = "5 unités Noir Pro réservées",
+                                                        text = "${order.quantityBought} unité(s) ${order.variants.ifBlank { "Standard" }} réservée(s)",
                                                         fontFamily = Inter,
                                                         fontSize = 12.sp,
                                                         color = Color(0xFF6D797D)

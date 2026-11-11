@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -21,10 +22,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -49,6 +53,14 @@ import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -344,6 +356,8 @@ fun AddOrderDialog(
     cmupRate: Long,
     availableYuans: Double = 0.0,
     availableArticles: List<com.example.data.local.entity.BusinessOrderEntity> = emptyList(),
+    initialArticle: com.example.data.local.entity.BusinessOrderEntity? = null,
+    transitaires: List<String> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (
         product: String,
@@ -358,25 +372,31 @@ fun AddOrderDialog(
     ) -> Unit
 ) {
     val context = LocalContext.current
-    val initialArticle = availableArticles.firstOrNull()
-    var selectedArticleId by remember { mutableStateOf<Long?>(null) }
-    var product by remember { mutableStateOf("") }
-    var supplierRef by remember { mutableStateOf("") }
-    var familyCategory by remember { mutableStateOf("Électronique") }
-    var selectedSupplier by remember { mutableStateOf("1688.com") }
-    var priceYuanText by remember { mutableStateOf("") }
+    val targetItem = initialArticle ?: availableArticles.firstOrNull()
+    var selectedArticleId by remember { mutableStateOf<Long?>(targetItem?.id) }
+    var product by remember { mutableStateOf(targetItem?.product ?: "") }
+    var supplierRef by remember { mutableStateOf(targetItem?.referenceCode ?: "") }
+    var familyCategory by remember { mutableStateOf(targetItem?.family ?: "Électronique") }
+    var selectedSupplier by remember { mutableStateOf(targetItem?.platform?.ifBlank { "1688" } ?: "1688.com") }
+    var priceYuanText by remember { mutableStateOf(if ((targetItem?.priceYuan ?: 0.0) > 0) targetItem!!.priceYuan.toInt().toString() else "") }
     var isShippingPaid by remember { mutableStateOf(false) }
     var shippingCostYuanText by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("BUSINESS") }
-    var carrier by remember { mutableStateOf("SinoExpress") }
-    var resaleArText by remember { mutableStateOf("") }
+    var carrier by remember { mutableStateOf(if (targetItem?.carrier?.isNotBlank() == true) targetItem.carrier else "SinoExpress") }
+    var resaleArText by remember { mutableStateOf(if ((targetItem?.resalePriceAr ?: 0L) > 0) targetItem!!.resalePriceAr.toString() else "") }
 
     var variantsList by remember {
         mutableStateOf(
-            listOf(
-                VariantItemState(1, "Noir", 0xFF0F172A, 10),
-                VariantItemState(2, "Blanc", 0xFFFFFFFF, 5)
-            )
+            if (targetItem?.variants?.isNotBlank() == true) {
+                targetItem.variants.split(",").mapIndexed { idx, name ->
+                    VariantItemState(idx + 1, name.trim(), 0xFF0F172A, 10)
+                }
+            } else {
+                listOf(
+                    VariantItemState(1, "Noir", 0xFF0F172A, 10),
+                    VariantItemState(2, "Blanc", 0xFFFFFFFF, 5)
+                )
+            }
         )
     }
 
@@ -1008,7 +1028,8 @@ fun AddOrderDialog(
                                         .horizontalScroll(rememberScrollState()),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    listOf("SinoExpress", "SF Express", "MadaCargo", "Autre").forEach { c ->
+                                    val carrierOptions = if (transitaires.isNotEmpty()) transitaires + "Autre" else listOf("SinoExpress", "MadaCargo", "Autre")
+                                    carrierOptions.distinct().forEach { c ->
                                         val isSelected = carrier == c
                                         Surface(
                                             shape = RoundedCornerShape(9999.dp),
@@ -2357,6 +2378,7 @@ fun RecordSalePaymentDialog(
 @Composable
 fun AddSaleDialog(
     availableStockOrders: List<com.example.data.local.entity.BusinessOrderEntity>,
+    initialArticle: com.example.data.local.entity.BusinessOrderEntity? = null,
     onDismiss: () -> Unit,
     onConfirm: (
         productName: String,
@@ -2371,14 +2393,14 @@ fun AddSaleDialog(
         linkedOrderId: Long?
     ) -> Unit
 ) {
-    val initialStockItem = availableStockOrders.firstOrNull()
+    val initialStockItem = initialArticle ?: availableStockOrders.firstOrNull()
     var selectedStockOrderId by remember { mutableStateOf<Long?>(initialStockItem?.id ?: -1L) }
     var clientName by remember { mutableStateOf("") }
     var clientPhone by remember { mutableStateOf("") }
     var productName by remember { mutableStateOf(initialStockItem?.product ?: "") }
     var quantityText by remember { mutableStateOf("1") }
     var unitPriceText by remember { mutableStateOf(initialStockItem?.let { if (it.resalePriceAr > 0) it.resalePriceAr.toString() else "" } ?: "") }
-    val initialCost = initialStockItem?.let { (it.priceYuan * it.exchangeRate).toLong() } ?: 0L
+    val initialCost = initialStockItem?.let { if (it.unitCostAr > 0L) it.unitCostAr else (it.priceYuan * it.exchangeRate).toLong() } ?: 0L
     var unitCostText by remember { mutableStateOf(if (initialCost > 0L) initialCost.toString() else "") }
     var paidAmountText by remember { mutableStateOf(initialStockItem?.let { if (it.resalePriceAr > 0) it.resalePriceAr.toString() else "" } ?: "") }
     var saleSource by remember { mutableStateOf("STOCK") }
@@ -2702,208 +2724,711 @@ fun AddCatalogueArticleDialog(
         platform: String
     ) -> Unit
 ) {
-    val families = availableFamilies.ifEmpty { listOf("Électronique & Audio", "Mode", "Maison", "Beauté") }
+    val context = LocalContext.current
+    val families = availableFamilies.ifEmpty { listOf("Électronique & Audio", "Mode", "Maison", "Beauté", "Accessoires") }
+
     var product by remember { mutableStateOf("") }
     var family by remember { mutableStateOf(families.first()) }
-    var showFamilyMenu by remember { mutableStateOf(false) }
     var referenceCode by remember { mutableStateOf("") }
-    var variants by remember { mutableStateOf("") }
+    var variantsList by remember { mutableStateOf(listOf("Noir", "Blanc")) }
     var priceYuanText by remember { mutableStateOf("") }
     var resaleArText by remember { mutableStateOf("") }
     var stockCountText by remember { mutableStateOf("") }
     var weightText by remember { mutableStateOf("") }
-    var platform by remember { mutableStateOf("") }
+    var selectedPlatform by remember { mutableStateOf("1688") }
+    var selectedPhotoUri by remember { mutableStateOf("") }
+    var showAddVariantModal by remember { mutableStateOf(false) }
 
-    AlertDialog(
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let {
+            selectedPhotoUri = it.toString()
+            Toast.makeText(context, "Photo sélectionnée", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val priceYuan = priceYuanText.toDoubleOrNull() ?: 0.0
+    val estimatedCostAr = (priceYuan * 650.0).toLong()
+    val resaleAr = resaleArText.toLongOrNull() ?: 0L
+    val marginAr = if (resaleAr > 0 && estimatedCostAr > 0) resaleAr - estimatedCostAr else 0L
+    val marginPercent = if (resaleAr > 0 && marginAr != 0L) ((marginAr.toDouble() / resaleAr.toDouble()) * 100).toInt() else 0
+    val weightKgVal = weightText.toDoubleOrNull() ?: 0.0
+    val weightGrams = (weightKgVal * 1000).toInt()
+    val volumeM3 = if (weightGrams > 0) String.format(java.util.Locale.US, "%.4f", weightGrams * 0.0000067) else "—"
+    val airFreightEstAr = (weightGrams * 38).toLong()
+
+    val platformOptions = listOf("1688", "Taobao", "Xianyu (闲鱼)", "Pinduoduo", "Alibaba", "Usine Directe")
+
+    Dialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = "Nouvel article au catalogue",
-                fontFamily = PlusJakartaSans,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
-            )
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                OutlinedTextField(
-                    value = product,
-                    onValueChange = { product = it },
-                    label = { Text("Nom de l'article") },
-                    placeholder = { Text("ex. Écouteurs TWS Pro 5") },
-                    modifier = Modifier.fillMaxWidth().testTag("input_cat_product"),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true
-                )
-
-                Row(
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Top Header (Matching ArticleDetailScreen style)
+                Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 2.dp
                 ) {
-                    OutlinedTextField(
-                        value = referenceCode,
-                        onValueChange = { referenceCode = it },
-                        label = { Text("SKU / Référence") },
-                        placeholder = { Text("ex. TWS-P5-PRO") },
-                        modifier = Modifier.weight(1f).testTag("input_cat_sku"),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
-
-                    Box(modifier = Modifier.weight(1f)) {
-                        OutlinedTextField(
-                            value = family,
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Famille") },
-                            trailingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = "Choisir une famille"
-                                )
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("input_cat_family"),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
-                        )
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .clickable { showFamilyMenu = true }
-                        )
-                        DropdownMenu(
-                            expanded = showFamilyMenu,
-                            onDismissRequest = { showFamilyMenu = false }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            families.forEach { famOption ->
-                                DropdownMenuItem(
-                                    text = { Text(famOption, fontFamily = PlusJakartaSans) },
-                                    onClick = {
-                                        family = famOption
-                                        showFamilyMenu = false
-                                    }
+                            IconButton(onClick = onDismiss) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Retour",
+                                    tint = MaterialTheme.colorScheme.onSurface
                                 )
                             }
+                            Column {
+                                Text(
+                                    text = "Nouveau Produit",
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Fiche référence & rentabilité",
+                                    fontFamily = PlusJakartaSans,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                val pYuan = priceYuanText.toDoubleOrNull() ?: 0.0
+                                val rAr = resaleArText.toLongOrNull() ?: 0L
+                                val sCount = stockCountText.toIntOrNull() ?: 0
+                                val wKg = weightText.toDoubleOrNull() ?: 0.0
+                                val varStr = variantsList.joinToString(", ")
+                                if (product.isNotBlank()) {
+                                    onConfirm(
+                                        product.trim(),
+                                        family.trim().ifBlank { "Électronique" },
+                                        referenceCode.trim(),
+                                        varStr,
+                                        pYuan,
+                                        rAr,
+                                        sCount,
+                                        wKg,
+                                        selectedPlatform.trim().ifBlank { "1688" }
+                                    )
+                                    onDismiss()
+                                } else {
+                                    Toast.makeText(context, "Veuillez indiquer le nom de l'article", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            enabled = product.isNotBlank(),
+                            colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Créer l'article", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, color = Color.Black)
                         }
                     }
                 }
 
-                OutlinedTextField(
-                    value = variants,
-                    onValueChange = { variants = it },
-                    label = { Text("Déclinaisons") },
-                    placeholder = { Text("ex. Noir · Blanc · Rouge") },
-                    modifier = Modifier.fillMaxWidth().testTag("input_cat_variants"),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // Main Scrollable Body
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    OutlinedTextField(
-                        value = priceYuanText,
-                        onValueChange = { priceYuanText = it.filter { ch -> ch.isDigit() || ch == '.' } },
-                        label = { Text("Dernier coût (¥)") },
-                        placeholder = { Text("ex. 28") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f).testTag("input_cat_price_yuan"),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
+                    // HERO CAROUSEL BANNER (Directly imported from ArticleDetailScreen style)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+                    ) {
+                        if (selectedPhotoUri.isNotBlank()) {
+                            AsyncImage(
+                                model = selectedPhotoUri,
+                                contentDescription = product,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = when {
+                                            family.contains("MODE", ignoreCase = true) -> "🎒"
+                                            family.contains("MAISON", ignoreCase = true) -> "🏠"
+                                            family.contains("BEAUTÉ", ignoreCase = true) -> "💄"
+                                            family.contains("ACCESSOIRE", ignoreCase = true) -> "⌚"
+                                            else -> "🎧"
+                                        },
+                                        fontSize = 64.sp
+                                    )
+                                    Text(
+                                        text = product.ifBlank { "Nouveau Produit" },
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
 
-                    OutlinedTextField(
-                        value = resaleArText,
-                        onValueChange = { resaleArText = it.filter { ch -> ch.isDigit() } },
-                        label = { Text("Prix revente (Ar)") },
-                        placeholder = { Text("ex. 32500") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1.2f).testTag("input_cat_resale_ar"),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
-                }
+                        // Top Badges Overlay
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(9999.dp),
+                                color = CyanPrimary
+                            ) {
+                                Text(
+                                    text = "Nouveau produit",
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = Color.Black,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                            if (referenceCode.isNotBlank()) {
+                                Surface(
+                                    shape = RoundedCornerShape(9999.dp),
+                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+                                ) {
+                                    Text(
+                                        text = referenceCode,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                        }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = stockCountText,
-                        onValueChange = { stockCountText = it.filter { ch -> ch.isDigit() } },
-                        label = { Text("Stock initial (pcs)") },
-                        placeholder = { Text("ex. 20") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
-
-                    OutlinedTextField(
-                        value = weightText,
-                        onValueChange = { weightText = it.filter { ch -> ch.isDigit() || ch == '.' } },
-                        label = { Text("Poids unitaire (kg)") },
-                        placeholder = { Text("ex. 0.15") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
-                }
-
-                OutlinedTextField(
-                    value = platform,
-                    onValueChange = { platform = it },
-                    label = { Text("Plateforme fournisseur") },
-                    placeholder = { Text("ex. 1688, Taobao") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val pYuan = priceYuanText.toDoubleOrNull() ?: 0.0
-                    val rAr = resaleArText.toLongOrNull() ?: 0L
-                    val sCount = stockCountText.toIntOrNull() ?: 0
-                    val wKg = weightText.toDoubleOrNull() ?: 0.0
-                    if (product.isNotBlank()) {
-                        onConfirm(
-                            product.trim(),
-                            family.trim().ifBlank { "Électronique" },
-                            referenceCode.trim(),
-                            variants.trim(),
-                            pYuan,
-                            rAr,
-                            sCount,
-                            wKg,
-                            platform.trim().ifBlank { "1688" }
-                        )
-                        onDismiss()
+                        // Bottom Overlay Bar: Photo Picker
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(12.dp)
+                                .clickable {
+                                    photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                },
+                            shape = RoundedCornerShape(9999.dp),
+                            color = Color.Black.copy(alpha = 0.7f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PhotoCamera,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = if (selectedPhotoUri.isNotBlank()) "Changer la photo" else "Ajouter une photo",
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = Color.White
+                                )
+                            }
+                        }
                     }
-                },
-                enabled = product.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
-            ) {
-                Text("Enregistrer l'article", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold)
+
+                    // CARD 1: IDENTIFICATION & CLASSIFICATION
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 1.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = "1. Identité du Produit",
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = CyanPrimary
+                            )
+
+                            OutlinedTextField(
+                                value = product,
+                                onValueChange = { product = it },
+                                label = { Text("Nom de l'article *") },
+                                placeholder = { Text("ex. Écouteurs Sans-Fil TWS Pro 5") },
+                                modifier = Modifier.fillMaxWidth().testTag("input_cat_product"),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true
+                            )
+
+                            OutlinedTextField(
+                                value = referenceCode,
+                                onValueChange = { referenceCode = it },
+                                label = { Text("SKU / Code Référence") },
+                                placeholder = { Text("ex. TWS-P5-PRO") },
+                                modifier = Modifier.fillMaxWidth().testTag("input_cat_sku"),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true
+                            )
+
+                            Text(
+                                text = "Famille de produits :",
+                                fontFamily = PlusJakartaSans,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                families.forEach { fam ->
+                                    val isSelected = family.equals(fam, ignoreCase = true)
+                                    Surface(
+                                        modifier = Modifier.clickable { family = fam },
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = if (isSelected) CyanPrimary else MaterialTheme.colorScheme.surfaceVariant,
+                                        border = if (isSelected) BorderStroke(1.dp, CyanPrimary) else null
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            if (isSelected) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = null,
+                                                    tint = Color.Black,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                            Text(
+                                                text = fam,
+                                                fontFamily = PlusJakartaSans,
+                                                fontSize = 12.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) Color.Black else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // CARD 2: COÛTS, PRIX & MARGE COMMERCIALE
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 1.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = "2. Prix, Coûts & Rentabilité",
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = CyanPrimary
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = priceYuanText,
+                                    onValueChange = { priceYuanText = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                                    label = { Text("Prix Achat (¥)") },
+                                    placeholder = { Text("ex. 28") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1f).testTag("input_cat_price_yuan"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    singleLine = true
+                                )
+
+                                OutlinedTextField(
+                                    value = resaleArText,
+                                    onValueChange = { resaleArText = it.filter { ch -> ch.isDigit() } },
+                                    label = { Text("Prix Revente (Ar)") },
+                                    placeholder = { Text("ex. 35000") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1.2f).testTag("input_cat_resale_ar"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    singleLine = true
+                                )
+                            }
+
+                            // Dynamic Profit & Margin Card (matching ArticleDetailScreen style)
+                            if (priceYuan > 0 || resaleAr > 0) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = when {
+                                        marginPercent >= 30 -> Color(0xFF10B981).copy(alpha = 0.15f)
+                                        marginPercent > 0 -> Color(0xFFF59E0B).copy(alpha = 0.15f)
+                                        else -> Color(0xFFEF4444).copy(alpha = 0.15f)
+                                    }
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = "Coût estimé : ${CurrencyFormatter.formatAriary(estimatedCostAr)}",
+                                                fontFamily = PlusJakartaSans,
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = "Marge brute : ${CurrencyFormatter.formatAriary(marginAr)} / pc",
+                                                fontFamily = PlusJakartaSans,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = when {
+                                                marginPercent >= 30 -> Color(0xFF10B981)
+                                                marginPercent > 0 -> Color(0xFFF59E0B)
+                                                else -> Color(0xFFEF4444)
+                                            }
+                                        ) {
+                                            Text(
+                                                text = "$marginPercent %",
+                                                fontFamily = PlusJakartaSans,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                color = Color.White,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // CARD 3: DÉCLINAISONS & COULEURS
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 1.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "3. Déclinaisons & Couleurs",
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = CyanPrimary
+                                )
+
+                                Text(
+                                    text = "${variantsList.size} variante(s)",
+                                    fontFamily = PlusJakartaSans,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            if (variantsList.isNotEmpty()) {
+                                variantsList.forEachIndexed { idx, varText ->
+                                    val dotColor = VariantColorUtils.getVariantColor(varText, idx)
+                                    val isLight = VariantColorUtils.isLightColor(dotColor)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(16.dp)
+                                                    .clip(CircleShape)
+                                                    .background(dotColor)
+                                                    .then(
+                                                        if (isLight) Modifier.border(1.dp, Color(0xFFCCCCCC), CircleShape)
+                                                        else Modifier
+                                                    )
+                                            )
+                                            Text(
+                                                text = varText,
+                                                fontFamily = PlusJakartaSans,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = {
+                                                variantsList = variantsList.filterIndexed { index, _ -> index != idx }
+                                            },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "Supprimer variante",
+                                                tint = Color(0xFFBA1A1A),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Bouton Ajouter une couleur
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = CyanPrimary.copy(alpha = 0.15f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showAddVariantModal = true }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AddCircle,
+                                        contentDescription = null,
+                                        tint = CyanPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "+ Ajouter une couleur / variante",
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = CyanPrimary
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // CARD 4: SPÉCIFICATIONS LOGISTIQUES & FRET
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 1.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = "4. Logistique & Fret Transitaire",
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = CyanPrimary
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = stockCountText,
+                                    onValueChange = { stockCountText = it.filter { ch -> ch.isDigit() } },
+                                    label = { Text("Stock Initial (pcs)") },
+                                    placeholder = { Text("15") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    singleLine = true
+                                )
+
+                                OutlinedTextField(
+                                    value = weightText,
+                                    onValueChange = { weightText = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                                    label = { Text("Poids unit. (kg)") },
+                                    placeholder = { Text("0.20") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    singleLine = true
+                                )
+                            }
+
+                            if (weightKgVal > 0) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = CyanPrimary.copy(alpha = 0.1f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = "Poids : ${weightGrams}g • Vol. est. : $volumeM3 m³",
+                                                fontFamily = PlusJakartaSans,
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = "Fret aérien est. : ${CurrencyFormatter.formatAriary(airFreightEstAr)} / unit",
+                                                fontFamily = PlusJakartaSans,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                color = CyanPrimary
+                                            )
+                                        }
+                                        Icon(
+                                            imageVector = Icons.Default.LocalShipping,
+                                            contentDescription = null,
+                                            tint = CyanPrimary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // CARD 5: FOURNISSEUR & PLATEFORME
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 1.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "5. Plateforme Fournisseur",
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = CyanPrimary
+                            )
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                platformOptions.forEach { plat ->
+                                    val isSelected = selectedPlatform.equals(plat, ignoreCase = true)
+                                    Surface(
+                                        modifier = Modifier.clickable { selectedPlatform = plat },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isSelected) CyanPrimary.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant,
+                                        border = if (isSelected) BorderStroke(1.5.dp, CyanPrimary) else null
+                                    ) {
+                                        Text(
+                                            text = plat,
+                                            fontFamily = PlusJakartaSans,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) CyanPrimary else MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(30.dp))
+                }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Annuler", fontFamily = PlusJakartaSans)
+
+            if (showAddVariantModal) {
+                AddVariantDialog(
+                    onDismiss = { showAddVariantModal = false },
+                    onConfirm = { newVar ->
+                        variantsList = (variantsList + newVar).distinct()
+                        showAddVariantModal = false
+                    }
+                )
             }
         }
-    )
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2915,10 +3440,15 @@ fun EditCatalogueArticleDialog(
     onDismiss: () -> Unit,
     onConfirm: (newPriceYuan: Double, newResaleAr: Long, newVariants: String, isHidden: Boolean) -> Unit
 ) {
-    var priceYuanText by remember { mutableStateOf(order.priceYuan.toInt().toString()) }
-    var resaleArText by remember { mutableStateOf(order.resalePriceAr.toString()) }
+    var priceYuanText by remember { mutableStateOf(if (order.priceYuan > 0) order.priceYuan.toInt().toString() else "") }
+    var resaleArText by remember { mutableStateOf(if (order.resalePriceAr > 0) order.resalePriceAr.toString() else "") }
     var variants by remember { mutableStateOf(order.variants) }
     var isHidden by remember { mutableStateOf(order.isHidden) }
+
+    val priceYuan = priceYuanText.toDoubleOrNull() ?: order.priceYuan
+    val resaleAr = resaleArText.toLongOrNull() ?: order.resalePriceAr
+    val estimatedCostAr = (priceYuan * 650.0).toLong()
+    val marginAr = if (resaleAr > 0 && estimatedCostAr > 0) resaleAr - estimatedCostAr else 0L
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2928,7 +3458,8 @@ fun EditCatalogueArticleDialog(
                     text = "Modifier la référence",
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
+                    fontSize = 18.sp,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = "${order.product} • ${order.referenceCode.ifBlank { "SKU" }}",
@@ -2967,6 +3498,16 @@ fun EditCatalogueArticleDialog(
                         modifier = Modifier.weight(1.2f),
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true
+                    )
+                }
+
+                if (marginAr != 0L) {
+                    Text(
+                        text = "Marge estimée : ${CurrencyFormatter.formatAriary(marginAr)}",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        color = CyanPrimary
                     )
                 }
 
@@ -3020,9 +3561,10 @@ fun EditCatalogueArticleDialog(
                     onConfirm(pY, rAr, variants.trim(), isHidden)
                     onDismiss()
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary),
+                shape = RoundedCornerShape(10.dp)
             ) {
-                Text("Enregistrer", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold)
+                Text("Enregistrer", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, color = Color.Black)
             }
         },
         dismissButton = {
@@ -3034,51 +3576,235 @@ fun EditCatalogueArticleDialog(
 }
 
 // ---------------------------------------------------------------------------
-// ADD FAMILY DIALOG
+// ADD FAMILY DIALOG (REDESIGNED WITH LIVE PREVIEW)
 // ---------------------------------------------------------------------------
 @Composable
 fun AddFamilyDialog(
     onDismiss: () -> Unit,
-    onConfirm: (familyName: String) -> Unit
+    onConfirm: (familyName: String, emoji: String, colorHex: String) -> Unit
 ) {
     var familyName by remember { mutableStateOf("") }
+    var selectedEmoji by remember { mutableStateOf("🎧") }
+    var selectedColorHex by remember { mutableStateOf("#06B6D4") }
+
+    val emojiChoices = listOf(
+        "🎧", "👗", "🏠", "📱", "💄", "👟", "🧸", "⚡",
+        "💻", "🧴", "💍", "⚽", "🚗", "🧹", "📦", "✨"
+    )
+
+    val colorChoices = listOf(
+        "#06B6D4", // Cyan
+        "#EC4899", // Pink
+        "#F97316", // Orange
+        "#8B5CF6", // Purple
+        "#10B981", // Emerald
+        "#F59E0B", // Amber
+        "#3B82F6", // Blue
+        "#6366F1"  // Indigo
+    )
+
+    val previewColor = remember(selectedColorHex) {
+        try {
+            Color(android.graphics.Color.parseColor(selectedColorHex))
+        } catch (e: Exception) {
+            CyanPrimary
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(
-                text = "Ajouter une famille d'articles",
-                fontFamily = PlusJakartaSans,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Category,
+                        contentDescription = null,
+                        tint = CyanPrimary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Text(
+                        text = "Nouvelle famille d'articles",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(26.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Fermer",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                // Live Card Preview
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    border = BorderStroke(1.5.dp, previewColor.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(previewColor.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = selectedEmoji, fontSize = 24.sp)
+                        }
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = familyName.ifBlank { "Nom de la famille" },
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = if (familyName.isNotBlank()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
+                            )
+                            Text(
+                                text = "Aperçu de la famille • 0 article",
+                                fontFamily = PlusJakartaSans,
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // Family Name Input
                 OutlinedTextField(
                     value = familyName,
                     onValueChange = { familyName = it },
-                    label = { Text("Nom de la famille (ex. Beauté, Jouets)") },
+                    label = { Text("Nom de la famille *") },
+                    placeholder = { Text("ex. Audio High-Tech, Beauté, Sacs...") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true
                 )
+
+                // Emoji Picker
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Icône Émoji",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        emojiChoices.forEach { emoji ->
+                            val isSelected = selectedEmoji == emoji
+                            Surface(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clickable { selectedEmoji = emoji },
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) previewColor.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant,
+                                border = if (isSelected) BorderStroke(1.5.dp, previewColor) else null
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(text = emoji, fontSize = 20.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Color Picker
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Couleur du thème",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        colorChoices.forEach { colorHex ->
+                            val isSelected = selectedColorHex.equals(colorHex, ignoreCase = true)
+                            val c = try {
+                                Color(android.graphics.Color.parseColor(colorHex))
+                            } catch (e: Exception) {
+                                CyanPrimary
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(c)
+                                    .clickable { selectedColorHex = colorHex },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
                     if (familyName.isNotBlank()) {
-                        onConfirm(familyName.trim())
+                        onConfirm(familyName.trim(), selectedEmoji, selectedColorHex)
                         onDismiss()
                     }
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                enabled = familyName.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = previewColor),
+                shape = RoundedCornerShape(10.dp)
             ) {
-                Text("Ajouter", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "Créer la famille",
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
+                )
             }
         },
         dismissButton = {

@@ -411,21 +411,23 @@ class AppRepository(
 
         if (db.cataloguePlatformDao().getAllPlatformsSnapshot().isEmpty()) {
             val defaultPlatforms = listOf(
-                CataloguePlatformEntity(name = "1688.com", aliasKey = "1688", subtitle = "Alibaba Wholesale (Usines B2B)", isVerified = true, iconType = "TEXT_1688", colorHex = "#712ae2", shippingTag = "Port Payant (¥ 10 - ¥ 25)", shippingTagIcon = "local_shipping", secondaryTag = "Min. commande : 2-5 pcs", isActive = true, displayOrder = 1),
+                CataloguePlatformEntity(name = "1688.com", aliasKey = "1688", subtitle = "Alibaba Wholesale (Usines B2B)", isVerified = true, iconType = "TEXT_1688", colorHex = "#712ae2", shippingTag = "Port Payant (Sur devis)", shippingTagIcon = "local_shipping", secondaryTag = "Min. commande : 2-5 pcs", isActive = true, displayOrder = 1),
                 CataloguePlatformEntity(name = "Taobao", aliasKey = "Taobao", subtitle = "Consommation & Petits lots", badgeText = "C2C / B2C", isVerified = false, iconType = "CART", colorHex = "#8a4cfc", shippingTag = "Port Gratuit (包邮)", shippingTagIcon = "check_circle", secondaryTag = "Livraison rapide", isActive = true, displayOrder = 2),
                 CataloguePlatformEntity(name = "Pinduoduo", aliasKey = "Pinduoduo", subtitle = "Direct Usine / Déstockage", badgeText = "Usine Direct", isVerified = false, iconType = "PRICE", colorHex = "#ffdad6", shippingTag = "Port Gratuit (包邮)", shippingTagIcon = "check_circle", secondaryTag = "Remises groupées", isActive = true, displayOrder = 3),
-                CataloguePlatformEntity(name = "Fournisseur Direct WeChat", aliasKey = "WeChat", subtitle = "Sino-Contact / Privé", isVerified = false, iconType = "WECHAT", colorHex = "#acedff", shippingTag = "Port Payant (Sur devis)", shippingTagIcon = "request_quote", secondaryTag = "Dépôt transitaire", isActive = true, displayOrder = 4)
+                CataloguePlatformEntity(name = "Fournisseur Direct WeChat", aliasKey = "WeChat", subtitle = "Sino-Contact / Privé", isVerified = false, iconType = "WECHAT", colorHex = "#acedff", shippingTag = "Variable (Sur devis usine)", shippingTagIcon = "request_quote", secondaryTag = "Dépôt transitaire", isActive = true, displayOrder = 4),
+                CataloguePlatformEntity(name = "Xianyu (闲鱼)", aliasKey = "Xianyu", subtitle = "B2C / C2C Occasion & Pièces rares", badgeText = "Seconde main", isVerified = false, iconType = "CART", colorHex = "#FFC107", shippingTag = "Variable (Sur devis usine)", shippingTagIcon = "local_shipping", secondaryTag = "Négociation vendeur", isActive = true, displayOrder = 5)
             )
             db.cataloguePlatformDao().insertPlatforms(defaultPlatforms)
+        } else {
+            val snapshot = db.cataloguePlatformDao().getAllPlatformsSnapshot()
+            if (snapshot.none { it.name.contains("Xianyu", ignoreCase = true) }) {
+                db.cataloguePlatformDao().insertPlatform(
+                    CataloguePlatformEntity(name = "Xianyu (闲鱼)", aliasKey = "Xianyu", subtitle = "B2C / C2C Occasion & Pièces rares", badgeText = "Seconde main", isVerified = false, iconType = "CART", colorHex = "#FFC107", shippingTag = "Variable (Sur devis usine)", shippingTagIcon = "local_shipping", secondaryTag = "Négociation vendeur", isActive = true, displayOrder = 5)
+                )
+            }
         }
 
-        if (db.catalogueTransitaireDao().getAllTransitairesSnapshot().isEmpty()) {
-            val defaultTransitaires = listOf(
-                CatalogueTransitaireEntity(name = "SinoExpress Guangzhou", defaultTariffPerKg = 45000L, contact = "+261 34 11 504 14"),
-                CatalogueTransitaireEntity(name = "Madagascar Cargo", defaultTariffPerKg = 38000L, contact = "+261 32 02 123 45")
-            )
-            db.catalogueTransitaireDao().insertTransitaires(defaultTransitaires)
-        }
+        // Transitaires par défaut supprimés : l'utilisateur crée ses propres transitaires
     }
 
     val allBusinessAccounts: Flow<List<BusinessAccountEntity>> = db.businessAccountDao().getAllAccounts()

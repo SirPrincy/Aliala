@@ -99,13 +99,31 @@ fun TransitaireDetailDialog(
     onToggleArchived: (Long) -> Unit,
     onDelete: (Long) -> Unit,
     onUpdateRates: (id: Long, airRate: Long, seaRate: Long) -> Unit = { _, _, _ -> },
-    onRecordPayment: (id: Long, amountAr: Long) -> Unit = { _, _ -> }
+    onRecordPayment: (id: Long, amountAr: Long) -> Unit = { _, _ -> },
+    onUpdateTransitaire: (
+        id: Long,
+        name: String,
+        hub: String,
+        airRate: Long,
+        seaRate: Long,
+        contact: String,
+        chinaWarehouseAddress: String,
+        isActive: Boolean,
+        rateApplicationDate: String,
+        airLeadDays: String,
+        seaLeadDays: String,
+        internalNotes: String,
+        airFastRate: Long,
+        airFastLeadDays: String,
+        goodsCategoryDelays: String
+    ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> }
 ) {
     val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
     var showRateEditDialog by remember { mutableStateOf(false) }
     var showPaymentDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showEditTransitaireDialog by remember { mutableStateOf(false) }
 
     // Segmented toggle: Aérien vs Maritime
     var selectedFretType by remember { mutableStateOf("AERIEN") } // "AERIEN" or "MARITIME"
@@ -131,12 +149,12 @@ fun TransitaireDetailDialog(
     val currentAirRate = transitaire.airRateAr
     val currentSeaRate = transitaire.seaRateAr
 
-    val totalInvoiced = if (transitaire.totalInvoicedAr > 0) transitaire.totalInvoicedAr else 420_000L
+    val totalInvoiced = transitaire.totalInvoicedAr
     val balanceDue = transitaire.balanceDueAr
     val paidAmount = if (transitaire.paidAmountAr > 0) transitaire.paidAmountAr else (totalInvoiced - balanceDue).coerceAtLeast(0L)
     val settlementPercent = if (totalInvoiced > 0) ((paidAmount.toDouble() / totalInvoiced) * 100).toInt().coerceIn(0, 100) else 100
 
-    val effectiveRateCalculated = if (transitaire.effectiveRateAr > 0) transitaire.effectiveRateAr else 38_570L
+    val effectiveRateCalculated = if (transitaire.effectiveRateAr > 0) transitaire.effectiveRateAr else currentAirRate
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -198,6 +216,19 @@ fun TransitaireDetailDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
+                            IconButton(
+                                onClick = { showEditTransitaireDialog = true },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .testTag("btn_edit_transitaire_detail")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Modifier le transitaire",
+                                    tint = Color(0xFF00687A),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
                             IconButton(
                                 onClick = { },
                                 modifier = Modifier.size(44.dp)
@@ -524,10 +555,16 @@ fun TransitaireDetailDialog(
                                                 )
                                             }
                                             Text(
-                                                text = "Depuis le 1er juil. 2026",
+                                                text = "Normal : ${transitaire.airLeadDays} • Fast : ${CurrencyFormatter.formatAriary(transitaire.airFastRateAr)}/kg (${transitaire.airFastLeadDays})",
                                                 fontFamily = Inter,
-                                                fontSize = 12.sp,
+                                                fontSize = 11.sp,
                                                 color = Color(0xFF3D494C)
+                                            )
+                                            Text(
+                                                text = transitaire.goodsCategoryDelays,
+                                                fontFamily = Inter,
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF00687A)
                                             )
                                         }
                                     }
@@ -620,10 +657,16 @@ fun TransitaireDetailDialog(
                                                 )
                                             }
                                             Text(
-                                                text = "Depuis le 15 août 2026",
+                                                text = "Normal : ${transitaire.seaLeadDays}",
                                                 fontFamily = Inter,
                                                 fontSize = 12.sp,
                                                 color = Color(0xFF3D494C)
+                                            )
+                                            Text(
+                                                text = transitaire.goodsCategoryDelays,
+                                                fontFamily = Inter,
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF712AE2)
                                             )
                                         }
                                     }
@@ -645,7 +688,7 @@ fun TransitaireDetailDialog(
                                                 modifier = Modifier.size(14.dp)
                                             )
                                             Text(
-                                                text = "-40k (-3,2%)",
+                                                text = transitaire.seaRateTrend.ifBlank { "Tarif actuel" },
                                                 fontFamily = PlusJakartaSans,
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 11.sp,
@@ -833,7 +876,11 @@ fun TransitaireDetailDialog(
                                                         .background(Color(0xFF06B6D4))
                                                 )
                                                 Text(
-                                                    text = if (selectedFretType == "AERIEN") "1 juil. 2026 : 36k → 38k (+5,6%)" else "15 août 2026 : 1240k → 1200k (-3,2%)",
+                                                    text = if (selectedFretType == "AERIEN") {
+                                                        "${transitaire.rateApplicationDate} : ${CurrencyFormatter.formatAriary(currentAirRate)}/kg"
+                                                    } else {
+                                                        "${transitaire.rateApplicationDate} : ${CurrencyFormatter.formatAriary(currentSeaRate)}/m³"
+                                                    },
                                                     fontFamily = PlusJakartaSans,
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.Medium,
@@ -998,7 +1045,7 @@ fun TransitaireDetailDialog(
                                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                         Text("Variation période", fontFamily = Inter, fontSize = 11.sp, color = Color(0xFF3D494C))
                                         Text(
-                                            text = if (selectedFretType == "AERIEN") "+11,8%" else "-3,2%",
+                                            text = if (selectedFretType == "AERIEN") transitaire.airRateTrend.ifBlank { "Stable" } else transitaire.seaRateTrend.ifBlank { "Stable" },
                                             fontFamily = PlusJakartaSans,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 15.sp,
@@ -2266,6 +2313,33 @@ fun TransitaireDetailDialog(
                 TextButton(onClick = { showDeleteConfirmDialog = false }) {
                     Text("Annuler", fontFamily = PlusJakartaSans)
                 }
+            }
+        )
+    }
+
+    if (showEditTransitaireDialog) {
+        AddTransitaireDialog(
+            initialTransitaire = transitaire,
+            onDismiss = { showEditTransitaireDialog = false },
+            onConfirm = { name, hub, airRate, seaRate, contact, address, isActive, dateApp, airLead, seaLead, notes, airFastRate, airFastLead, goodsDelays ->
+                onUpdateTransitaire(
+                    transitaire.id,
+                    name,
+                    hub,
+                    airRate,
+                    seaRate,
+                    contact,
+                    address,
+                    isActive,
+                    dateApp,
+                    airLead,
+                    seaLead,
+                    notes,
+                    airFastRate,
+                    airFastLead,
+                    goodsDelays
+                )
+                showEditTransitaireDialog = false
             }
         )
     }

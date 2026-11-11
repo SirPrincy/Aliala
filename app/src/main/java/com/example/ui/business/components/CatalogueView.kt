@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -79,6 +80,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -129,6 +131,7 @@ fun CatalogueView(
     onNewFamilyClick: () -> Unit,
     onCreateFamily: (name: String, emoji: String, colorHex: String) -> Unit = { _, _, _ -> },
     onTogglePlatformActive: (Long, Boolean) -> Unit = { _, _ -> },
+    onUpdatePlatformShippingTag: (Long, String) -> Unit = { _, _ -> },
     onCreatePlatform: (name: String, subtitle: String, shippingTag: String, secondaryTag: String, iconType: String, colorHex: String) -> Unit = { _, _, _, _, _, _ -> },
     onDeletePlatform: (Long) -> Unit = {},
     onCreateTransitaire: (
@@ -142,8 +145,28 @@ fun CatalogueView(
         rateApplicationDate: String,
         airLeadDays: String,
         seaLeadDays: String,
-        internalNotes: String
-    ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _ -> },
+        internalNotes: String,
+        airFastRate: Long,
+        airFastLeadDays: String,
+        goodsCategoryDelays: String
+    ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
+    onUpdateTransitaire: (
+        id: Long,
+        name: String,
+        hub: String,
+        airRate: Long,
+        seaRate: Long,
+        contact: String,
+        chinaWarehouseAddress: String,
+        isActive: Boolean,
+        rateApplicationDate: String,
+        airLeadDays: String,
+        seaLeadDays: String,
+        internalNotes: String,
+        airFastRate: Long,
+        airFastLeadDays: String,
+        goodsCategoryDelays: String
+    ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
     onToggleTransitaireArchived: (Long) -> Unit = {},
     onDeleteTransitaire: (Long) -> Unit = {},
     onUpdateTransitaireRates: (Long, Long, Long) -> Unit = { _, _, _ -> },
@@ -424,6 +447,7 @@ fun CatalogueView(
                     PlateformesSubTabContent(
                         platforms = uiState.cataloguePlatforms,
                         onTogglePlatformActive = onTogglePlatformActive,
+                        onUpdatePlatformShippingTag = onUpdatePlatformShippingTag,
                         onCreatePlatform = onCreatePlatform,
                         onDeletePlatform = onDeletePlatform
                     )
@@ -432,8 +456,9 @@ fun CatalogueView(
                     TransitairesSubTabContent(
                         transitaires = uiState.catalogueTransitaires,
                         onCreateTransitaire = { name, hub, air, sea ->
-                            onCreateTransitaire(name, hub, air, sea, "", "", true, "24/10/2026", "5 à 8 jours", "30 à 45 jours", "")
+                            onCreateTransitaire(name, hub, air, sea, "", "", true, "24/10/2026", "7 à 10 jours", "30 à 45 jours", "", 60000L, "3 à 5 jours", "Générale: Normal | Batterie: +2j | Poudre/Liquide: +3j | Téléphone: +2j")
                         },
+                        onUpdateTransitaire = onUpdateTransitaire,
                         onToggleArchived = onToggleTransitaireArchived,
                         onDeleteTransitaire = onDeleteTransitaire,
                         onUpdateRates = onUpdateTransitaireRates,
@@ -448,8 +473,8 @@ fun CatalogueView(
     if (showAddTransitaireDialog) {
         AddTransitaireDialog(
             onDismiss = { showAddTransitaireDialog = false },
-            onConfirm = { name, hub, airRate, seaRate, contact, address, isActive, dateApp, airLead, seaLead, notes ->
-                onCreateTransitaire(name, hub, airRate, seaRate, contact, address, isActive, dateApp, airLead, seaLead, notes)
+            onConfirm = { name, hub, airRate, seaRate, contact, address, isActive, dateApp, airLead, seaLead, notes, airFastRate, airFastLead, goodsDelays ->
+                onCreateTransitaire(name, hub, airRate, seaRate, contact, address, isActive, dateApp, airLead, seaLead, notes, airFastRate, airFastLead, goodsDelays)
                 showAddTransitaireDialog = false
             }
         )
@@ -1313,9 +1338,8 @@ private fun FamillesSubTabContent(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(9999.dp))
-                        .background(Color(0xFFE0F2FE))
+                        .background(CyanPrimary.copy(alpha = 0.15f))
                         .clickable {
-                            // Scroll down to the creation card and trigger onNewFamilyClick
                             onNewFamilyClick()
                         }
                         .padding(horizontal = 14.dp, vertical = 8.dp)
@@ -1330,13 +1354,13 @@ private fun FamillesSubTabContent(
                             modifier = Modifier
                                 .size(18.dp)
                                 .clip(CircleShape)
-                                .border(1.5.dp, Color(0xFF0369A1), CircleShape),
+                                .border(1.5.dp, CyanPrimary, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = null,
-                                tint = Color(0xFF0369A1),
+                                tint = CyanPrimary,
                                 modifier = Modifier.size(12.dp)
                             )
                         }
@@ -1345,7 +1369,7 @@ private fun FamillesSubTabContent(
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
-                            color = Color(0xFF0369A1)
+                            color = CyanPrimary
                         )
                     }
                 }
@@ -1428,11 +1452,7 @@ private fun FamillesSubTabContent(
                                     fontFamily = Inter,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 12.sp,
-                                    color = when {
-                                        family.name.contains("Mode", ignoreCase = true) -> Color(0xFF7C3AED)
-                                        family.name.contains("Maison", ignoreCase = true) -> Color(0xFF2563EB)
-                                        else -> Color(0xFF0D9488)
-                                    }
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                                 if (family.hiddenCount > 0) {
                                     Text(
@@ -1495,12 +1515,12 @@ private fun FamillesSubTabContent(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(20.dp))
                     .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
                     .padding(16.dp)
                     .testTag("card_create_family")
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    // Header Row: Icon Squircle + Title + Badge "Étape 1/2"
+                    // Header Row: Icon Squircle + Title + Badge
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1514,13 +1534,13 @@ private fun FamillesSubTabContent(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFFE0F2FE)),
+                                    .background(CyanPrimary.copy(alpha = 0.15f)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Category,
                                     contentDescription = null,
-                                    tint = Color(0xFF0284C7),
+                                    tint = CyanPrimary,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -1536,15 +1556,15 @@ private fun FamillesSubTabContent(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(9999.dp))
-                                .background(Color(0xFFEDE9FE))
+                                .background(MaterialTheme.colorScheme.secondaryContainer)
                                 .padding(horizontal = 10.dp, vertical = 3.dp)
                         ) {
                             Text(
-                                text = "Étape 1/2",
+                                text = "Nouveau",
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp,
-                                color = Color(0xFF6D28D9)
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
                         }
                     }
@@ -1567,7 +1587,7 @@ private fun FamillesSubTabContent(
                                 .testTag("input_family_name"),
                             placeholder = {
                                 Text(
-                                    text = "Beauté & Bien-être",
+                                    text = "ex: Beauté & Bien-être, Chaussures...",
                                     fontFamily = Inter,
                                     fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.outline
@@ -1609,20 +1629,22 @@ private fun FamillesSubTabContent(
                             color = MaterialTheme.colorScheme.onSurface
                         )
 
-                        val emojiChoices = listOf("💄", "✨", "🧴", "💅", "🌿")
+                        val emojiChoices = listOf("🎧", "👗", "🏠", "📱", "💄", "👟", "🧸", "✨")
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             emojiChoices.forEach { emoji ->
                                 val isSelected = selectedEmoji == emoji
                                 Box(
                                     modifier = Modifier
-                                        .size(54.dp)
+                                        .size(48.dp)
                                         .clip(RoundedCornerShape(14.dp))
                                         .background(
-                                            if (isSelected) Color(0xFFBAE6FD)
+                                            if (isSelected) CyanPrimary.copy(alpha = 0.25f)
                                             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
                                         )
                                         .border(
@@ -1636,7 +1658,7 @@ private fun FamillesSubTabContent(
                                 ) {
                                     Text(
                                         text = emoji,
-                                        fontSize = 24.sp
+                                        fontSize = 22.sp
                                     )
                                 }
                             }
@@ -1654,14 +1676,14 @@ private fun FamillesSubTabContent(
                         )
 
                         val colorChoices = listOf(
-                            "#67E8F9", // Cyan / Mint
-                            "#F3E8FF", // Pastel lavender
-                            "#DBEAFE", // Pastel sky
-                            "#E0E7FF", // Pastel blue
-                            "#22D3EE", // Vivid Cyan
-                            "#C084FC", // Vivid Purple
-                            "#93C5FD", // Medium Blue
-                            "#E2E8F0"  // Soft Slate
+                            "#06B6D4", // Cyan Primary
+                            "#EC4899", // Pink
+                            "#F97316", // Orange
+                            "#8B5CF6", // Purple
+                            "#10B981", // Emerald
+                            "#3B82F6", // Blue
+                            "#EAB308", // Yellow
+                            "#64748B"  // Slate
                         )
 
                         Row(
@@ -1684,7 +1706,7 @@ private fun FamillesSubTabContent(
                                         .background(swatchColor)
                                         .border(
                                             width = if (isSelected) 2.dp else 0.5.dp,
-                                            color = if (isSelected) CyanPrimary else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                                            color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
                                             shape = CircleShape
                                         )
                                         .clickable { selectedColorHex = colorHex }
@@ -1695,7 +1717,7 @@ private fun FamillesSubTabContent(
                                         Icon(
                                             imageVector = Icons.Default.Check,
                                             contentDescription = "Sélectionné",
-                                            tint = if (colorHex in listOf("#F3E8FF", "#DBEAFE", "#E0E7FF", "#E2E8F0")) Color(0xFF1E293B) else Color.White,
+                                            tint = Color.White,
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
@@ -1750,8 +1772,8 @@ private fun FamillesSubTabContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xFFEFF6FF))
-                    .border(1.dp, Color(0xFFBFDBFE), RoundedCornerShape(18.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f), RoundedCornerShape(18.dp))
                     .padding(14.dp)
                     .testTag("card_data_protection")
             ) {
@@ -1764,13 +1786,13 @@ private fun FamillesSubTabContent(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFDBEAFE)),
+                            .background(CyanPrimary.copy(alpha = 0.15f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Shield,
                             contentDescription = null,
-                            tint = Color(0xFF0284C7),
+                            tint = CyanPrimary,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -1807,6 +1829,7 @@ private fun FamillesSubTabContent(
 private fun PlateformesSubTabContent(
     platforms: List<CataloguePlatformSummaryUi>,
     onTogglePlatformActive: (Long, Boolean) -> Unit,
+    onUpdatePlatformShippingTag: (Long, String) -> Unit,
     onCreatePlatform: (name: String, subtitle: String, shippingTag: String, secondaryTag: String, iconType: String, colorHex: String) -> Unit,
     onDeletePlatform: (Long) -> Unit
 ) {
@@ -1971,7 +1994,8 @@ private fun PlateformesSubTabContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFFEADDFF).copy(alpha = 0.5f))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
                     .padding(16.dp)
                     .testTag("card_freight_info")
             ) {
@@ -1983,7 +2007,7 @@ private fun PlateformesSubTabContent(
                     Icon(
                         imageVector = Icons.Default.Lightbulb,
                         contentDescription = null,
-                        tint = Color(0xFF712AE2),
+                        tint = CyanPrimary,
                         modifier = Modifier.size(24.dp)
                     )
 
@@ -1993,14 +2017,14 @@ private fun PlateformesSubTabContent(
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
-                            color = Color(0xFF25005A)
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Si le port est payant sur la plateforme, il est imputé sur le coût de revient du lot avant l'envoi vers le transitaire SinoExpress ou MadaAir.",
+                            text = "Si le port est payant sur la plateforme, il est imputé sur le coût de revient du lot avant l'envoi vers le transitaire.",
                             fontFamily = Inter,
                             fontSize = 12.sp,
                             lineHeight = 17.sp,
-                            color = Color(0xFF5A00C6)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -2064,6 +2088,9 @@ private fun PlateformesSubTabContent(
         PlatformTransitDetailsDialog(
             platform = plat,
             onDismiss = { selectedPlatformDetails = null },
+            onUpdateShippingTag = { newTag ->
+                onUpdatePlatformShippingTag(plat.id, newTag)
+            },
             onDelete = {
                 onDeletePlatform(plat.id)
                 selectedPlatformDetails = null
@@ -2236,7 +2263,7 @@ private fun PlatformCardItem(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFF2F3FF))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                     .padding(12.dp)
             ) {
                 Row(
@@ -2267,7 +2294,7 @@ private fun PlatformCardItem(
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 11.sp,
-                            color = Color(0xFF712AE2)
+                            color = CyanPrimary
                         )
                     }
 
@@ -2311,37 +2338,35 @@ private fun PlatformCardItem(
             }
 
             // Action button for details
-            if (platform.hasTransitDetails) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFFE2E7FF))
-                        .clickable { onDetailsClick() }
-                        .padding(horizontal = 14.dp),
-                    contentAlignment = Alignment.Center
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(CyanPrimary.copy(alpha = 0.15f))
+                    .clickable { onDetailsClick() }
+                    .padding(horizontal = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Détails & Tarifs transit",
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = Color(0xFF712AE2)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = Color(0xFF712AE2),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
+                    Text(
+                        text = "Détails & Tarifs transit",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = CyanPrimary
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = CyanPrimary,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
         }
@@ -2565,8 +2590,15 @@ private fun AddPlatformDialog(
 private fun PlatformTransitDetailsDialog(
     platform: CataloguePlatformSummaryUi,
     onDismiss: () -> Unit,
+    onUpdateShippingTag: (String) -> Unit,
     onDelete: () -> Unit
 ) {
+    val shippingModes = listOf(
+        "Port Gratuit (包邮)",
+        "Port Payant (Sur devis)",
+        "Variable (Sur devis usine)"
+    )
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -2578,7 +2610,8 @@ private fun PlatformTransitDetailsDialog(
                     text = platform.name,
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
+                    fontSize = 18.sp,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 if (platform.isVerified) {
                     Icon(
@@ -2592,7 +2625,7 @@ private fun PlatformTransitDetailsDialog(
         },
         text = {
             Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
@@ -2602,27 +2635,80 @@ private fun PlatformTransitDetailsDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                // Toggle Mode de port intérieur
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Mode de port intérieur (Chine)",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        shippingModes.forEach { mode ->
+                            val isSelected = platform.shippingTag.equals(mode, ignoreCase = true) ||
+                                (mode.contains("Gratuit") && platform.shippingTag.contains("gratuit", ignoreCase = true)) ||
+                                (mode.contains("Payant") && platform.shippingTag.contains("payant", ignoreCase = true)) ||
+                                (mode.contains("Variable") && (platform.shippingTag.contains("variable", ignoreCase = true) || platform.shippingTag.contains("devis", ignoreCase = true)))
+
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onUpdateShippingTag(mode) },
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) CyanPrimary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                border = BorderStroke(
+                                    width = if (isSelected) 1.5.dp else 0.5.dp,
+                                    color = if (isSelected) CyanPrimary else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = mode,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) CyanPrimary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = CyanPrimary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFF2F3FF))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         .padding(12.dp)
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
-                            text = "Logistique intérieure",
+                            text = "Logistique & Notes",
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
-                            color = Color(0xFF712AE2)
+                            color = CyanPrimary
                         )
                         Text(
-                            text = platform.transitNotes.ifBlank { "Les frais de port payants sont imputés au coût de revient du lot avant l'envoi vers le transitaire SinoExpress ou MadaAir." },
+                            text = platform.transitNotes.ifBlank { "Les frais de port payants sont imputés au coût de revient du lot avant l'envoi vers le transitaire." },
                             fontFamily = Inter,
                             fontSize = 12.sp,
                             lineHeight = 17.sp,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -2632,12 +2718,13 @@ private fun PlatformTransitDetailsDialog(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column {
-                        Text("Volume total dépensé", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                        Text("Dépenses totales", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
                         Text(
                             "¥ ${formatYuanAmount(platform.totalSpentYuan)}",
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                     Column(horizontalAlignment = Alignment.End) {
@@ -2647,7 +2734,7 @@ private fun PlatformTransitDetailsDialog(
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
-                            color = Color(0xFF712AE2)
+                            color = CyanPrimary
                         )
                     }
                 }
@@ -2657,19 +2744,19 @@ private fun PlatformTransitDetailsDialog(
             Button(
                 onClick = onDismiss,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF712AE2),
+                    containerColor = CyanPrimary,
                     contentColor = Color.White
                 )
             ) {
-                Text("Fermer")
+                Text("Fermer", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
             TextButton(
                 onClick = onDelete,
-                colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFBA1A1A))
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
             ) {
-                Text("Supprimer la plateforme")
+                Text("Supprimer", fontFamily = PlusJakartaSans)
             }
         }
     )

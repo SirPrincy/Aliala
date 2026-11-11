@@ -84,6 +84,12 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     private val insightIndexFlow = MutableStateFlow(1)
     private val snackbarFlow = MutableStateFlow<String?>(null)
 
+    init {
+        viewModelScope.launch {
+            repository.seedDefaultCatalogueTablesIfEmpty()
+        }
+    }
+
     // Filtres Achats
     private val purchasesStatusFilterFlow = MutableStateFlow("Tous")
     private val purchasesCategoryFilterFlow = MutableStateFlow("Toutes catégories")
@@ -574,10 +580,11 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
 
         // Résumés sous-onglets Plateformes (dynamiques depuis Room)
         val defaultPlatforms = listOf(
-            CataloguePlatformEntity(id = 1, name = "1688.com", aliasKey = "1688", subtitle = "Alibaba Wholesale (Usines B2B)", isVerified = true, iconType = "TEXT_1688", colorHex = "#712ae2", shippingTag = "Port Payant (¥ 10 - ¥ 25)", shippingTagIcon = "local_shipping", secondaryTag = "Min. commande : 2-5 pcs", isActive = true, displayOrder = 1, defaultYuanSpent = 0.0, defaultOrdersCount = 0, defaultLastDate = "", transitNotes = "Tarif transitaire aérien: 45 000 Ar/kg. Maritime: 18 000 Ar/kg."),
+            CataloguePlatformEntity(id = 1, name = "1688.com", aliasKey = "1688", subtitle = "Alibaba Wholesale (Usines B2B)", isVerified = true, iconType = "TEXT_1688", colorHex = "#712ae2", shippingTag = "Port Payant (Sur devis)", shippingTagIcon = "local_shipping", secondaryTag = "Min. commande : 2-5 pcs", isActive = true, displayOrder = 1, defaultYuanSpent = 0.0, defaultOrdersCount = 0, defaultLastDate = "", transitNotes = "Tarif transitaire aérien: 45 000 Ar/kg. Maritime: 18 000 Ar/kg."),
             CataloguePlatformEntity(id = 2, name = "Taobao", aliasKey = "Taobao", subtitle = "Consommation & Petits lots", badgeText = "C2C / B2C", isVerified = false, iconType = "CART", colorHex = "#8a4cfc", shippingTag = "Port Gratuit (包邮)", shippingTagIcon = "check_circle", secondaryTag = "Livraison rapide état côtier", isActive = true, displayOrder = 2, defaultYuanSpent = 0.0, defaultOrdersCount = 0, defaultLastDate = "", transitNotes = "Livraison rapide Guangdong en 48h."),
             CataloguePlatformEntity(id = 3, name = "Pinduoduo", aliasKey = "Pinduoduo", subtitle = "Direct Usine / Déstockage & Volume", badgeText = "Usine Direct", isVerified = false, iconType = "PRICE", colorHex = "#ffdad6", shippingTag = "Port Gratuit (包邮)", shippingTagIcon = "check_circle", secondaryTag = "Remises groupées", isActive = true, displayOrder = 3, defaultYuanSpent = 0.0, defaultOrdersCount = 0, defaultLastDate = "", transitNotes = "Commandes groupées direct usines."),
-            CataloguePlatformEntity(id = 4, name = "Fournisseur Direct WeChat", aliasKey = "WeChat", subtitle = "Sino-Contact / Négociations privées", isVerified = false, iconType = "WECHAT", colorHex = "#acedff", shippingTag = "Port Payant (Sur devis)", shippingTagIcon = "request_quote", secondaryTag = "Dépôt direct transitaire", isActive = true, displayOrder = 4, defaultYuanSpent = 0.0, defaultOrdersCount = 0, defaultLastDate = "", transitNotes = "Paiement direct WeChat Pay ou virement agent.")
+            CataloguePlatformEntity(id = 4, name = "Fournisseur Direct WeChat", aliasKey = "WeChat", subtitle = "Sino-Contact / Négociations privées", isVerified = false, iconType = "WECHAT", colorHex = "#acedff", shippingTag = "Variable (Sur devis usine)", shippingTagIcon = "request_quote", secondaryTag = "Dépôt direct transitaire", isActive = true, displayOrder = 4, defaultYuanSpent = 0.0, defaultOrdersCount = 0, defaultLastDate = "", transitNotes = "Paiement direct WeChat Pay ou virement agent."),
+            CataloguePlatformEntity(id = 5, name = "Xianyu (闲鱼)", aliasKey = "Xianyu", subtitle = "B2C / C2C Occasion & Pièces rares", badgeText = "Seconde main", isVerified = false, iconType = "CART", colorHex = "#FFC107", shippingTag = "Variable (Sur devis usine)", shippingTagIcon = "local_shipping", secondaryTag = "Négociation vendeur", isActive = true, displayOrder = 5, defaultYuanSpent = 0.0, defaultOrdersCount = 0, defaultLastDate = "", transitNotes = "Transactions de seconde main et pièces uniques directes de particuliers ou usines.")
         )
         val availablePlatforms = if (raw.platforms.isNotEmpty()) raw.platforms else defaultPlatforms
 
@@ -631,22 +638,46 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         }
 
         // Transitaires issus de Room
+        val dateFmt = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.FRANCE)
         val catalogueTransitairesSummary = raw.transitaires.map { t ->
             val transOrders = orders.filter { it.carrier.contains(t.name, ignoreCase = true) }
             val inTransitCount = transOrders.count { it.status in listOf("GUANGZHOU", "FLIGHT", "CUSTOMS", "QUALITY_CONTROL") }
-            val deliveredCount = transOrders.count { it.status in listOf("DELIVERY_READY", "IN_STOCK", "COMPLETED", "SOLD") }
             val inits = t.name.split(" ").mapNotNull { it.firstOrNull()?.toString() }.take(2).joinToString("").uppercase().ifBlank { "TR" }
+
+            val totalInvoiced = transOrders.sumOf { it.freightCostAr }
+            val paidAmount = transOrders
+                .filter { it.status in listOf("DELIVERY_READY", "IN_STOCK", "COMPLETED", "SOLD") }
+                .sumOf { it.freightCostAr }
+            val balanceDue = (totalInvoiced - paidAmount).coerceAtLeast(0L)
+            val totalWeight = transOrders.sumOf { it.weightKg ?: 0.0 }
+            val effectiveRate = if (totalWeight > 0.0 && totalInvoiced > 0L) (totalInvoiced / totalWeight).toLong() else 0L
+            val latestOrder = transOrders.maxByOrNull { it.orderDate }
+            val lastDate = latestOrder?.let { dateFmt.format(java.util.Date(it.orderDate)) } ?: ""
+            val lastCode = latestOrder?.referenceCode?.ifBlank { "#CMD-${latestOrder.id}" } ?: ""
+
             CatalogueTransitaireSummaryUi(
                 id = t.id,
                 name = t.name,
                 initials = inits,
                 routeHub = "Hub Chine → Madagascar",
-                airRateAr = if (t.defaultTariffPerKg > 0) t.defaultTariffPerKg else 45000L,
-                seaRateAr = 18000L,
+                airRateAr = if (t.airNormalRateAr > 0) t.airNormalRateAr else (if (t.defaultTariffPerKg > 0) t.defaultTariffPerKg else 45000L),
+                airFastRateAr = if (t.airFastRateAr > 0) t.airFastRateAr else 60000L,
+                seaRateAr = if (t.seaRateAr > 0) t.seaRateAr else 18000L,
                 contact = t.contact,
                 chinaWarehouseAddress = t.address,
-                internalNotes = t.notes,
-                activeShipmentsCount = inTransitCount
+                internalNotes = t.notes.removePrefix("[ARCHIVED]").trim(),
+                isArchived = t.notes.startsWith("[ARCHIVED]"),
+                activeShipmentsCount = inTransitCount,
+                lastShipmentDate = lastDate,
+                lastShipmentCode = lastCode,
+                totalInvoicedAr = totalInvoiced,
+                paidAmountAr = paidAmount,
+                balanceDueAr = balanceDue,
+                effectiveRateAr = effectiveRate,
+                airLeadDays = t.airNormalLeadDays.ifBlank { "7 à 10 jours" },
+                airFastLeadDays = t.airFastLeadDays.ifBlank { "3 à 5 jours" },
+                seaLeadDays = t.seaNormalLeadDays.ifBlank { "30 à 45 jours" },
+                goodsCategoryDelays = t.goodsCategoryDelays.ifBlank { "Générale: Normal | Batterie: +2j | Poudre/Liquide: +3j | Téléphone: +2j" }
             )
         }
 
@@ -1449,6 +1480,17 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun updatePlatformShippingTag(platformId: Long, newShippingTag: String) {
+        viewModelScope.launch {
+            val snapshot = repository.getAllCataloguePlatformsSnapshot()
+            val target = snapshot.find { it.id == platformId }
+            if (target != null) {
+                repository.updateCataloguePlatform(target.copy(shippingTag = newShippingTag))
+                snackbarFlow.value = "Mode de port mis à jour : $newShippingTag"
+            }
+        }
+    }
+
     fun addCataloguePlatform(
         name: String,
         subtitle: String,
@@ -1506,10 +1548,13 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         contact: String = "",
         chinaWarehouseAddress: String = "",
         isActive: Boolean = true,
-        rateApplicationDate: String = "24/10/2026",
-        airLeadDays: String = "5 à 8 jours",
+        rateApplicationDate: String = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.FRANCE).format(java.util.Date()),
+        airLeadDays: String = "7 à 10 jours",
         seaLeadDays: String = "30 à 45 jours",
-        internalNotes: String = ""
+        internalNotes: String = "",
+        airFastRate: Long = 60000L,
+        airFastLeadDays: String = "3 à 5 jours",
+        goodsCategoryDelays: String = "Générale: Normal | Batterie: +2j | Poudre/Liquide: +3j | Téléphone: +2j"
     ) {
         viewModelScope.launch {
             repository.insertCatalogueTransitaire(
@@ -1518,10 +1563,59 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                     contact = contact.trim(),
                     address = chinaWarehouseAddress.ifBlank { hub }.trim(),
                     defaultTariffPerKg = airRate,
+                    airNormalRateAr = airRate,
+                    airFastRateAr = airFastRate,
+                    seaRateAr = seaRate,
+                    airNormalLeadDays = airLeadDays.ifBlank { "7 à 10 jours" },
+                    airFastLeadDays = airFastLeadDays.ifBlank { "3 à 5 jours" },
+                    seaNormalLeadDays = seaLeadDays.ifBlank { "30 à 45 jours" },
+                    goodsCategoryDelays = goodsCategoryDelays,
                     notes = internalNotes.trim()
                 )
             )
             snackbarFlow.value = "Transitaire « $name » ajouté"
+        }
+    }
+
+    fun updateCatalogueTransitaire(
+        id: Long,
+        name: String,
+        hub: String,
+        airRate: Long,
+        seaRate: Long,
+        contact: String,
+        chinaWarehouseAddress: String,
+        isActive: Boolean,
+        rateApplicationDate: String,
+        airLeadDays: String,
+        seaLeadDays: String,
+        internalNotes: String,
+        airFastRate: Long,
+        airFastLeadDays: String,
+        goodsCategoryDelays: String
+    ) {
+        viewModelScope.launch {
+            val list = repository.getAllCatalogueTransitairesSnapshot()
+            val existing = list.firstOrNull { it.id == id }
+            if (existing != null) {
+                repository.updateCatalogueTransitaire(
+                    existing.copy(
+                        name = name.trim(),
+                        contact = contact.trim(),
+                        address = chinaWarehouseAddress.ifBlank { hub }.trim(),
+                        defaultTariffPerKg = airRate,
+                        airNormalRateAr = airRate,
+                        airFastRateAr = airFastRate,
+                        seaRateAr = seaRate,
+                        airNormalLeadDays = airLeadDays.ifBlank { "7 à 10 jours" },
+                        airFastLeadDays = airFastLeadDays.ifBlank { "3 à 5 jours" },
+                        seaNormalLeadDays = seaLeadDays.ifBlank { "30 à 45 jours" },
+                        goodsCategoryDelays = goodsCategoryDelays,
+                        notes = internalNotes.trim()
+                    )
+                )
+                snackbarFlow.value = "Transitaire « $name » modifié"
+            }
         }
     }
 
@@ -1537,7 +1631,13 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             val list = repository.getAllCatalogueTransitairesSnapshot()
             val existing = list.firstOrNull { it.id == id }
             if (existing != null) {
-                repository.updateCatalogueTransitaire(existing.copy(defaultTariffPerKg = airRate))
+                repository.updateCatalogueTransitaire(
+                    existing.copy(
+                        defaultTariffPerKg = airRate,
+                        airNormalRateAr = airRate,
+                        seaRateAr = seaRate
+                    )
+                )
                 snackbarFlow.value = "Tarifs mis à jour"
             }
         }
@@ -1545,12 +1645,35 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
 
     fun toggleTransitaireArchived(id: Long) {
         viewModelScope.launch {
-            snackbarFlow.value = "Statut transitaire mis à jour"
+            val list = repository.getAllCatalogueTransitairesSnapshot()
+            val existing = list.firstOrNull { it.id == id }
+            if (existing != null) {
+                val isCurrentlyArchived = existing.notes.startsWith("[ARCHIVED]")
+                val newNotes = if (isCurrentlyArchived) {
+                    existing.notes.removePrefix("[ARCHIVED]").trim()
+                } else {
+                    "[ARCHIVED] ${existing.notes}".trim()
+                }
+                repository.updateCatalogueTransitaire(existing.copy(notes = newNotes))
+                snackbarFlow.value = if (isCurrentlyArchived) "Transitaire réactivé" else "Transitaire archivé"
+            }
         }
     }
 
     fun recordTransitairePayment(id: Long, amountAr: Long) {
         viewModelScope.launch {
+            val list = repository.getAllCatalogueTransitairesSnapshot()
+            val transName = list.firstOrNull { it.id == id }?.name ?: "Transitaire"
+            repository.insertBusinessTransaction(
+                com.example.data.local.entity.BusinessTransactionEntity(
+                    title = "Règlement Fret — $transName",
+                    type = "EXPENSE",
+                    amountAr = amountAr,
+                    accountName = "Business",
+                    referenceTag = "TRANSITAIRE_$id",
+                    dateMillis = System.currentTimeMillis()
+                )
+            )
             snackbarFlow.value = "Règlement transitaire de ${CurrencyFormatter.formatAriary(amountAr)} enregistré"
         }
     }

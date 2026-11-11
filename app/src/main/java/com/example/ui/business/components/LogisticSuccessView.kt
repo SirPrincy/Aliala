@@ -78,9 +78,9 @@ fun LogisticSuccessView(
     val unitFifoCostAr = if (totalVendable > 0) totalNetExpensesAr / totalVendable else breakdown.unitCostAr
     val recommendedPriceAr = if (order.resalePriceAr > 0) order.resalePriceAr else 0L
 
-    val parsedVariants = remember(order.variants) {
-        val list = order.variants.split(",").map { it.trim() }.filter { it.isNotBlank() }
-        if (list.isNotEmpty()) list else listOf("Noir Pro", "Blanc Pur", "Rouge Sport")
+    val parsedVariants = remember(order.variants, order.product) {
+        val list = VariantColorUtils.parseVariants(order.variants)
+        if (list.isNotEmpty()) list else listOf("Standard")
     }
     val v1Name = parsedVariants.getOrElse(0) { "Variante 1" }
     val v2Name = parsedVariants.getOrElse(1) { "Variante 2" }

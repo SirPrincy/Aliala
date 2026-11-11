@@ -1053,21 +1053,14 @@ private fun StockItemCard(
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    val variantPills = order.variants.split("·", ",").map { it.trim() }.filter { it.isNotBlank() }
+                    val variantPills = VariantColorUtils.parseVariants(order.variants)
                     Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         variantPills.forEachIndexed { index, pillText ->
-                            val dotColor = when {
-                                pillText.contains("Noir", ignoreCase = true) -> Color(0xFF0F172A)
-                                pillText.contains("Blanc", ignoreCase = true) -> Color(0xFFFFFFFF)
-                                pillText.contains("Rouge", ignoreCase = true) -> Color(0xFFF43F5E)
-                                pillText.contains("Bleu", ignoreCase = true) -> Color(0xFF3B82F6)
-                                pillText.contains("Stellaire", ignoreCase = true) || pillText.contains("Gris", ignoreCase = true) -> Color(0xFF94A3B8)
-                                else -> CyanPrimary
-                            }
+                            val dotColor = VariantColorUtils.getVariantColor(pillText, index)
 
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,

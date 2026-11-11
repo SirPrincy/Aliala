@@ -2,6 +2,7 @@ package com.example.ui.business.components
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -72,6 +73,20 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.Inter
@@ -88,12 +103,25 @@ fun ArticleDetailScreen(
     onEditArticleClick: (BusinessOrderEntity) -> Unit = {},
     onToggleHideArticle: (BusinessOrderEntity) -> Unit = {},
     onDeleteArticle: (BusinessOrderEntity) -> Unit = {},
+    onUpdateArticle: (BusinessOrderEntity) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     var showMenu by remember { mutableStateOf(false) }
     var currentCarouselPage by remember { mutableIntStateOf(1) }
+    var showAddColorDialog by remember { mutableStateOf(false) }
+    var showEmojiPickerDialog by remember { mutableStateOf(false) }
+
+    // Photo picker launcher
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let {
+            onUpdateArticle(article.copy(imageUrl = it.toString()))
+            Toast.makeText(context, "Photo de l'article mise à jour", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val totalStock = article.stockCount
     val inTransit = if (article.status in listOf("ORDERED", "WAREHOUSE", "GUANGZHOU", "FLIGHT", "CUSTOMS")) article.quantityBought else 0
@@ -204,26 +232,81 @@ fun ArticleDetailScreen(
                     .background(Color(0xFFEAEDFF))
                     .testTag("article_detail_carousel")
             ) {
-                // Background artistic representation
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                // Background artistic representation or Custom Photo
+                if (article.imageUrl.isNotBlank() && (article.imageUrl.startsWith("content://") || article.imageUrl.startsWith("file://") || article.imageUrl.startsWith("http"))) {
+                    AsyncImage(
+                        model = article.imageUrl,
+                        contentDescription = article.product,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = if (article.family.contains("MODE", ignoreCase = true)) "🎒" else "🎧",
-                            fontSize = 72.sp
-                        )
-                        Text(
-                            text = article.product,
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = Color(0xFF131B2E).copy(alpha = 0.6f)
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = if (article.imageUrl.isNotBlank() && !article.imageUrl.contains("/")) {
+                                    article.imageUrl
+                                } else if (article.family.contains("MODE", ignoreCase = true)) {
+                                    "🎒"
+                                } else if (article.family.contains("MAISON", ignoreCase = true)) {
+                                    "🏠"
+                                } else if (article.family.contains("BEAUTÉ", ignoreCase = true)) {
+                                    "💄"
+                                } else {
+                                    "🎧"
+                                },
+                                fontSize = 72.sp
+                            )
+                            Text(
+                                text = article.product,
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = Color(0xFF131B2E).copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                }
+
+                // Bottom Overlay Bar: Photo Picker Button
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(9999.dp),
+                        color = Color.Black.copy(alpha = 0.65f),
+                        modifier = Modifier.clickable {
+                            photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PhotoCamera,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = if (article.imageUrl.isNotBlank()) "Changer la photo" else "Ajouter une photo",
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = Color.White
+                            )
+                        }
                     }
                 }
 
@@ -429,7 +512,7 @@ fun ArticleDetailScreen(
                 )
 
                 Text(
-                    text = if (article.variants.isNotBlank()) article.variants else "Bluetooth 5.3, Réduction de bruit active (ANC), étui de charge rapide USB-C.",
+                    text = if (article.variants.isNotBlank()) article.variants else "Catégorie : ${article.family.ifBlank { "Générale" }}",
                     fontFamily = Inter,
                     fontSize = 13.sp,
                     color = Color(0xFF3D494C)
@@ -736,9 +819,7 @@ fun ArticleDetailScreen(
                                     color = Color(0xFF131B2E)
                                 )
                                 val parsedVariantsList = remember(article.variants) {
-                                    article.variants.split(",")
-                                        .map { it.trim() }
-                                        .filter { it.isNotBlank() }
+                                    VariantColorUtils.parseVariants(article.variants)
                                 }
                                 Text(
                                     text = if (parsedVariantsList.isNotEmpty()) "${parsedVariantsList.size} variante(s) configurée(s)" else "Aucune variante enregistrée",
@@ -751,25 +832,19 @@ fun ArticleDetailScreen(
                     }
 
                     val parsedVariantsList = remember(article.variants) {
-                        article.variants.split(",")
-                            .map { it.trim() }
-                            .filter { it.isNotBlank() }
+                        VariantColorUtils.parseVariants(article.variants)
                     }
 
                     if (parsedVariantsList.isNotEmpty()) {
                         parsedVariantsList.forEachIndexed { idx, varText ->
-                            val dotColor = when (idx % 4) {
-                                0 -> Color(0xFF131B2E)
-                                1 -> Color(0xFF00687A)
-                                2 -> Color(0xFF712AE2)
-                                else -> Color(0xFFEA580C)
-                            }
+                            val dotColor = VariantColorUtils.getVariantColor(varText, idx)
+                            val isLight = VariantColorUtils.isLightColor(dotColor)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(Color(0xFFF2F3FF))
-                                    .padding(12.dp),
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -782,6 +857,10 @@ fun ArticleDetailScreen(
                                             .size(16.dp)
                                             .clip(CircleShape)
                                             .background(dotColor)
+                                            .then(
+                                                if (isLight) Modifier.border(1.dp, Color(0xFFCCCCCC), CircleShape)
+                                                else Modifier
+                                            )
                                     )
                                     Text(
                                         text = varText,
@@ -789,6 +868,20 @@ fun ArticleDetailScreen(
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 13.sp,
                                         color = Color(0xFF131B2E)
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        val updatedList = parsedVariantsList.filterIndexed { index, _ -> index != idx }
+                                        onUpdateArticle(article.copy(variants = updatedList.joinToString(", ")))
+                                    },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Supprimer la déclinaison",
+                                        tint = Color(0xFFBA1A1A),
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
@@ -817,7 +910,7 @@ fun ArticleDetailScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                Toast.makeText(context, "Ajout d'une couleur", Toast.LENGTH_SHORT).show()
+                                showAddColorDialog = true
                             }
                     ) {
                         Row(
@@ -835,7 +928,7 @@ fun ArticleDetailScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Ajouter une couleur",
+                                text = "+ Ajouter une couleur / variante",
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
@@ -1394,4 +1487,118 @@ fun ArticleDetailScreen(
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
+
+    if (showAddColorDialog) {
+        AddVariantDialog(
+            onDismiss = { showAddColorDialog = false },
+            onConfirm = { newColor ->
+                val existing = VariantColorUtils.parseVariants(article.variants)
+                val updated = (existing + newColor).distinct().joinToString(", ")
+                onUpdateArticle(article.copy(variants = updated))
+                showAddColorDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+fun AddVariantDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (variantName: String) -> Unit
+) {
+    var variantName by remember { mutableStateOf("") }
+    val colorSuggestions = listOf("Noir", "Blanc", "Gris", "Rose", "Bleu Nuit", "Rouge", "Vert Émeraude", "Violet", "Or", "Argent")
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Ajouter une couleur / déclinaison",
+                fontFamily = PlusJakartaSans,
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = variantName,
+                    onValueChange = { variantName = it },
+                    label = { Text("Nom de la couleur / variante") },
+                    placeholder = { Text("ex. Bleu Nuit, Noir Mat...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
+                )
+
+                Text(
+                    text = "Suggestions rapides :",
+                    fontFamily = PlusJakartaSans,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    colorSuggestions.forEach { colorStr ->
+                        val suggColor = VariantColorUtils.getVariantColor(colorStr)
+                        val isLight = VariantColorUtils.isLightColor(suggColor)
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.clickable { variantName = colorStr }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(12.dp)
+                                        .clip(CircleShape)
+                                        .background(suggColor)
+                                        .then(
+                                            if (isLight) Modifier.border(1.dp, Color(0xFFCCCCCC), CircleShape)
+                                            else Modifier
+                                        )
+                                )
+                                Text(
+                                    text = colorStr,
+                                    fontFamily = PlusJakartaSans,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (variantName.isNotBlank()) {
+                        onConfirm(variantName.trim())
+                        onDismiss()
+                    }
+                },
+                enabled = variantName.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Ajouter", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, color = Color.Black)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Annuler", fontFamily = PlusJakartaSans)
+            }
+        }
+    )
 }

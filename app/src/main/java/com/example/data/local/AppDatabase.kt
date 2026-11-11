@@ -71,7 +71,7 @@ import kotlinx.coroutines.launch
         BusinessAccountEntity::class,
         BusinessTransactionEntity::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -135,13 +135,25 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `catalogue_transitaires` ADD COLUMN `airNormalRateAr` INTEGER NOT NULL DEFAULT 45000")
+                db.execSQL("ALTER TABLE `catalogue_transitaires` ADD COLUMN `airFastRateAr` INTEGER NOT NULL DEFAULT 60000")
+                db.execSQL("ALTER TABLE `catalogue_transitaires` ADD COLUMN `seaRateAr` INTEGER NOT NULL DEFAULT 18000")
+                db.execSQL("ALTER TABLE `catalogue_transitaires` ADD COLUMN `airNormalLeadDays` TEXT NOT NULL DEFAULT '7 à 10 jours'")
+                db.execSQL("ALTER TABLE `catalogue_transitaires` ADD COLUMN `airFastLeadDays` TEXT NOT NULL DEFAULT '3 à 5 jours'")
+                db.execSQL("ALTER TABLE `catalogue_transitaires` ADD COLUMN `seaNormalLeadDays` TEXT NOT NULL DEFAULT '30 à 45 jours'")
+                db.execSQL("ALTER TABLE `catalogue_transitaires` ADD COLUMN `goodsCategoryDelays` TEXT NOT NULL DEFAULT 'Générale: Normal | Batterie: +2j | Poudre/Liquide: +3j | Téléphone: +2j'")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "ma_vie_database.db"
-                ).addMigrations(MIGRATION_16_17, MIGRATION_17_18)
+                ).addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)

@@ -36,6 +36,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -73,6 +74,23 @@ import com.example.util.CurrencyFormatter
 fun TransitairesSubTabContent(
     transitaires: List<CatalogueTransitaireSummaryUi>,
     onCreateTransitaire: (name: String, hub: String, airRate: Long, seaRate: Long) -> Unit,
+    onUpdateTransitaire: (
+        id: Long,
+        name: String,
+        hub: String,
+        airRate: Long,
+        seaRate: Long,
+        contact: String,
+        chinaWarehouseAddress: String,
+        isActive: Boolean,
+        rateApplicationDate: String,
+        airLeadDays: String,
+        seaLeadDays: String,
+        internalNotes: String,
+        airFastRate: Long,
+        airFastLeadDays: String,
+        goodsCategoryDelays: String
+    ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
     onToggleArchived: (Long) -> Unit = {},
     onDeleteTransitaire: (Long) -> Unit = {},
     onUpdateRates: (id: Long, airRate: Long, seaRate: Long) -> Unit = { _, _, _ -> },
@@ -115,7 +133,7 @@ fun TransitairesSubTabContent(
                     .weight(1f)
                     .height(48.dp),
                 shape = RoundedCornerShape(14.dp),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 1.dp
             ) {
                 Row(
@@ -147,7 +165,7 @@ fun TransitairesSubTabContent(
                             textStyle = androidx.compose.ui.text.TextStyle(
                                 fontFamily = Inter,
                                 fontSize = 14.sp,
-                                color = Color(0xFF131B2E)
+                                color = MaterialTheme.colorScheme.onSurface
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -173,7 +191,7 @@ fun TransitairesSubTabContent(
                     .clickable { showComparisonDialog = true }
                     .testTag("btn_transitaire_trends"),
                 shape = RoundedCornerShape(14.dp),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 1.dp
             ) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
@@ -200,7 +218,7 @@ fun TransitairesSubTabContent(
                     .weight(1f)
                     .height(96.dp),
                 shape = RoundedCornerShape(20.dp),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 1.dp
             ) {
                 Column(
@@ -219,7 +237,7 @@ fun TransitairesSubTabContent(
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 10.sp,
-                            color = Color(0xFF3D494C),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             letterSpacing = 0.5.sp
                         )
                         Box(
@@ -236,7 +254,7 @@ fun TransitairesSubTabContent(
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 22.sp,
-                            color = Color(0xFF131B2E),
+                            color = MaterialTheme.colorScheme.onSurface,
                             lineHeight = 24.sp
                         )
                         Text(
@@ -256,7 +274,7 @@ fun TransitairesSubTabContent(
                     .weight(1f)
                     .height(96.dp),
                 shape = RoundedCornerShape(20.dp),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 1.dp
             ) {
                 Column(
@@ -321,7 +339,7 @@ fun TransitairesSubTabContent(
                     .weight(1f)
                     .height(96.dp),
                 shape = RoundedCornerShape(20.dp),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 1.dp
             ) {
                 Column(
@@ -340,7 +358,7 @@ fun TransitairesSubTabContent(
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 10.sp,
-                            color = Color(0xFF3D494C),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             letterSpacing = 0.5.sp
                         )
                         Icon(
@@ -357,7 +375,7 @@ fun TransitairesSubTabContent(
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 22.sp,
-                            color = Color(0xFF131B2E),
+                            color = MaterialTheme.colorScheme.onSurface,
                             lineHeight = 24.sp
                         )
                         Text(
@@ -380,7 +398,7 @@ fun TransitairesSubTabContent(
                 .fillMaxWidth()
                 .clickable { showComparisonDialog = true },
             shape = RoundedCornerShape(20.dp),
-            color = Color.White,
+            color = MaterialTheme.colorScheme.surface,
             shadowElevation = 1.dp
         ) {
             Column(
@@ -417,14 +435,14 @@ fun TransitairesSubTabContent(
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
-                            color = Color(0xFF131B2E)
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                     Text(
                         text = "Mis à jour hier",
                         fontFamily = Inter,
                         fontSize = 11.sp,
-                        color = Color(0xFF6D797D)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
@@ -438,7 +456,7 @@ fun TransitairesSubTabContent(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFF2F3FF))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                             .padding(10.dp)
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -457,7 +475,7 @@ fun TransitairesSubTabContent(
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp,
-                                    color = Color(0xFF131B2E)
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                             }
 
@@ -467,7 +485,7 @@ fun TransitairesSubTabContent(
                                     .sortedBy { it.airRateAr }
                                     .take(3)
                                 if (sortedTransitaires.isEmpty()) {
-                                    Text("Aucun tarif enregistré", fontFamily = Inter, fontSize = 11.sp, color = Color(0xFF3D494C))
+                                    Text("Aucun tarif enregistré", fontFamily = Inter, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 } else {
                                     sortedTransitaires.forEachIndexed { idx, t ->
                                         Row(
@@ -479,7 +497,7 @@ fun TransitairesSubTabContent(
                                                 text = t.name,
                                                 fontFamily = Inter,
                                                 fontSize = 11.sp,
-                                                color = Color(0xFF3D494C),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 maxLines = 1,
                                                 modifier = Modifier.weight(1f)
                                             )
@@ -514,7 +532,7 @@ fun TransitairesSubTabContent(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFF2F3FF))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                             .padding(10.dp)
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -533,7 +551,7 @@ fun TransitairesSubTabContent(
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp,
-                                    color = Color(0xFF131B2E)
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                             }
 
@@ -543,7 +561,7 @@ fun TransitairesSubTabContent(
                                     .sortedBy { it.seaRateAr }
                                     .take(3)
                                 if (sortedSeaTransitaires.isEmpty()) {
-                                    Text("Aucun tarif enregistré", fontFamily = Inter, fontSize = 11.sp, color = Color(0xFF3D494C))
+                                    Text("Aucun tarif enregistré", fontFamily = Inter, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 } else {
                                     sortedSeaTransitaires.forEachIndexed { idx, t ->
                                         Row(
@@ -555,7 +573,7 @@ fun TransitairesSubTabContent(
                                                 text = t.name,
                                                 fontFamily = Inter,
                                                 fontSize = 11.sp,
-                                                color = Color(0xFF3D494C),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 maxLines = 1,
                                                 modifier = Modifier.weight(1f)
                                             )
@@ -603,14 +621,14 @@ fun TransitairesSubTabContent(
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
-                color = Color(0xFF131B2E)
+                color = MaterialTheme.colorScheme.onSurface
             )
             Text(
                 text = "$activeCount actifs · $archivedCount archivé",
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
                 fontSize = 12.sp,
-                color = Color(0xFF6D797D)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
@@ -672,7 +690,8 @@ fun TransitairesSubTabContent(
                 selectedTransitaireForDetail = null
             },
             onUpdateRates = onUpdateRates,
-            onRecordPayment = onRecordPayment
+            onRecordPayment = onRecordPayment,
+            onUpdateTransitaire = onUpdateTransitaire
         )
     }
 
@@ -727,7 +746,7 @@ private fun TransitaireCard(
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
-                                color = Color(0xFF6D797D)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
@@ -742,7 +761,7 @@ private fun TransitaireCard(
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 15.sp,
                                     textDecoration = TextDecoration.LineThrough,
-                                    color = Color(0xFF131B2E)
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Box(
                                     modifier = Modifier
@@ -754,7 +773,7 @@ private fun TransitaireCard(
                                         text = "Archivé",
                                         fontFamily = PlusJakartaSans,
                                         fontSize = 10.sp,
-                                        color = Color(0xFF3D494C)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -762,7 +781,7 @@ private fun TransitaireCard(
                                 text = trans.routeHub,
                                 fontFamily = Inter,
                                 fontSize = 12.sp,
-                                color = Color(0xFF6D797D)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -789,7 +808,7 @@ private fun TransitaireCard(
                         text = "Non sélectionnable pour les nouveaux achats",
                         fontFamily = Inter,
                         fontSize = 12.sp,
-                        color = Color(0xFF6D797D)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -802,7 +821,7 @@ private fun TransitaireCard(
                 .clickable { onClick() }
                 .testTag("transitaire_card_${trans.name}"),
             shape = RoundedCornerShape(20.dp),
-            color = Color.White,
+            color = MaterialTheme.colorScheme.surface,
             shadowElevation = 1.dp
         ) {
             Column(
@@ -857,7 +876,7 @@ private fun TransitaireCard(
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp,
-                                    color = Color(0xFF131B2E)
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Box(
                                     modifier = Modifier
@@ -878,7 +897,7 @@ private fun TransitaireCard(
                                 text = trans.routeHub,
                                 fontFamily = Inter,
                                 fontSize = 12.sp,
-                                color = Color(0xFF3D494C)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -887,7 +906,7 @@ private fun TransitaireCard(
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFF2F3FF)),
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -908,7 +927,7 @@ private fun TransitaireCard(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(9999.dp))
-                            .background(Color(0xFFF2F3FF))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                             .padding(horizontal = 10.dp, vertical = 5.dp)
                     ) {
                         Row(
@@ -926,7 +945,7 @@ private fun TransitaireCard(
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 11.sp,
-                                color = Color(0xFF131B2E)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             if (trans.isAirCheapest) {
                                 Box(
@@ -947,7 +966,7 @@ private fun TransitaireCard(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(9999.dp))
-                            .background(Color(0xFFF2F3FF))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                             .padding(horizontal = 10.dp, vertical = 5.dp)
                     ) {
                         Row(
@@ -965,7 +984,7 @@ private fun TransitaireCard(
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 11.sp,
-                                color = Color(0xFF131B2E)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             if (trans.seaRateTrend == "-3.2%") {
                                 MiniSparkline(isUp = false, color = Color(0xFF06B6D4))
@@ -987,7 +1006,7 @@ private fun TransitaireCard(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text("Solde dû :", fontFamily = PlusJakartaSans, fontSize = 11.sp, color = Color(0xFF3D494C))
+                            Text("Solde dû :", fontFamily = PlusJakartaSans, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 text = CurrencyFormatter.formatAriary(trans.balanceDueAr),
                                 fontFamily = PlusJakartaSans,
@@ -1017,7 +1036,7 @@ private fun TransitaireCard(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text("Solde :", fontFamily = PlusJakartaSans, fontSize = 11.sp, color = Color(0xFF3D494C))
+                            Text("Solde :", fontFamily = PlusJakartaSans, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 text = "À jour ✓",
                                 fontFamily = PlusJakartaSans,
@@ -1034,7 +1053,7 @@ private fun TransitaireCard(
                         else "0 expédition en cours",
                         fontFamily = Inter,
                         fontSize = 12.sp,
-                        color = Color(0xFF3D494C)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

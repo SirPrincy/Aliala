@@ -436,15 +436,8 @@ fun LogisticStep1View(
                         }
 
                         val parsedVariants = remember(order.variants, totalQty) {
-                            if (order.variants.isNotBlank()) {
-                                order.variants.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                            } else {
-                                listOf(
-                                    "${(totalQty * 0.5).toInt().coerceAtLeast(1)} Noir Pro",
-                                    "${(totalQty * 0.25).toInt().coerceAtLeast(1)} Blanc Pur",
-                                    "${(totalQty - (totalQty * 0.5).toInt().coerceAtLeast(1) - (totalQty * 0.25).toInt().coerceAtLeast(1)).coerceAtLeast(1)} Rouge Sport"
-                                )
-                            }
+                            val list = VariantColorUtils.parseVariants(order.variants)
+                            if (list.isNotEmpty()) list else listOf("$totalQty Standard")
                         }
 
                         Row(

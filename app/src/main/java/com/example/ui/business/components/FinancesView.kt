@@ -104,6 +104,50 @@ fun FinancesView(
     var forecastHorizon by remember { mutableStateOf("30 j") } // "30 j", "60 j", "90 j"
     var selectedTxFilter by remember { mutableStateOf("Tout") } // "Tout", "Entrées", "Sorties", "Transferts", "Change ¥"
     var showAddTxDialog by remember { mutableStateOf(false) }
+    var presetTxTitle by remember { mutableStateOf("") }
+    var presetTxType by remember { mutableStateOf("IN") }
+    var presetTxTag by remember { mutableStateOf("") }
+
+    val openAddTx = { title: String, type: String, tag: String ->
+        presetTxTitle = title
+        presetTxType = type
+        presetTxTag = tag
+        showAddTxDialog = true
+    }
+
+    val unpaidSales = remember(uiState.sales) {
+        uiState.sales.filter { !it.isFullyPaid && (it.totalPriceAr - it.paidAmountAr) > 0L }
+    }
+    val unpaidFreightOrders = remember(uiState.orders) {
+        uiState.orders.filter { !it.isFreightPaid && it.freightCostAr > 0L }
+    }
+
+    // Capital & Investissement
+    val totalApportsCapital = remember(transactions, accounts) {
+        val fromTx = transactions.filter { it.referenceTag.contains("Capital", ignoreCase = true) || it.title.contains("Apport", ignoreCase = true) }.sumOf { it.amountAr }
+        if (fromTx > 0L) fromTx else accounts.sumOf { it.balanceAr }.coerceAtLeast(1500000L)
+    }
+    val totalRetraitsPerso = remember(transactions) {
+        transactions.filter { it.referenceTag.contains("Perso", ignoreCase = true) || it.title.contains("Retrait", ignoreCase = true) }.sumOf { it.amountAr }
+    }
+    val netCapital = (totalApportsCapital - totalRetraitsPerso).coerceAtLeast(0L)
+
+    // Compte Associé
+    val avancesPerso = remember(transactions) {
+        transactions.filter { it.referenceTag.contains("Associé", ignoreCase = true) && it.type == "IN" }.sumOf { it.amountAr }
+    }
+    val remboursementsPerso = remember(transactions) {
+        transactions.filter { it.referenceTag.contains("Associé", ignoreCase = true) && it.type == "OUT" }.sumOf { it.amountAr }
+    }
+    val soldeAssocié = avancesPerso - remboursementsPerso
+
+    // Emprunts & Dettes
+    val totalEmpruntsDû = remember(transactions) {
+        transactions.filter { it.referenceTag.contains("Emprunt", ignoreCase = true) && it.type == "IN" }.sumOf { it.amountAr }
+    }
+    val totalPrêtsTiers = remember(transactions) {
+        transactions.filter { it.referenceTag.contains("Prêt", ignoreCase = true) && it.type == "OUT" }.sumOf { it.amountAr }
+    }
 
     val orangeColor = Color(0xFFEA580C)
     val violetColor = Color(0xFF712AE2)
@@ -1457,13 +1501,14 @@ fun FinancesView(
                             )
                         }
 
+                        val totalDueCount = unpaidFreightOrders.size + unpaidSales.size
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Surface(
                                 shape = CircleShape,
                                 color = cyanColor.copy(alpha = 0.15f)
                             ) {
                                 Text(
-                                    text = "Tout (4)",
+                                    text = "Tout ($totalDueCount)",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = cyanColor,
@@ -1475,7 +1520,7 @@ fun FinancesView(
                                 color = MaterialTheme.colorScheme.surfaceVariant
                             ) {
                                 Text(
-                                    text = "Dû (2)",
+                                    text = "Dû (${unpaidFreightOrders.size})",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1486,273 +1531,168 @@ fun FinancesView(
                     }
 
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // Item 1: SinoExpress
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                        if (unpaidFreightOrders.isEmpty() && unpaidSales.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(redColor.copy(alpha = 0.15f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Sailing,
-                                            contentDescription = null,
-                                            tint = redColor,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = "Fret Transitaire",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = "Dans 3 jours (Urgent)",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = redColor
-                                        )
-                                    }
-                                }
-
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text(
-                                        text = "-${CurrencyFormatter.formatAriary(uiState.freightDueAmount)}",
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        color = redColor
-                                    )
-                                    Text(
-                                        text = "Transitaire",
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                                Text(
+                                    text = "Aucune échéance ou créance en attente.",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                        }
-
-                        // Item 2: Rina Razafy
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f)
+                        } else {
+                            unpaidFreightOrders.forEach { order ->
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                        .padding(12.dp)
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(emeraldColor.copy(alpha = 0.15f)),
-                                        contentAlignment = Alignment.Center
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Person,
-                                            contentDescription = null,
-                                            tint = emeraldColor,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = "Client Rina Razafy",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = "En retard de 18j",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFB45309)
-                                        )
-                                    }
-                                }
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(redColor.copy(alpha = 0.15f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Sailing,
+                                                    contentDescription = null,
+                                                    tint = redColor,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column {
+                                                Text(
+                                                    text = "Fret ${order.carrier.ifBlank { "Transitaire" }}",
+                                                    fontFamily = PlusJakartaSans,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = order.lotNumber.ifBlank { order.referenceCode.ifBlank { "Commande #${order.id}" } },
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = redColor
+                                                )
+                                            }
+                                        }
 
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text(
-                                            text = "+50 000 Ar",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = emeraldColor
-                                        )
-                                        Text(
-                                            text = "Créance",
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Box(
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(emeraldColor)
-                                            .clickable { onWhatsAppRelance("Rina Razafy") },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Chat,
-                                            contentDescription = "WhatsApp",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(16.dp)
-                                        )
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text(
+                                                text = "-${CurrencyFormatter.formatAriary(order.freightCostAr)}",
+                                                fontFamily = PlusJakartaSans,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = redColor
+                                            )
+                                            Text(
+                                                text = order.freightMode,
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        // Item 3: Remboursement Emprunt
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(violetColor.copy(alpha = 0.15f)),
-                                        contentAlignment = Alignment.Center
+                            unpaidSales.forEach { sale ->
+                                val remaining = (sale.totalPriceAr - sale.paidAmountAr).coerceAtLeast(0L)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                        .padding(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Handshake,
-                                            contentDescription = null,
-                                            tint = violetColor,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = "Remboursement Emprunt",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = "Dans 12 jours",
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(emeraldColor.copy(alpha = 0.15f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Person,
+                                                    contentDescription = null,
+                                                    tint = emeraldColor,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column {
+                                                Text(
+                                                    text = sale.clientName.ifBlank { "Client" },
+                                                    fontFamily = PlusJakartaSans,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = sale.productName,
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
 
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text(
-                                        text = "-100 000 Ar",
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        color = violetColor
-                                    )
-                                    Text(
-                                        text = "Tontine / Ami",
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-
-                        // Item 4: Solde Client Hery Andria
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(emeraldColor.copy(alpha = 0.15f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.ReceiptLong,
-                                            contentDescription = null,
-                                            tint = emeraldColor,
-                                            modifier = Modifier.size(18.dp)
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Column(horizontalAlignment = Alignment.End) {
+                                                Text(
+                                                    text = "+${CurrencyFormatter.formatAriary(remaining)}",
+                                                    fontFamily = PlusJakartaSans,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp,
+                                                    color = emeraldColor
+                                                )
+                                                Text(
+                                                    text = "Créance",
+                                                    fontSize = 10.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(emeraldColor)
+                                                    .clickable { onWhatsAppRelance(sale.clientName) },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Chat,
+                                                    contentDescription = "WhatsApp",
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
                                     }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = "Solde Client Hery Andria",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = "Dans 5 jours",
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text(
-                                        text = "+45 000 Ar",
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        color = emeraldColor
-                                    )
-                                    Text(
-                                        text = "Livraison prévue",
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
                                 }
                             }
                         }
@@ -1828,141 +1768,104 @@ fun FinancesView(
                         }
                     }
 
-                    // Card Item
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                            .padding(14.dp)
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.Top
+                    if (unpaidFreightOrders.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Aucune facture transitaire impayée.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        unpaidFreightOrders.forEach { order ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                    .padding(14.dp)
                             ) {
-                                Column {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = "SinoExpress Cargo",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Column {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = order.carrier.ifBlank { "Transitaire" },
+                                                    fontFamily = PlusJakartaSans,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = Color(0xFFD8E2FF)
+                                                ) {
+                                                    Text(
+                                                        text = order.lotNumber.ifBlank { order.referenceCode.ifBlank { "Lot #${order.id}" } },
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFF001A42),
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                            Text(
+                                                text = "${order.freightMode} • ${order.referenceCode.ifBlank { "Commande #${order.id}" }}",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+
                                         Surface(
-                                            shape = RoundedCornerShape(4.dp),
-                                            color = Color(0xFFD8E2FF)
+                                            shape = CircleShape,
+                                            color = Color(0xFFFEF3C7)
                                         ) {
                                             Text(
-                                                text = "Lot #EXP-88",
-                                                fontSize = 9.sp,
+                                                text = "À régler",
+                                                fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF001A42),
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                color = Color(0xFF9A3412),
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                             )
                                         }
                                     }
-                                    Text(
-                                        text = "Maritime GuangZhou ➔ Toamasina",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
 
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color(0xFFFEF3C7)
-                                ) {
-                                    Text(
-                                        text = "Partiel (58%)",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF9A3412),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
-                            }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Reste à payer",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = CurrencyFormatter.formatAriary(order.freightCostAr),
+                                            fontFamily = PlusJakartaSans,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = redColor
+                                        )
+                                    }
 
-                            // 3 Metrics
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(MaterialTheme.colorScheme.surface)
-                                        .padding(8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(text = "Total facture", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(text = "201 600 Ar", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
-                                    }
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(MaterialTheme.colorScheme.surface)
-                                        .padding(8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(text = "Déjà réglé", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(text = "116 600 Ar", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = emeraldColor)
-                                    }
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(MaterialTheme.colorScheme.surface)
-                                        .padding(8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(text = "Reste à payer", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(text = "85 000 Ar", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = redColor)
-                                    }
-                                }
-                            }
-
-                            // Progress
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(6.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                                ) {
-                                    Box(
+                                    Button(
+                                        onClick = onRecordTransitairePayment,
                                         modifier = Modifier
-                                            .fillMaxWidth(0.58f)
-                                            .height(6.dp)
-                                            .clip(CircleShape)
-                                            .background(emeraldColor)
-                                    )
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(text = "58% réglé", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(text = "Échéance à l'arrivée (3j)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-
-                            Button(
-                                onClick = onRecordTransitairePayment,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(40.dp)
+                                            .fillMaxWidth()
+                                            .height(40.dp)
                                     .testTag("btn_pay_transitaire"),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = cyanColor)
@@ -1976,6 +1879,8 @@ fun FinancesView(
                                 Text(text = "+ Paiement transitaire", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             }
                         }
+                    }
+                    }
                     }
                 }
             }
@@ -2067,7 +1972,7 @@ fun FinancesView(
                         ) {
                             Column {
                                 Text(text = "Capital investi", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(text = "1 500k", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface)
+                                Text(text = CurrencyFormatter.formatAriary(totalApportsCapital), fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
                                 Text(text = "Ariary", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
@@ -2081,7 +1986,7 @@ fun FinancesView(
                         ) {
                             Column {
                                 Text(text = "Retraits perso", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(text = "200 000", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = redColor)
+                                Text(text = CurrencyFormatter.formatAriary(totalRetraitsPerso), fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = redColor)
                                 Text(text = "Ariary", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
@@ -2095,7 +2000,7 @@ fun FinancesView(
                         ) {
                             Column {
                                 Text(text = "Capital net", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = orangeColor)
-                                Text(text = "1 300k", fontFamily = PlusJakartaSans, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = orangeColor)
+                                Text(text = CurrencyFormatter.formatAriary(netCapital), fontFamily = PlusJakartaSans, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = orangeColor)
                                 Text(text = "Ariary", fontSize = 9.sp, color = orangeColor)
                             }
                         }
@@ -2121,7 +2026,7 @@ fun FinancesView(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = "+540 000 Ar",
+                                    text = "+${CurrencyFormatter.formatAriary(uiState.netProfit.coerceAtLeast(0L))}",
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 15.sp,
@@ -2165,7 +2070,7 @@ fun FinancesView(
                                 .height(40.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                                .clickable { }
+                                .clickable { openAddTx("Apport de capital", "IN", "Capital") }
                                 .padding(horizontal = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -2193,7 +2098,7 @@ fun FinancesView(
                                 .height(40.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                                .clickable { }
+                                .clickable { openAddTx("Retrait personnel", "OUT", "Perso") }
                                 .padding(horizontal = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -2295,7 +2200,7 @@ fun FinancesView(
                         ) {
                             Column {
                                 Text(text = "Le business me doit", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(text = "65 000 Ar", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = emeraldColor)
+                                Text(text = CurrencyFormatter.formatAriary(if (soldeAssocié >= 0) soldeAssocié else 0L), fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = emeraldColor)
                                 Text(text = "À récupérer en trésorerie", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
@@ -2309,8 +2214,8 @@ fun FinancesView(
                         ) {
                             Column {
                                 Text(text = "Je dois au business", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(text = "0 Ar", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface)
-                                Text(text = "Compte régulier", fontSize = 9.sp, fontWeight = FontWeight.Medium, color = emeraldColor)
+                                Text(text = CurrencyFormatter.formatAriary(if (soldeAssocié < 0) -soldeAssocié else 0L), fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (soldeAssocié < 0) redColor else MaterialTheme.colorScheme.onSurface)
+                                Text(text = if (soldeAssocié < 0) "Avance à régulariser" else "Compte régulier", fontSize = 9.sp, fontWeight = FontWeight.Medium, color = if (soldeAssocié < 0) redColor else emeraldColor)
                             }
                         }
                     }
@@ -2332,7 +2237,7 @@ fun FinancesView(
                                 .height(40.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                                .clickable { }
+                                .clickable { openAddTx("Avance de frais personnels", "IN", "Compte Associé") }
                                 .padding(horizontal = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -2355,7 +2260,7 @@ fun FinancesView(
                         }
 
                         Button(
-                            onClick = { },
+                            onClick = { openAddTx("Remboursement compte associé", "OUT", "Compte Associé") },
                             modifier = Modifier
                                 .weight(1f)
                                 .height(40.dp),
@@ -2426,7 +2331,7 @@ fun FinancesView(
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { }
+                            modifier = Modifier.clickable { openAddTx("Emprunt / Prêt", "IN", "Emprunt") }
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
@@ -2458,8 +2363,8 @@ fun FinancesView(
                         ) {
                             Column {
                                 Text(text = "Emprunté (dû)", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = redColor)
-                                Text(text = "400 000 Ar", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = redColor)
-                                Text(text = "Solde restant : 300 000 Ar", fontSize = 9.sp, color = redColor.copy(alpha = 0.8f))
+                                Text(text = CurrencyFormatter.formatAriary(totalEmpruntsDû), fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = redColor)
+                                Text(text = "Engagements financiers", fontSize = 9.sp, color = redColor.copy(alpha = 0.8f))
                             }
                         }
 
@@ -2472,8 +2377,8 @@ fun FinancesView(
                         ) {
                             Column {
                                 Text(text = "Prêté à des tiers", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = emeraldColor)
-                                Text(text = "150 000 Ar", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = emeraldColor)
-                                Text(text = "1 partenaire pro", fontSize = 9.sp, color = emeraldColor.copy(alpha = 0.8f))
+                                Text(text = CurrencyFormatter.formatAriary(totalPrêtsTiers), fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = emeraldColor)
+                                Text(text = "À recouvrer", fontSize = 9.sp, color = emeraldColor.copy(alpha = 0.8f))
                             }
                         }
                     }
@@ -2814,6 +2719,9 @@ fun FinancesView(
     if (showAddTxDialog) {
         AddBusinessTransactionDialog(
             accounts = accounts,
+            initialTitle = presetTxTitle,
+            initialType = presetTxType,
+            initialTag = presetTxTag,
             onDismiss = { showAddTxDialog = false },
             onConfirm = { title, type, amountAr, accountName, referenceTag ->
                 onAddTransaction(title, type, amountAr, accountName, referenceTag)
@@ -2826,14 +2734,17 @@ fun FinancesView(
 @Composable
 private fun AddBusinessTransactionDialog(
     accounts: List<com.example.data.local.entity.BusinessAccountEntity>,
+    initialTitle: String = "",
+    initialType: String = "IN",
+    initialTag: String = "",
     onDismiss: () -> Unit,
     onConfirm: (title: String, type: String, amountAr: Long, accountName: String, referenceTag: String) -> Unit
 ) {
-    var title by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf("IN") }
+    var title by remember { mutableStateOf(initialTitle) }
+    var selectedType by remember { mutableStateOf(initialType) }
     var amountText by remember { mutableStateOf("") }
     var accountName by remember { mutableStateOf(accounts.firstOrNull()?.name ?: "") }
-    var referenceTag by remember { mutableStateOf("") }
+    var referenceTag by remember { mutableStateOf(initialTag) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val types = listOf(

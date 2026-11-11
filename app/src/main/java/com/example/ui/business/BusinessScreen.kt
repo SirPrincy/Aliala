@@ -123,6 +123,8 @@ fun BusinessScreen(
     var showAddSaleDialog by remember { mutableStateOf(false) }
     var articleToEdit by remember { mutableStateOf<BusinessOrderEntity?>(null) }
     var articleToEditInDialog by remember { mutableStateOf<BusinessOrderEntity?>(null) }
+    var initialArticleForOrder by remember { mutableStateOf<BusinessOrderEntity?>(null) }
+    var initialArticleForSale by remember { mutableStateOf<BusinessOrderEntity?>(null) }
     var selectedClientForRelance by remember { mutableStateOf<BusinessClientUi?>(null) }
     var selectedClientForDetail by remember { mutableStateOf<BusinessClientUi?>(null) }
     var showAddCatalogueArticleDialog by remember { mutableStateOf(false) }
@@ -148,29 +150,91 @@ fun BusinessScreen(
         ArticleDetailScreen(
             article = article,
             onBackClick = { articleToEdit = null },
-            onBuyClick = {
+            onBuyClick = { art ->
+                initialArticleForOrder = art
                 showAddOrderDialog = true
-                articleToEdit = null
             },
-            onSellClick = {
+            onSellClick = { art ->
+                initialArticleForSale = art
                 showAddSaleDialog = true
+            },
+            onAdjustStockClick = { art ->
+                orderToAdjust = art
+            },
+            onEditArticleClick = { art ->
+                articleToEditInDialog = art
+            },
+            onToggleHideArticle = { art ->
+                viewModel.toggleHideStockItem(art)
+            },
+            onDeleteArticle = { art ->
+                viewModel.deleteStockOrder(art)
                 articleToEdit = null
             },
-            onAdjustStockClick = {
-                orderToAdjust = it
-                articleToEdit = null
-            },
-            onEditArticleClick = {
-                articleToEditInDialog = it
-            },
-            onToggleHideArticle = {
-                viewModel.toggleHideStockItem(it)
-            },
-            onDeleteArticle = {
-                viewModel.deleteStockOrder(it)
-                articleToEdit = null
+            onUpdateArticle = { updated ->
+                viewModel.updateBusinessOrder(updated)
+                articleToEdit = updated
             }
         )
+
+        // Render active dialogs on top of ArticleDetailScreen if open
+        if (showAddOrderDialog) {
+            AddOrderDialog(
+                cmupRate = uiState.cmupRate,
+                availableYuans = uiState.availableYuans,
+                availableArticles = uiState.orders,
+                initialArticle = initialArticleForOrder ?: article,
+                transitaires = uiState.catalogueTransitaires.filter { !it.isArchived }.map { it.name },
+                onDismiss = {
+                    showAddOrderDialog = false
+                    initialArticleForOrder = null
+                },
+                onConfirm = { prod, supp, q, pY, rAr, cat, carr, varStr, fAr ->
+                    viewModel.addBusinessOrder(prod, supp, q, pY, rAr, cat, carr, varStr, fAr)
+                    showAddOrderDialog = false
+                    initialArticleForOrder = null
+                }
+            )
+        }
+
+        if (showAddSaleDialog) {
+            AddSaleDialog(
+                availableStockOrders = uiState.visibleStockOrders,
+                initialArticle = initialArticleForSale ?: article,
+                onDismiss = {
+                    showAddSaleDialog = false
+                    initialArticleForSale = null
+                },
+                onConfirm = { prod, client, phone, q, price, cost, paid, source, dom, linkedOrderId ->
+                    viewModel.addNewSale(prod, client, phone, q, price, cost, paid, source, dom, linkedOrderId)
+                    showAddSaleDialog = false
+                    initialArticleForSale = null
+                }
+            )
+        }
+
+        orderToAdjust?.let { order ->
+            AdjustStockDialog(
+                order = order,
+                onDismiss = { orderToAdjust = null },
+                onConfirm = { sCount, rCount, dCount, client ->
+                    viewModel.adjustStock(order, sCount, rCount, dCount, client)
+                    orderToAdjust = null
+                }
+            )
+        }
+
+        articleToEditInDialog?.let { articleInDialog ->
+            EditCatalogueArticleDialog(
+                order = articleInDialog,
+                onDismiss = { articleToEditInDialog = null },
+                onConfirm = { newPriceYuan, newResaleAr, newVariants, isHidden ->
+                    viewModel.updateCatalogueArticle(articleInDialog, newPriceYuan, newResaleAr, newVariants, isHidden)
+                    articleToEditInDialog = null
+                }
+            )
+        }
+
         return
     }
 
@@ -196,10 +260,14 @@ fun BusinessScreen(
             onNewFamilyClick = { showAddFamilyDialog = true },
             onCreateFamily = { name, emoji, color -> viewModel.addCatalogueFamily(name, emoji, color) },
             onTogglePlatformActive = { id, active -> viewModel.togglePlatformActive(id, active) },
+            onUpdatePlatformShippingTag = { id, tag -> viewModel.updatePlatformShippingTag(id, tag) },
             onCreatePlatform = { name, sub, ship, sec, icon, color -> viewModel.addCataloguePlatform(name, sub, ship, sec, icon, color) },
             onDeletePlatform = { id -> viewModel.deleteCataloguePlatform(id) },
-            onCreateTransitaire = { name, hub, airRate, seaRate, contact, address, isActive, dateApp, airLead, seaLead, notes ->
-                viewModel.addCatalogueTransitaire(name, hub, airRate, seaRate, contact, address, isActive, dateApp, airLead, seaLead, notes)
+            onCreateTransitaire = { name, hub, airRate, seaRate, contact, address, isActive, dateApp, airLead, seaLead, notes, airFastRate, airFastLead, goodsDelays ->
+                viewModel.addCatalogueTransitaire(name, hub, airRate, seaRate, contact, address, isActive, dateApp, airLead, seaLead, notes, airFastRate, airFastLead, goodsDelays)
+            },
+            onUpdateTransitaire = { id, name, hub, airRate, seaRate, contact, address, isActive, dateApp, airLead, seaLead, notes, airFastRate, airFastLead, goodsDelays ->
+                viewModel.updateCatalogueTransitaire(id, name, hub, airRate, seaRate, contact, address, isActive, dateApp, airLead, seaLead, notes, airFastRate, airFastLead, goodsDelays)
             },
             onToggleTransitaireArchived = { id -> viewModel.toggleTransitaireArchived(id) },
             onDeleteTransitaire = { id -> viewModel.deleteCatalogueTransitaire(id) },
@@ -222,8 +290,8 @@ fun BusinessScreen(
         if (showAddFamilyDialog) {
             AddFamilyDialog(
                 onDismiss = { showAddFamilyDialog = false },
-                onConfirm = { famName ->
-                    viewModel.addCatalogueFamily(famName)
+                onConfirm = { famName, emoji, colorHex ->
+                    viewModel.addCatalogueFamily(famName, emoji, colorHex)
                     viewModel.onCatalogueFamilyFilterSelected(famName)
                     showAddFamilyDialog = false
                 }
@@ -762,6 +830,7 @@ fun BusinessScreen(
             cmupRate = uiState.cmupRate,
             availableYuans = uiState.availableYuans,
             availableArticles = uiState.orders,
+            transitaires = uiState.catalogueTransitaires.filter { !it.isArchived }.map { it.name },
             onDismiss = { showAddOrderDialog = false },
             onConfirm = { prod, supp, q, pY, rAr, cat, carr, varStr, fAr ->
                 viewModel.addBusinessOrder(prod, supp, q, pY, rAr, cat, carr, varStr, fAr)

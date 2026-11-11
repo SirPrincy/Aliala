@@ -1338,12 +1338,17 @@ fun TransitairePriceComparisonDialog(
                             }
 
                             // Revisions List Items
-                            val allRevisions = listOf(
-                                RevisionItemData("SinoExpress", "Maritime", "15 août 2026", "1,24M → 1,20M Ar", "-3,2%", isDown = true, colorHex = "#F97316"),
-                                RevisionItemData("SinoExpress", "Aérien", "1er juil. 2026", "36k → 38k Ar", "+5,6%", isDown = false, colorHex = "#F97316"),
-                                RevisionItemData("MadaAir", "Aérien", "15 juin 2026", "37k → 36,5k Ar", "-1,4%", isDown = true, colorHex = "#06B6D4"),
-                                RevisionItemData("Zaly Transit", "Aérien", "1er juin 2026", "39k → 41k Ar", "+5,1%", isDown = false, colorHex = "#7C3AED")
-                            )
+                            val allRevisions = transitaires.map { t ->
+                                RevisionItemData(
+                                    provider = t.name,
+                                    mode = "Aérien",
+                                    date = t.rateApplicationDate,
+                                    range = "${CurrencyFormatter.formatAriary(t.airRateAr)}/kg",
+                                    delta = t.airRateTrend.ifBlank { "Actif" },
+                                    isDown = false,
+                                    colorHex = "#06B6D4"
+                                )
+                            }
 
                             val filteredRevisions = allRevisions.filter {
                                 selectedProviderFilter == "all" || it.provider == selectedProviderFilter

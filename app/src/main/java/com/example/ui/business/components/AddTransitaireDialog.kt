@@ -80,6 +80,7 @@ import java.util.Locale
 
 @Composable
 fun AddTransitaireDialog(
+    initialTransitaire: com.example.ui.business.CatalogueTransitaireSummaryUi? = null,
     onDismiss: () -> Unit,
     onConfirm: (
         name: String,
@@ -92,35 +93,57 @@ fun AddTransitaireDialog(
         rateApplicationDate: String,
         airLeadDays: String,
         seaLeadDays: String,
-        internalNotes: String
+        internalNotes: String,
+        airFastRate: Long,
+        airFastLeadDays: String,
+        goodsCategoryDelays: String
     ) -> Unit
 ) {
     val context = LocalContext.current
+    val isEditing = initialTransitaire != null
+
+    // Helper to parse goodsCategoryDelays
+    fun parseDelay(raw: String, key: String, fallback: String): String {
+        val part = raw.split("|").firstOrNull { it.trim().startsWith(key, ignoreCase = true) }
+        return part?.substringAfter(":")?.trim()?.ifBlank { fallback } ?: fallback
+    }
 
     // Form fields
-    var nomTransitaire by remember { mutableStateOf("") }
-    var contactTransitaire by remember { mutableStateOf("") }
-    var adresseChine by remember { mutableStateOf("") }
-    var isTransitaireActif by remember { mutableStateOf(true) }
+    var nomTransitaire by remember { mutableStateOf(initialTransitaire?.name ?: "") }
+    var contactTransitaire by remember { mutableStateOf(initialTransitaire?.contact ?: "") }
+    var adresseChine by remember { mutableStateOf(initialTransitaire?.chinaWarehouseAddress ?: "") }
+    var isTransitaireActif by remember { mutableStateOf(initialTransitaire?.isActive ?: true) }
 
     // Rates
-    var tarifAerienInput by remember { mutableStateOf("38000") }
-    var tarifMaritimeInput by remember { mutableStateOf("1200000") }
-    var dateApplication by remember { mutableStateOf("24/10/2026") }
+    var tarifAerienInput by remember { mutableStateOf((initialTransitaire?.airRateAr ?: 45000L).toString()) }
+    var tarifAerienFastInput by remember { mutableStateOf((initialTransitaire?.airFastRateAr ?: 60000L).toString()) }
+    var tarifMaritimeInput by remember { mutableStateOf((initialTransitaire?.seaRateAr ?: 18000L).toString()) }
+    var dateApplication by remember {
+        mutableStateOf(
+            initialTransitaire?.rateApplicationDate ?: java.text.SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(java.util.Date())
+        )
+    }
 
     // Test simulation inputs
     var testKgInput by remember { mutableStateOf("3.2") }
     var testCbmInput by remember { mutableStateOf("0.05") }
 
     // Policy & Notes
-    var airLeadDays by remember { mutableStateOf("5 à 8 jours") }
-    var seaLeadDays by remember { mutableStateOf("30 à 45 jours") }
-    var notesInternes by remember { mutableStateOf("") }
+    var airLeadDays by remember { mutableStateOf(initialTransitaire?.airLeadDays ?: "7 à 10 jours") }
+    var airFastLeadDays by remember { mutableStateOf(initialTransitaire?.airFastLeadDays ?: "3 à 5 jours") }
+    var seaLeadDays by remember { mutableStateOf(initialTransitaire?.seaLeadDays ?: "30 à 45 jours") }
+    val rawDelays = initialTransitaire?.goodsCategoryDelays ?: ""
+    var delayGeneral by remember { mutableStateOf(parseDelay(rawDelays, "Générale", "Normal")) }
+    var delayBattery by remember { mutableStateOf(parseDelay(rawDelays, "Batterie", "+2j")) }
+    var delayPowderLiquid by remember { mutableStateOf(parseDelay(rawDelays, "Poudre/Liquide", "+3j")) }
+    var delayPhone by remember { mutableStateOf(parseDelay(rawDelays, "Téléphone", "+2j")) }
+    var notesInternes by remember { mutableStateOf(initialTransitaire?.internalNotes ?: "") }
 
     var showErrorName by remember { mutableStateOf(false) }
 
     // Numeric conversions
     val tarifAerien = tarifAerienInput.filter { it.isDigit() }.toLongOrNull() ?: 0L
+    val tarifAerienFast = tarifAerienFastInput.filter { it.isDigit() }.toLongOrNull() ?: 0L
     val tarifMaritime = tarifMaritimeInput.filter { it.isDigit() }.toLongOrNull() ?: 0L
 
     val testKg = testKgInput.replace(',', '.').toDoubleOrNull() ?: 0.0
@@ -145,6 +168,8 @@ fun AddTransitaireDialog(
             "Hub Guangzhou & Yiwu"
         }
 
+        val goodsDelays = "Générale: ${delayGeneral.ifBlank { "Normal" }} | Batterie: ${delayBattery.ifBlank { "+2j" }} | Poudre/Liquide: ${delayPowderLiquid.ifBlank { "+3j" }} | Téléphone: ${delayPhone.ifBlank { "+2j" }}"
+
         onConfirm(
             nomTransitaire.trim(),
             hub,
@@ -154,9 +179,12 @@ fun AddTransitaireDialog(
             adresseChine.trim(),
             isTransitaireActif,
             dateApplication.trim(),
-            airLeadDays.trim(),
-            seaLeadDays.trim(),
-            notesInternes.trim()
+            airLeadDays.trim().ifBlank { "7 à 10 jours" },
+            seaLeadDays.trim().ifBlank { "30 à 45 jours" },
+            notesInternes.trim(),
+            tarifAerienFast,
+            airFastLeadDays.trim().ifBlank { "3 à 5 jours" },
+            goodsDelays
         )
     }
 
@@ -206,7 +234,7 @@ fun AddTransitaireDialog(
                                 )
                             }
                             Text(
-                                text = "Nouveau Transitaire",
+                                text = if (isEditing) "Modifier Transitaire" else "Nouveau Transitaire",
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
@@ -295,40 +323,11 @@ fun AddTransitaireDialog(
                                     letterSpacing = 1.sp
                                 )
                                 Text(
-                                    text = "Nouveau Transitaire",
+                                    text = if (isEditing) "Modifier Transitaire" else "Nouveau Transitaire",
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 18.sp,
                                     color = Color(0xFF131B2E)
-                                )
-                            }
-                        }
-
-                        Button(
-                            onClick = { submit() },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF06B6D4),
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .height(40.dp)
-                                .testTag("btn_save_transitaire_top")
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Done,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = "Enregistrer",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
                                 )
                             }
                         }
@@ -633,72 +632,94 @@ fun AddTransitaireDialog(
                                 }
                             }
 
-                            // Tarif Aérien
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                            // Tarif Aérien Normal & Fast
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(
-                                        text = "Tarif fret aérien",
+                                        text = "Aérien Normal",
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 13.sp,
                                         color = Color(0xFF131B2E)
                                     )
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.FlightTakeoff,
-                                            contentDescription = null,
-                                            tint = Color(0xFF00687A),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "Express",
+                                    OutlinedTextField(
+                                        value = tarifAerienInput,
+                                        onValueChange = { tarifAerienInput = it.filter { c -> c.isDigit() } },
+                                        trailingIcon = {
+                                            Text(
+                                                text = "Ar/kg",
+                                                fontFamily = PlusJakartaSans,
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF3D494C),
+                                                modifier = Modifier.padding(end = 8.dp)
+                                            )
+                                        },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        singleLine = true,
+                                        textStyle = TextStyle(
                                             fontFamily = PlusJakartaSans,
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp,
-                                            color = Color(0xFF00687A)
-                                        )
-                                    }
+                                            fontSize = 15.sp,
+                                            color = Color(0xFF131B2E)
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = Color(0xFFF2F3FF),
+                                            unfocusedContainerColor = Color(0xFFF2F3FF),
+                                            focusedBorderColor = Color(0xFF00687A),
+                                            unfocusedBorderColor = Color.Transparent
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("input_tarif_aerien")
+                                    )
                                 }
 
-                                OutlinedTextField(
-                                    value = tarifAerienInput,
-                                    onValueChange = { tarifAerienInput = it.filter { c -> c.isDigit() } },
-                                    trailingIcon = {
-                                        Text(
-                                            text = "Ar / kg",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 13.sp,
-                                            color = Color(0xFF3D494C),
-                                            modifier = Modifier.padding(end = 12.dp)
-                                        )
-                                    },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    singleLine = true,
-                                    textStyle = TextStyle(
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = "Aérien Fast",
                                         fontFamily = PlusJakartaSans,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp,
-                                        color = Color(0xFF131B2E)
-                                    ),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedContainerColor = Color(0xFFF2F3FF),
-                                        unfocusedContainerColor = Color(0xFFF2F3FF),
-                                        focusedBorderColor = Color(0xFF00687A),
-                                        unfocusedBorderColor = Color.Transparent
-                                    ),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("input_tarif_aerien")
-                                )
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF00687A)
+                                    )
+                                    OutlinedTextField(
+                                        value = tarifAerienFastInput,
+                                        onValueChange = { tarifAerienFastInput = it.filter { c -> c.isDigit() } },
+                                        trailingIcon = {
+                                            Text(
+                                                text = "Ar/kg",
+                                                fontFamily = PlusJakartaSans,
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF3D494C),
+                                                modifier = Modifier.padding(end = 8.dp)
+                                            )
+                                        },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        singleLine = true,
+                                        textStyle = TextStyle(
+                                            fontFamily = PlusJakartaSans,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
+                                            color = Color(0xFF131B2E)
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = Color(0xFFF2F3FF),
+                                            unfocusedContainerColor = Color(0xFFF2F3FF),
+                                            focusedBorderColor = Color(0xFF00687A),
+                                            unfocusedBorderColor = Color.Transparent
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("input_tarif_aerien_fast")
+                                    )
+                                }
                             }
 
                             // Tarif Maritime
@@ -1103,96 +1124,136 @@ fun AddTransitaireDialog(
                                 }
                             }
 
-                            // 2 Mini Cards for lead times
+                            // Editable lead times by shipping type
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(Color(0xFFF2F3FF))
-                                        .padding(12.dp)
-                                ) {
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Flight,
-                                                contentDescription = null,
-                                                tint = Color(0xFF3D494C),
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Text(
-                                                text = "DÉLAI AÉRIEN",
-                                                fontFamily = PlusJakartaSans,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 10.sp,
-                                                color = Color(0xFF3D494C),
-                                                letterSpacing = 0.5.sp
-                                            )
-                                        }
-                                        Text(
-                                            text = airLeadDays,
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 16.sp,
-                                            color = Color(0xFF131B2E)
-                                        )
-                                        Text(
-                                            text = "Jours ouvrés après vol",
-                                            fontFamily = Inter,
-                                            fontSize = 11.sp,
-                                            color = Color(0xFF3D494C)
-                                        )
-                                    }
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = "Aérien Normal",
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF3D494C)
+                                    )
+                                    OutlinedTextField(
+                                        value = airLeadDays,
+                                        onValueChange = { airLeadDays = it },
+                                        singleLine = true,
+                                        textStyle = TextStyle(fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF131B2E)),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = Color(0xFFF2F3FF),
+                                            unfocusedContainerColor = Color(0xFFF2F3FF),
+                                            focusedBorderColor = Color(0xFF00687A),
+                                            unfocusedBorderColor = Color.Transparent
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
                                 }
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = "Aérien Fast",
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF00687A)
+                                    )
+                                    OutlinedTextField(
+                                        value = airFastLeadDays,
+                                        onValueChange = { airFastLeadDays = it },
+                                        singleLine = true,
+                                        textStyle = TextStyle(fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF131B2E)),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = Color(0xFFF2F3FF),
+                                            unfocusedContainerColor = Color(0xFFF2F3FF),
+                                            focusedBorderColor = Color(0xFF00687A),
+                                            unfocusedBorderColor = Color.Transparent
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
 
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(Color(0xFFF2F3FF))
-                                        .padding(12.dp)
-                                ) {
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.DirectionsBoat,
-                                                contentDescription = null,
-                                                tint = Color(0xFF3D494C),
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Text(
-                                                text = "DÉLAI MARITIME",
-                                                fontFamily = PlusJakartaSans,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 10.sp,
-                                                color = Color(0xFF3D494C),
-                                                letterSpacing = 0.5.sp
-                                            )
-                                        }
-                                        Text(
-                                            text = seaLeadDays,
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 16.sp,
-                                            color = Color(0xFF131B2E)
-                                        )
-                                        Text(
-                                            text = "Départ conteneur régulier",
-                                            fontFamily = Inter,
-                                            fontSize = 11.sp,
-                                            color = Color(0xFF3D494C)
-                                        )
-                                    }
-                                }
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = "Maritime Normal",
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF712AE2)
+                                )
+                                OutlinedTextField(
+                                    value = seaLeadDays,
+                                    onValueChange = { seaLeadDays = it },
+                                    singleLine = true,
+                                    textStyle = TextStyle(fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF131B2E)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = Color(0xFFF2F3FF),
+                                        unfocusedContainerColor = Color(0xFFF2F3FF),
+                                        focusedBorderColor = Color(0xFF712AE2),
+                                        unfocusedBorderColor = Color.Transparent
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+
+                            // Délais par type de marchandise
+                            Text(
+                                text = "Délais par type de marchandise (Aérien & Maritime)",
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp,
+                                color = Color(0xFF131B2E)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = delayGeneral,
+                                    onValueChange = { delayGeneral = it },
+                                    label = { Text("Générale", fontSize = 11.sp) },
+                                    singleLine = true,
+                                    textStyle = TextStyle(fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = delayBattery,
+                                    onValueChange = { delayBattery = it },
+                                    label = { Text("Batterie", fontSize = 11.sp) },
+                                    singleLine = true,
+                                    textStyle = TextStyle(fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = delayPowderLiquid,
+                                    onValueChange = { delayPowderLiquid = it },
+                                    label = { Text("Poudre/Liquide", fontSize = 11.sp) },
+                                    singleLine = true,
+                                    textStyle = TextStyle(fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = delayPhone,
+                                    onValueChange = { delayPhone = it },
+                                    label = { Text("Téléphone", fontSize = 11.sp) },
+                                    singleLine = true,
+                                    textStyle = TextStyle(fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
 
                             // Notes internes
@@ -1276,7 +1337,7 @@ fun AddTransitaireDialog(
                                 modifier = Modifier.size(22.dp)
                             )
                             Text(
-                                text = "Enregistrer le transitaire",
+                                text = if (isEditing) "Enregistrer les modifications" else "Enregistrer le transitaire",
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
