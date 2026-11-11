@@ -1,0 +1,6 @@
+{
+  "name": "Ma vie",
+  "description": "Hub personnel de gestion de vie 100% hors-ligne : finances, tâches, habitudes et objectifs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
