@@ -99,13 +99,28 @@ fun TransitairePriceComparisonDialog(
     var selectedProviderFilter by remember { mutableStateOf("all") } // "all", "SinoExpress", "MadaAir", "Zaly Transit"
     var showFilterDropdown by remember { mutableStateOf(false) }
 
-    // Tooltip message
-    var activeTooltipText by remember {
+    // Tooltip message dynamically computed from real transitaires
+    val unitLabel = if (selectedFretMode == "AERIEN") "kg" else "m³"
+    val sortedByRate = remember(transitaires, selectedFretMode) {
+        transitaires.sortedBy { if (selectedFretMode == "AERIEN") it.airRateAr else it.seaRateAr }
+    }
+    var activeTooltipText by remember(sortedByRate, selectedFretMode) {
         mutableStateOf(
-            if (selectedFretMode == "AERIEN") {
-                "Octobre 2026 : MadaAir est 1 500 Ar/kg plus abordable que SinoExpress."
-            } else {
-                "Octobre 2026 (Maritime) : SinoExpress mène à 1 200 000 Ar/m³."
+            when {
+                sortedByRate.isEmpty() -> "Aucun transitaire enregistré pour comparer les tarifs."
+                sortedByRate.size == 1 -> {
+                    val t = sortedByRate.first()
+                    val rate = if (selectedFretMode == "AERIEN") t.airRateAr else t.seaRateAr
+                    "${t.name} : ${CurrencyFormatter.formatAriary(rate)}/$unitLabel."
+                }
+                else -> {
+                    val cheapest = sortedByRate.first()
+                    val priciest = sortedByRate.last()
+                    val minRate = if (selectedFretMode == "AERIEN") cheapest.airRateAr else cheapest.seaRateAr
+                    val maxRate = if (selectedFretMode == "AERIEN") priciest.airRateAr else priciest.seaRateAr
+                    val diff = (maxRate - minRate).coerceAtLeast(0L)
+                    "${cheapest.name} est le plus avantageux à ${CurrencyFormatter.formatAriary(minRate)}/$unitLabel (économie jusqu'à ${CurrencyFormatter.formatAriary(diff)}/$unitLabel)."
+                }
             }
         )
     }
@@ -469,184 +484,185 @@ fun TransitairePriceComparisonDialog(
                                 }
                             }
 
-                            // Interactive SVG Visualizer Canvas
+                            // Dynamic Comparative Chart Canvas
+                            val chartColors = listOf(
+                                Color(0xFF06B6D4),
+                                Color(0xFF7C3AED),
+                                Color(0xFFF97316),
+                                Color(0xFF10B981),
+                                Color(0xFFEC4899),
+                                Color(0xFF3B82F6)
+                            )
+                            val displayedTransitaires = sortedByRate.take(6)
+
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(170.dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(Color(0xFFF2F3FF))
-                                    .padding(horizontal = 8.dp, vertical = 12.dp)
+                                    .padding(horizontal = 12.dp, vertical = 12.dp)
                             ) {
-                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                    val w = size.width
-                                    val h = size.height
-
-                                    val leftPadding = 32f
-                                    val rightPadding = 16f
-                                    val bottomPadding = 24f
-                                    val chartW = w - leftPadding - rightPadding
-                                    val chartH = h - bottomPadding
-
-                                    val yTop = 16f
-                                    val yMid = yTop + chartH * 0.45f
-                                    val yLow = yTop + chartH * 0.85f
-
-                                    val dashedEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
-
-                                    // Dashed guideline grid
-                                    drawLine(
-                                        color = Color(0xFFBCC9CD).copy(alpha = 0.35f),
-                                        start = Offset(leftPadding, yTop),
-                                        end = Offset(w - rightPadding, yTop),
-                                        strokeWidth = 1.dp.toPx(),
-                                        pathEffect = dashedEffect
+                                if (displayedTransitaires.isEmpty()) {
+                                    Text(
+                                        text = "Ajoutez des transitaires pour afficher le graphique comparatif.",
+                                        fontFamily = Inter,
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF3D494C),
+                                        modifier = Modifier.align(Alignment.Center)
                                     )
-                                    drawLine(
-                                        color = Color(0xFFBCC9CD).copy(alpha = 0.35f),
-                                        start = Offset(leftPadding, yMid),
-                                        end = Offset(w - rightPadding, yMid),
-                                        strokeWidth = 1.dp.toPx(),
-                                        pathEffect = dashedEffect
-                                    )
-                                    drawLine(
-                                        color = Color(0xFFBCC9CD).copy(alpha = 0.35f),
-                                        start = Offset(leftPadding, yLow),
-                                        end = Offset(w - rightPadding, yLow),
-                                        strokeWidth = 1.dp.toPx(),
-                                        pathEffect = dashedEffect
-                                    )
+                                } else {
+                                    Canvas(modifier = Modifier.fillMaxSize()) {
+                                        val w = size.width
+                                        val h = size.height
+                                        val leftPadding = 12f
+                                        val rightPadding = 12f
+                                        val bottomPadding = 24f
+                                        val topPadding = 12f
+                                        val chartW = (w - leftPadding - rightPadding).coerceAtLeast(1f)
+                                        val chartH = (h - topPadding - bottomPadding).coerceAtLeast(1f)
 
-                                    // Stepped Points X positions (Mai, Juin, Juil, Août, Sept, Oct)
-                                    val x1 = leftPadding
-                                    val x2 = leftPadding + chartW * 0.20f
-                                    val x3 = leftPadding + chartW * 0.40f
-                                    val x4 = leftPadding + chartW * 0.60f
-                                    val x5 = leftPadding + chartW * 0.80f
-                                    val x6 = w - rightPadding
+                                        val rates = displayedTransitaires.map {
+                                            (if (selectedFretMode == "AERIEN") it.airRateAr else it.seaRateAr).toFloat()
+                                        }
+                                        val maxRate = (rates.maxOrNull() ?: 1f).coerceAtLeast(1f)
+                                        val minRate = (rates.minOrNull() ?: 0f)
+                                        val range = (maxRate - minRate * 0.6f).coerceAtLeast(1f)
 
-                                    if (selectedFretMode == "AERIEN") {
-                                        // Curve 1: SinoExpress (Orange #F97316) : 34k (low) -> 36k (mid) -> 38k (high)
-                                        if (showSinoLine) {
-                                            val sinoPath = Path().apply {
-                                                moveTo(x1, yLow)
-                                                lineTo(x3, yLow)
-                                                lineTo(x3, yMid)
-                                                lineTo(x5, yMid)
-                                                lineTo(x5, yTop + (yMid - yTop) * 0.3f)
-                                                lineTo(x6, yTop + (yMid - yTop) * 0.3f)
-                                            }
-                                            drawPath(
-                                                path = sinoPath,
-                                                color = Color(0xFFF97316),
-                                                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Miter)
+                                        val dashedEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
+                                        listOf(0f, 0.5f, 1f).forEach { frac ->
+                                            val y = topPadding + chartH * frac
+                                            drawLine(
+                                                color = Color(0xFFBCC9CD).copy(alpha = 0.35f),
+                                                start = Offset(leftPadding, y),
+                                                end = Offset(w - rightPadding, y),
+                                                strokeWidth = 1.dp.toPx(),
+                                                pathEffect = dashedEffect
                                             )
-                                            drawCircle(color = Color(0xFFF97316), radius = 5.dp.toPx(), center = Offset(x6, yTop + (yMid - yTop) * 0.3f))
                                         }
 
-                                        // Curve 2: MadaAir (Cyan #06B6D4) : 37k -> 36.5k stable
-                                        if (showMadaLine) {
-                                            val madaY = yMid + (yLow - yMid) * 0.2f
-                                            val madaPath = Path().apply {
-                                                moveTo(x1, madaY - 10f)
-                                                lineTo(x2, madaY - 10f)
-                                                lineTo(x2, madaY)
-                                                lineTo(x6, madaY)
-                                            }
-                                            drawPath(
-                                                path = madaPath,
-                                                color = Color(0xFF06B6D4),
-                                                style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Miter)
-                                            )
-                                            drawCircle(color = Color.White, radius = 6.dp.toPx(), center = Offset(x6, madaY))
-                                            drawCircle(color = Color(0xFF06B6D4), radius = 4.5.dp.toPx(), center = Offset(x6, madaY))
-                                        }
+                                        val count = displayedTransitaires.size
+                                        val slotW = chartW / count
+                                        val barW = (slotW * 0.45f).coerceAtMost(48.dp.toPx())
 
-                                        // Curve 3: Zaly Transit (Violet #7C3AED) : 39k -> 41k
-                                        if (showZalyLine) {
-                                            val zalyY1 = yTop + 16f
-                                            val zalyY2 = yTop - 4f
-                                            val zalyPath = Path().apply {
-                                                moveTo(x1, zalyY1)
-                                                lineTo(x2, zalyY1)
-                                                lineTo(x2, zalyY2)
-                                                lineTo(x6, zalyY2)
-                                            }
-                                            drawPath(
-                                                path = zalyPath,
-                                                color = Color(0xFF7C3AED),
-                                                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Miter)
-                                            )
-                                            drawCircle(color = Color(0xFF7C3AED), radius = 5.dp.toPx(), center = Offset(x6, zalyY2))
-                                        }
-                                    } else {
-                                        // MARITIME MODE
-                                        if (showSinoLine) {
-                                            val sinoPath = Path().apply {
-                                                moveTo(x1, yMid)
-                                                lineTo(x4, yMid)
-                                                lineTo(x4, yLow)
-                                                lineTo(x6, yLow)
-                                            }
-                                            drawPath(
-                                                path = sinoPath,
-                                                color = Color(0xFFF97316),
-                                                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Miter)
-                                            )
-                                            drawCircle(color = Color(0xFFF97316), radius = 5.dp.toPx(), center = Offset(x6, yLow))
-                                        }
+                                        displayedTransitaires.forEachIndexed { idx, t ->
+                                            val rate = if (selectedFretMode == "AERIEN") t.airRateAr.toFloat() else t.seaRateAr.toFloat()
+                                            val normalized = ((rate - minRate * 0.6f) / range).coerceIn(0.12f, 1f)
+                                            val barH = chartH * normalized
+                                            val barX = leftPadding + slotW * idx + (slotW - barW) / 2f
+                                            val barY = topPadding + chartH - barH
+                                            val barColor = chartColors[idx % chartColors.size]
 
-                                        if (showMadaLine) {
-                                            val madaPath = Path().apply {
-                                                moveTo(x1, yMid - 10f)
-                                                lineTo(x3, yMid - 10f)
-                                                lineTo(x3, yMid + 10f)
-                                                lineTo(x6, yMid + 10f)
-                                            }
-                                            drawPath(
-                                                path = madaPath,
-                                                color = Color(0xFF06B6D4),
-                                                style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Miter)
+                                            drawRoundRect(
+                                                color = barColor,
+                                                topLeft = Offset(barX, barY),
+                                                size = androidx.compose.ui.geometry.Size(barW, barH),
+                                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx(), 8.dp.toPx())
                                             )
-                                            drawCircle(color = Color.White, radius = 6.dp.toPx(), center = Offset(x6, yMid + 10f))
-                                            drawCircle(color = Color(0xFF06B6D4), radius = 4.5.dp.toPx(), center = Offset(x6, yMid + 10f))
                                         }
+                                    }
 
-                                        if (showZalyLine) {
-                                            val zalyPath = Path().apply {
-                                                moveTo(x1, yTop + 10f)
-                                                lineTo(x2, yTop + 10f)
-                                                lineTo(x2, yTop)
-                                                lineTo(x6, yTop)
-                                            }
-                                            drawPath(
-                                                path = zalyPath,
-                                                color = Color(0xFF7C3AED),
-                                                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Miter)
+                                    // Transitaire Labels X-Axis
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .align(Alignment.BottomCenter),
+                                        horizontalArrangement = Arrangement.SpaceEvenly
+                                    ) {
+                                        displayedTransitaires.forEachIndexed { idx, t ->
+                                            Text(
+                                                text = t.initials.ifBlank { t.name.take(4) },
+                                                fontFamily = PlusJakartaSans,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 10.sp,
+                                                color = chartColors[idx % chartColors.size],
+                                                maxLines = 1
                                             )
-                                            drawCircle(color = Color(0xFF7C3AED), radius = 5.dp.toPx(), center = Offset(x6, yTop))
                                         }
                                     }
                                 }
+                            }
 
-                                // Month Labels X-Axis
-                                Row(
+                            // Comparatif jours de transport maritime (Départ & Arrivée bateau)
+                            if (displayedTransitaires.isNotEmpty()) {
+                                val today = java.time.LocalDate.now()
+                                val dateFmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
+                                val maritimeSorted = remember(transitaires) {
+                                    transitaires.map { t ->
+                                        val nums = Regex("\\d+").findAll(t.seaLeadDays).map { it.value.toInt() }.toList()
+                                        val minD = nums.firstOrNull() ?: 30
+                                        val maxD = nums.lastOrNull() ?: minD
+                                        Triple(t, minD, maxD)
+                                    }.sortedBy { it.second }
+                                }
+                                val fastestMinDays = maritimeSorted.firstOrNull()?.second ?: 30
+
+                                Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .align(Alignment.BottomCenter)
-                                        .padding(start = 28.dp, end = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFFF2F3FF))
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    listOf("Mai", "Juin", "Juil.", "Août", "Sept.").forEach { month ->
-                                        Text(text = month, fontFamily = Inter, fontSize = 10.sp, color = Color(0xFF3D494C))
-                                    }
                                     Text(
-                                        text = "Oct.",
+                                        text = "Comparatif transport maritime (Bateau)",
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 10.sp,
-                                        color = Color(0xFF00687A)
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF131B2E)
                                     )
+                                    Text(
+                                        text = "Départ estimé : ${today.format(dateFmt)}",
+                                        fontFamily = Inter,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF3D494C)
+                                    )
+                                    maritimeSorted.forEach { (t, minD, maxD) ->
+                                        val arrivalMin = today.plusDays(minD.toLong()).format(dateFmt)
+                                        val arrivalMax = today.plusDays(maxD.toLong()).format(dateFmt)
+                                        val arrivalText = if (minD == maxD) arrivalMin else "$arrivalMin - $arrivalMax"
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = t.name,
+                                                    fontFamily = PlusJakartaSans,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    fontSize = 12.sp,
+                                                    color = Color(0xFF131B2E),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = "Arrivée : $arrivalText",
+                                                    fontFamily = Inter,
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF3D494C)
+                                                )
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(
+                                                        if (minD == fastestMinDays) Color(0xFF00687A).copy(alpha = 0.14f)
+                                                        else Color(0xFFBCC9CD).copy(alpha = 0.25f)
+                                                    )
+                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = if (minD == maxD) "${minD}j" else "${minD}-${maxD}j",
+                                                    fontFamily = PlusJakartaSans,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 11.sp,
+                                                    color = if (minD == fastestMinDays) Color(0xFF00687A) else Color(0xFF131B2E)
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
 

@@ -2738,6 +2738,7 @@ fun AddCatalogueArticleDialog(
     var selectedPlatform by remember { mutableStateOf("1688") }
     var selectedPhotoUri by remember { mutableStateOf("") }
     var showAddVariantModal by remember { mutableStateOf(false) }
+    var creationMode by remember { mutableStateOf("REFERENTIEL") } // "REFERENTIEL" (catalogue pur) ou "STOCK" (avec stock initial)
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -2818,7 +2819,7 @@ fun AddCatalogueArticleDialog(
                             onClick = {
                                 val pYuan = priceYuanText.toDoubleOrNull() ?: 0.0
                                 val rAr = resaleArText.toLongOrNull() ?: 0L
-                                val sCount = stockCountText.toIntOrNull() ?: 0
+                                val sCount = if (creationMode == "STOCK") (stockCountText.toIntOrNull() ?: 0) else 0
                                 val wKg = weightText.toDoubleOrNull() ?: 0.0
                                 val varStr = variantsList.joinToString(", ")
                                 if (product.isNotBlank()) {
@@ -2842,7 +2843,12 @@ fun AddCatalogueArticleDialog(
                             colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary),
                             shape = RoundedCornerShape(10.dp)
                         ) {
-                            Text("Créer l'article", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, color = Color.Black)
+                            Text(
+                                text = if (creationMode == "REFERENTIEL") "Créer la fiche" else "Créer avec stock",
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            )
                         }
                     }
                 }
@@ -2855,6 +2861,109 @@ fun AddCatalogueArticleDialog(
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    // CARD 0: TYPE D'ENREGISTREMENT (Référentiel Catalogue vs Stock Initial)
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 1.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "Mode d'enregistrement de l'article",
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = CyanPrimary
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { creationMode = "REFERENTIEL" },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (creationMode == "REFERENTIEL") CyanPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
+                                    border = if (creationMode == "REFERENTIEL") BorderStroke(1.5.dp, CyanPrimary) else null
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Inventory2,
+                                                contentDescription = null,
+                                                tint = if (creationMode == "REFERENTIEL") CyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = "Fiche Article Seule",
+                                                fontFamily = PlusJakartaSans,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        Text(
+                                            text = "Référentiel catalogue (sans achat)",
+                                            fontFamily = Inter,
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { creationMode = "STOCK" },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (creationMode == "STOCK") CyanPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
+                                    border = if (creationMode == "STOCK") BorderStroke(1.5.dp, CyanPrimary) else null
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ShoppingCart,
+                                                contentDescription = null,
+                                                tint = if (creationMode == "STOCK") CyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = "Avec stock initial",
+                                                fontFamily = PlusJakartaSans,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        Text(
+                                            text = "Enregistre un lot disponible",
+                                            fontFamily = Inter,
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                     // HERO CAROUSEL BANNER (Directly imported from ArticleDetailScreen style)
                     Box(
                         modifier = Modifier
@@ -3300,28 +3409,68 @@ fun AddCatalogueArticleDialog(
                                 color = CyanPrimary
                             )
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = stockCountText,
-                                    onValueChange = { stockCountText = it.filter { ch -> ch.isDigit() } },
-                                    label = { Text("Stock Initial (pcs)") },
-                                    placeholder = { Text("15") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f),
+                            if (creationMode == "STOCK") {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = stockCountText,
+                                        onValueChange = { stockCountText = it.filter { ch -> ch.isDigit() } },
+                                        label = { Text("Stock Initial (pcs)") },
+                                        placeholder = { Text("15") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        singleLine = true
+                                    )
+
+                                    OutlinedTextField(
+                                        value = weightText,
+                                        onValueChange = { weightText = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                                        label = { Text("Poids unit. (kg)") },
+                                        placeholder = { Text("0.20") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        singleLine = true
+                                    )
+                                }
+                            } else {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(12.dp),
-                                    singleLine = true
-                                )
+                                    color = CyanPrimary.copy(alpha = 0.1f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Inventory2,
+                                            contentDescription = null,
+                                            tint = CyanPrimary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(
+                                            text = "Mode Fiche Référence : Aucun achat ni transaction d'achat ne sera généré. Vous pourrez passer des commandes d'achat ultérieurement.",
+                                            fontFamily = Inter,
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
 
                                 OutlinedTextField(
                                     value = weightText,
                                     onValueChange = { weightText = it.filter { ch -> ch.isDigit() || ch == '.' } },
-                                    label = { Text("Poids unit. (kg)") },
+                                    label = { Text("Poids estimé unit. (kg)") },
                                     placeholder = { Text("0.20") },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(12.dp),
                                     singleLine = true
                                 )

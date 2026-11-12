@@ -85,8 +85,9 @@ fun BusinessHeroCard(
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
+                        val sign = if (uiState.vsPrevMonthPercent >= 0) "+" else ""
                         Text(
-                            text = "+${uiState.vsPrevMonthPercent}% vs sept.",
+                            text = "$sign${uiState.vsPrevMonthPercent}% vs mois préc.",
                             fontFamily = PlusJakartaSans,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,

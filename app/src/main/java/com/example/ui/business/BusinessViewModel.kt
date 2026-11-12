@@ -33,7 +33,9 @@ private data class BusinessRawData(
     val families: List<CatalogueFamilyEntity>,
     val platforms: List<CataloguePlatformEntity>,
     val clients: List<ClientEntity>,
-    val transitaires: List<CatalogueTransitaireEntity>
+    val transitaires: List<CatalogueTransitaireEntity>,
+    val businessTransactions: List<com.example.data.local.entity.BusinessTransactionEntity> = emptyList(),
+    val salePayments: List<com.example.data.local.entity.SalePaymentEntity> = emptyList()
 )
 
 private data class PurchasesFilters(
@@ -122,10 +124,20 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         repository.businessOrders,
         repository.yuanTransactions,
         repository.businessSales,
-        combine(repository.catalogueFamilies, repository.cataloguePlatforms) { f, p -> Pair(f, p) },
-        combine(repository.clients, repository.catalogueTransitaires) { c, t -> Pair(c, t) }
-    ) { orders, yuanTxs, sales, famAndPlat, clientAndTrans ->
-        BusinessRawData(orders, yuanTxs, sales, famAndPlat.first, famAndPlat.second, clientAndTrans.first, clientAndTrans.second)
+        combine(repository.catalogueFamilies, repository.cataloguePlatforms, repository.salePayments) { f, p, sp -> Triple(f, p, sp) },
+        combine(repository.clients, repository.catalogueTransitaires, repository.allBusinessTransactions) { c, t, tx -> Triple(c, t, tx) }
+    ) { orders, yuanTxs, sales, famPlatPay, clientTransTx ->
+        BusinessRawData(
+            orders,
+            yuanTxs,
+            sales,
+            famPlatPay.first,
+            famPlatPay.second,
+            clientTransTx.first,
+            clientTransTx.second,
+            clientTransTx.third,
+            famPlatPay.third
+        )
     }
 
     private val purchasesFiltersFlow = combine(
@@ -259,11 +271,41 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         val draftYuansNeeded = draftOrders.sumOf { it.priceYuan * it.quantityBought }
         val insufficientShortage = if (draftYuansNeeded > availableYuans) (draftYuansNeeded - availableYuans) else null
 
-        // 3. Ventes & Bénéfice du mois (Aperçu global filtré par mois & montants encaissés)
-        val salesTotal = monthSales.sumOf { it.paidAmountAr }
-        val salesCost = monthSales.sumOf { (it.unitCostAr * it.quantity * (if (it.totalPriceAr > 0) it.paidAmountAr.toDouble() / it.totalPriceAr.toDouble() else 1.0)).toLong() }
+        // 3. Ventes & Bénéfice du mois (Aperçu global filtré par mois réel d'encaissement)
+        val salesById = sales.associateBy { it.id }
+        val paymentsBySaleId = raw.salePayments.groupBy { it.saleId }
+
+        fun computeCashInAndCost(startMs: Long, endMs: Long): Pair<Long, Long> {
+            val monthPayments = raw.salePayments.filter { it.paymentDate in startMs..endMs }
+            val legacySales = sales.filter {
+                it.saleDate in startMs..endMs && it.paidAmountAr > 0 && paymentsBySaleId[it.id].isNullOrEmpty()
+            }
+            val total = monthPayments.sumOf { it.amountAr } + legacySales.sumOf { it.paidAmountAr }
+            val cost = monthPayments.sumOf { p ->
+                val s = salesById[p.saleId]
+                if (s != null && s.totalPriceAr > 0) {
+                    (s.unitCostAr * s.quantity * (p.amountAr.toDouble() / s.totalPriceAr.toDouble())).toLong()
+                } else 0L
+            } + legacySales.sumOf {
+                (it.unitCostAr * it.quantity * (if (it.totalPriceAr > 0) it.paidAmountAr.toDouble() / it.totalPriceAr.toDouble() else 1.0)).toLong()
+            }
+            return Pair(total, cost)
+        }
+
+        val (salesTotal, salesCost) = computeCashInAndCost(startOfMonthMs, endOfMonthMs)
         val freightAndExpenses = monthOrders.sumOf { it.freightCostAr }
-        val netProfit = salesTotal - salesCost
+        val netProfit = salesTotal - salesCost - freightAndExpenses
+
+        val prevRefDate = refDate.minusMonths(1)
+        val startOfPrevMonthMs = prevRefDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val endOfPrevMonthMs = prevRefDate.plusMonths(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() - 1
+        val prevMonthOrders = orders.filter { it.orderDate in startOfPrevMonthMs..endOfPrevMonthMs }
+        val (prevSalesTotal, prevSalesCost) = computeCashInAndCost(startOfPrevMonthMs, endOfPrevMonthMs)
+        val prevFreight = prevMonthOrders.sumOf { it.freightCostAr }
+        val prevNetProfit = prevSalesTotal - prevSalesCost - prevFreight
+        val vsPrevMonthPercent = if (prevNetProfit != 0L) {
+            (((netProfit - prevNetProfit).toDouble() / kotlin.math.abs(prevNetProfit.toDouble())) * 100).toInt()
+        } else 0
 
         // 4. Alertes trésorerie
         val unpaidFreightOrders = orders.filter { !it.isFreightPaid }
@@ -309,30 +351,40 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             )
         }
 
-        // 7. Top Ventes
-        val topProducts = orders.filter { it.unitsSold > 0 }
-            .sortedByDescending { it.unitsSold }
+        // 7. Top Ventes du mois sélectionné
+        val topProducts = monthSales
+            .groupBy { it.productName.trim() }
+            .map { (prodName, salesList) ->
+                val soldQty = salesList.sumOf { it.quantity }
+                val matchingOrder = orders.firstOrNull { it.product.trim().equals(prodName, ignoreCase = true) }
+                Triple(prodName, soldQty, matchingOrder)
+            }
+            .filter { it.second > 0 }
+            .sortedByDescending { it.second }
             .take(3)
-            .mapIndexed { idx, o ->
+            .mapIndexed { idx, (prodName, soldQty, matchingOrder) ->
+                val stock = matchingOrder?.stockCount ?: 0
+                val restock = matchingOrder?.restockAlert ?: false
                 TopProductUi(
                     rank = idx + 1,
-                    name = o.product,
-                    unitsSold = o.unitsSold,
-                    marginPercent = o.marginPercent,
-                    stockCount = o.stockCount,
+                    name = prodName,
+                    unitsSold = soldQty,
+                    marginPercent = matchingOrder?.marginPercent ?: 0,
+                    stockCount = stock,
                     stockStatusLabel = when {
-                        o.restockAlert -> "À racheter"
-                        else -> "${o.stockCount} en stock"
+                        restock -> "À racheter"
+                        else -> "$stock en stock"
                     },
-                    isRestockNeeded = o.restockAlert
+                    isRestockNeeded = restock
                 )
             }
 
-        // 8. Répartition des achats
-        val totalPurchasesAr = orders.sumOf { if (it.unitCostAr > 0L) it.unitCostAr * it.quantityBought else ((it.priceYuan * it.exchangeRate).toLong() * it.quantityBought + it.freightCostAr + it.customsTaxAr) }
-        val businessPurchasesAr = orders.filter { it.category == "BUSINESS" }.sumOf { if (it.unitCostAr > 0L) it.unitCostAr * it.quantityBought else ((it.priceYuan * it.exchangeRate).toLong() * it.quantityBought + it.freightCostAr + it.customsTaxAr) }
-        val personalPurchasesAr = orders.filter { it.category == "PERSONAL" }.sumOf { if (it.unitCostAr > 0L) it.unitCostAr * it.quantityBought else ((it.priceYuan * it.exchangeRate).toLong() * it.quantityBought + it.freightCostAr + it.customsTaxAr) }
-        val familyPurchasesAr = orders.filter { it.category == "FAMILY_FRIENDS" }.sumOf { if (it.unitCostAr > 0L) it.unitCostAr * it.quantityBought else ((it.priceYuan * it.exchangeRate).toLong() * it.quantityBought + it.freightCostAr + it.customsTaxAr) }
+        // 8. Répartition des achats (excluant les fiches simples du catalogue)
+        val actualPurchases = orders.filter { it.status != "CATALOGUE" }
+        val totalPurchasesAr = actualPurchases.sumOf { if (it.unitCostAr > 0L) it.unitCostAr * it.quantityBought else ((it.priceYuan * it.exchangeRate).toLong() * it.quantityBought + it.freightCostAr + it.customsTaxAr) }
+        val businessPurchasesAr = actualPurchases.filter { it.category == "BUSINESS" }.sumOf { if (it.unitCostAr > 0L) it.unitCostAr * it.quantityBought else ((it.priceYuan * it.exchangeRate).toLong() * it.quantityBought + it.freightCostAr + it.customsTaxAr) }
+        val personalPurchasesAr = actualPurchases.filter { it.category == "PERSONAL" }.sumOf { if (it.unitCostAr > 0L) it.unitCostAr * it.quantityBought else ((it.priceYuan * it.exchangeRate).toLong() * it.quantityBought + it.freightCostAr + it.customsTaxAr) }
+        val familyPurchasesAr = actualPurchases.filter { it.category == "FAMILY_FRIENDS" }.sumOf { if (it.unitCostAr > 0L) it.unitCostAr * it.quantityBought else ((it.priceYuan * it.exchangeRate).toLong() * it.quantityBought + it.freightCostAr + it.customsTaxAr) }
 
         val totalPurchasesSafe = totalPurchasesAr.coerceAtLeast(1L)
         val bizPct = ((businessPurchasesAr.toDouble() / totalPurchasesSafe.toDouble()) * 100).toInt()
@@ -345,7 +397,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         val overdueCount = overdue15d.size
 
         // 10. Calculs spécifiques Achats
-        val activeLots = orders.count { it.status != "DRAFT" && it.status != "SOLD" && it.status != "COMPLETED" }
+        val activeLots = orders.count { it.status != "CATALOGUE" && it.status != "DRAFT" && it.status != "SOLD" && it.status != "COMPLETED" }
         val draftActions = orders.count { it.status == "DRAFT" }
 
         val inRouteOrders = orders.filter { it.status in listOf("ORDERED", "WAREHOUSE", "GUANGZHOU", "FLIGHT", "CUSTOMS", "QUALITY_CONTROL") }
@@ -354,8 +406,8 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
 
         val exchangeGainAr = buyTxs.sumOf { (650.0 - it.exchangeRate) * it.amountYuan }.toLong().coerceAtLeast(0L)
 
-        // Filtrage des achats
-        val filteredPurchasesList = orders.filter { order ->
+        // Filtrage des achats (exclut les articles purement catalogue sans achat actif)
+        val filteredPurchasesList = actualPurchases.filter { order ->
             val matchStatus = when (pFilters.status) {
                 "Tous" -> true
                 "Brouillon" -> order.status == "DRAFT"
@@ -409,7 +461,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         val inRouteStockUnits = inRouteStockOrders.sumOf { it.quantityBought }
 
         val defectiveStockOrders = orders.filter { it.defectiveCount > 0 && (!it.isHidden || sFilters.showHidden) }
-        val defectiveStockUnits = orders.sumOf { it.defectiveCount }
+        val defectiveStockUnits = defectiveStockOrders.sumOf { it.defectiveCount }
 
         val distinctFamilies = visibleInStock.map { it.family.ifBlank { "Électronique" } }.distinct().sorted()
         val stockFamiliesCount = distinctFamilies.size
@@ -645,9 +697,9 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             val inits = t.name.split(" ").mapNotNull { it.firstOrNull()?.toString() }.take(2).joinToString("").uppercase().ifBlank { "TR" }
 
             val totalInvoiced = transOrders.sumOf { it.freightCostAr }
-            val paidAmount = transOrders
-                .filter { it.status in listOf("DELIVERY_READY", "IN_STOCK", "COMPLETED", "SOLD") }
-                .sumOf { it.freightCostAr }
+            val paidAmount = raw.businessTransactions
+                .filter { it.referenceTag == "TRANSITAIRE_${t.id}" && it.type == "EXPENSE" }
+                .sumOf { it.amountAr }
             val balanceDue = (totalInvoiced - paidAmount).coerceAtLeast(0L)
             val totalWeight = transOrders.sumOf { it.weightKg ?: 0.0 }
             val effectiveRate = if (totalWeight > 0.0 && totalInvoiced > 0L) (totalInvoiced / totalWeight).toLong() else 0L
@@ -802,7 +854,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
 
             // Hero
             netProfit = netProfit,
-            vsPrevMonthPercent = 0,
+            vsPrevMonthPercent = vsPrevMonthPercent,
             salesTotal = salesTotal,
             salesCost = salesCost,
             freightAndExpenses = freightAndExpenses,
@@ -981,13 +1033,13 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                     supplier = platform,
                     platform = platform,
                     referenceCode = sku,
-                    quantityBought = stockCount.coerceAtLeast(1),
+                    quantityBought = stockCount,
                     priceYuan = priceYuan,
                     exchangeRate = uiState.value.cmupRate.toDouble(),
                     resalePriceAr = resaleAr,
                     stockCount = stockCount,
                     weightKg = weightKg,
-                    status = if (stockCount > 0) "DELIVERY_READY" else "ORDERED",
+                    status = if (stockCount > 0) "DELIVERY_READY" else "CATALOGUE",
                     category = "BUSINESS",
                     family = family,
                     carrier = "Transitaire MadaAir",
@@ -1135,7 +1187,10 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     fun recordSalePayment(sale: BusinessSaleEntity, additionalPaymentAr: Long, paymentMethod: String = "ESPECES") {
         viewModelScope.launch {
             if (additionalPaymentAr <= 0L) return@launch
-            val newPaid = (sale.paidAmountAr + additionalPaymentAr).coerceAtMost(sale.totalPriceAr)
+            val remainingDue = (sale.totalPriceAr - sale.paidAmountAr).coerceAtLeast(0L)
+            val appliedAmount = additionalPaymentAr.coerceAtMost(remainingDue)
+            if (appliedAmount <= 0L) return@launch
+            val newPaid = sale.paidAmountAr + appliedAmount
             val updated = sale.copy(
                 paidAmountAr = newPaid,
                 isFullyPaid = newPaid >= sale.totalPriceAr
@@ -1144,12 +1199,12 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             repository.insertSalePayment(
                 SalePaymentEntity(
                     saleId = sale.id,
-                    amountAr = additionalPaymentAr,
+                    amountAr = appliedAmount,
                     paymentDate = System.currentTimeMillis(),
                     paymentMethod = paymentMethod
                 )
             )
-            snackbarFlow.value = "Règlement de ${CurrencyFormatter.formatAriary(additionalPaymentAr)} enregistré pour ${sale.clientName}"
+            snackbarFlow.value = "Règlement de ${CurrencyFormatter.formatAriary(appliedAmount)} enregistré pour ${sale.clientName}"
         }
     }
 
