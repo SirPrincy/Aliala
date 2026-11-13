@@ -7,6 +7,7 @@ import com.example.data.demo.DemoDataProvider
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.BudgetEntity
 import com.example.data.local.entity.BusinessAccountEntity
+import com.example.data.local.entity.BusinessInvestmentEntity
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.data.local.entity.BusinessSaleEntity
 import com.example.data.local.entity.BusinessTransactionEntity
@@ -435,34 +436,140 @@ class AppRepository(
     suspend fun seedDefaultBusinessAccountsIfEmpty() {
         if (db.businessAccountDao().getAccountCount() == 0) {
             val defaults = listOf(
-                BusinessAccountEntity(name = "Espèces", subtitle = "Caisse", shortCode = "CASH", balanceAr = 0L),
-                BusinessAccountEntity(name = "MVola Telma", subtitle = "Principal", shortCode = "MV", balanceAr = 0L),
-                BusinessAccountEntity(name = "Orange Money", subtitle = "Mobile", shortCode = "OM", balanceAr = 0L),
-                BusinessAccountEntity(name = "BOA Madagascar", subtitle = "Virements pro", shortCode = "BOA", balanceAr = 0L),
-                BusinessAccountEntity(name = "Alipay Pro", subtitle = "Chine (¥)", shortCode = "ALIPAY", isYuanAccount = true, balanceYuan = 0.0)
+                BusinessAccountEntity(name = "Espèces", subtitle = "Caisse", shortCode = "CASH", balanceAr = 0L, isYuanAccount = false),
+                BusinessAccountEntity(name = "Mvola", subtitle = "Mobile Money", shortCode = "MV", balanceAr = 0L, isYuanAccount = false),
+                BusinessAccountEntity(name = "Alipay", subtitle = "Chine (¥)", shortCode = "ALI", balanceAr = 0L, isYuanAccount = true, balanceYuan = 0.0),
+                BusinessAccountEntity(name = "Wechat Pay", subtitle = "Chine (¥)", shortCode = "WXP", balanceAr = 0L, isYuanAccount = true, balanceYuan = 0.0)
             )
             defaults.forEach { db.businessAccountDao().insertAccount(it) }
         }
+    }
+
+    suspend fun getBusinessAccountsSnapshot(): List<BusinessAccountEntity> {
+        return db.businessAccountDao().getAllAccountsSnapshot()
     }
 
     suspend fun insertBusinessAccount(account: BusinessAccountEntity): Long {
         return db.businessAccountDao().insertAccount(account)
     }
 
+    suspend fun updateBusinessAccount(account: BusinessAccountEntity, oldName: String? = null) {
+        db.businessAccountDao().updateAccount(account)
+        if (!oldName.isNullOrBlank() && !oldName.equals(account.name, ignoreCase = true)) {
+            db.businessTransactionDao().renameAccountInTransactions(oldName, account.name)
+            db.businessTransactionDao().renameDestinationInTransactions(oldName, account.name)
+            if (account.isYuanAccount) {
+                db.yuanTransactionDao().renamePlatformInYuanTransactions(oldName, account.name)
+            }
+        }
+    }
+
+    suspend fun deleteBusinessAccount(accountId: Long) {
+        db.businessAccountDao().deleteAccountById(accountId)
+    }
+
+    suspend fun adjustYuanAccountBalance(deltaYuan: Double, platformAccountName: String = "") {
+        val yuanAccounts = db.businessAccountDao().getAllAccountsSnapshot().filter { it.isYuanAccount && it.isActive }
+        if (yuanAccounts.isEmpty()) return
+
+        val cleanTarget = platformAccountName.trim()
+        val matched = if (cleanTarget.isNotBlank()) {
+            yuanAccounts.firstOrNull { it.name.equals(cleanTarget, ignoreCase = true) }
+                ?: yuanAccounts.firstOrNull {
+                    it.name.contains(cleanTarget, ignoreCase = true) || cleanTarget.contains(it.name, ignoreCase = true)
+                }
+        } else null
+
+        val target = matched ?: if (deltaYuan < 0.0) {
+            yuanAccounts.maxByOrNull { it.balanceYuan } ?: yuanAccounts.first()
+        } else {
+            yuanAccounts.first()
+        }
+        db.businessAccountDao().adjustYuanBalanceByName(target.name, deltaYuan)
+    }
+
     val allBusinessTransactions: Flow<List<BusinessTransactionEntity>> = db.businessTransactionDao().getAllTransactions()
 
     suspend fun insertBusinessTransaction(tx: BusinessTransactionEntity): Long {
         val id = db.businessTransactionDao().insertTransaction(tx)
-        if (tx.accountName.isNotBlank()) {
-            val delta = when (tx.type) {
-                "IN" -> tx.amountAr
-                "OUT", "YUAN" -> -tx.amountAr
-                else -> 0L
+        when (tx.type) {
+            "IN", "INCOME" -> {
+                if (tx.accountName.isNotBlank()) {
+                    db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), tx.amountAr)
+                }
             }
-            if (delta != 0L) {
-                db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), delta)
+            "OUT", "EXPENSE", "YUAN" -> {
+                if (tx.accountName.isNotBlank()) {
+                    db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), -tx.amountAr)
+                }
+            }
+            "TRANSFER" -> {
+                if (tx.accountName.isNotBlank()) {
+                    db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), -tx.amountAr)
+                }
+                if (tx.destinationAccount.isNotBlank()) {
+                    db.businessAccountDao().adjustBalanceByName(tx.destinationAccount.trim(), tx.amountAr)
+                }
             }
         }
         return id
+    }
+
+    suspend fun deleteBusinessTransaction(tx: BusinessTransactionEntity) {
+        when (tx.type) {
+            "IN", "INCOME" -> {
+                if (tx.accountName.isNotBlank()) {
+                    db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), -tx.amountAr)
+                }
+            }
+            "OUT", "EXPENSE", "YUAN" -> {
+                if (tx.accountName.isNotBlank()) {
+                    db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), tx.amountAr)
+                }
+            }
+            "TRANSFER" -> {
+                if (tx.accountName.isNotBlank()) {
+                    db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), tx.amountAr)
+                }
+                if (tx.destinationAccount.isNotBlank()) {
+                    db.businessAccountDao().adjustBalanceByName(tx.destinationAccount.trim(), -tx.amountAr)
+                }
+            }
+        }
+        db.businessTransactionDao().deleteTransactionById(tx.id)
+        tx.yuanTransactionId?.let { yuanId ->
+            val yuanTx = db.yuanTransactionDao().getAllTransactionsSnapshot().firstOrNull { it.id == yuanId }
+            if (yuanTx != null) {
+                val deltaYuan = when (yuanTx.type) {
+                    "BUY", "REFUND" -> -yuanTx.amountYuan
+                    "SPEND" -> yuanTx.amountYuan
+                    else -> 0.0
+                }
+                if (deltaYuan != 0.0) {
+                    adjustYuanAccountBalance(deltaYuan, yuanTx.platform)
+                }
+                db.yuanTransactionDao().deleteById(yuanId)
+            }
+        }
+    }
+
+    val allBusinessInvestments: Flow<List<BusinessInvestmentEntity>> = db.businessInvestmentDao().getAllInvestments()
+
+    suspend fun insertBusinessInvestment(investment: BusinessInvestmentEntity): Long {
+        return db.businessInvestmentDao().insertInvestment(investment)
+    }
+
+    suspend fun updateBusinessInvestment(investment: BusinessInvestmentEntity) {
+        db.businessInvestmentDao().updateInvestment(investment)
+    }
+
+    suspend fun deleteBusinessInvestment(investment: BusinessInvestmentEntity) {
+        db.businessInvestmentDao().deleteInvestmentById(investment.id)
+        investment.linkedTransactionId?.let { txId ->
+            val linkedTx = db.businessTransactionDao().getTransactionById(txId)
+            if (linkedTx != null) {
+                deleteBusinessTransaction(linkedTx)
+            }
+        }
     }
 }

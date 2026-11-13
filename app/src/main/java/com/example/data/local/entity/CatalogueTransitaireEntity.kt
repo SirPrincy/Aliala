@@ -18,5 +18,6 @@ data class CatalogueTransitaireEntity(
     val airNormalLeadDays: String = "7 à 10 jours",
     val airFastLeadDays: String = "3 à 5 jours",
     val seaNormalLeadDays: String = "30 à 45 jours",
-    val goodsCategoryDelays: String = "Générale: Normal | Batterie: +2j | Poudre/Liquide: +3j | Téléphone: +2j"
+    val goodsCategoryDelays: String = "Générale: Normal | Batterie: +2j | Poudre/Liquide: +3j | Téléphone: +2j",
+    val rateApplicationDate: String = ""
 )

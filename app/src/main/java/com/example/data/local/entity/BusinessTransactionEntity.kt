@@ -8,9 +8,11 @@ data class BusinessTransactionEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0L,
     val title: String,
-    val type: String, // "IN", "OUT", "TRANSFER", "YUAN"
+    val type: String, // "IN", "OUT", "EXPENSE", "TRANSFER", "YUAN"
     val amountAr: Long,
     val accountName: String,
+    val destinationAccount: String = "",
+    val yuanTransactionId: Long? = null,
     val referenceTag: String = "",
     val dateMillis: Long = System.currentTimeMillis()
 )

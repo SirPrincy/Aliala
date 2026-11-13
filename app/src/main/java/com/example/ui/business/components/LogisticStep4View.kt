@@ -1034,7 +1034,7 @@ fun LogisticStep4View(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text("Port local Chine", fontFamily = Inter, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("¥ ${Calculations.DOMESTIC_PORT_YUAN.toInt()} · ${CurrencyFormatter.formatAriary(domesticPortAr)}", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+                            Text("¥ ${String.format(java.util.Locale.US, "%.2f", order.domesticShippingYuan)} · ${CurrencyFormatter.formatAriary(domesticPortAr)}", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
                         }
 
                         Row(

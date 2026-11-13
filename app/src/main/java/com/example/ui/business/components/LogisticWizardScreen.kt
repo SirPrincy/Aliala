@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,14 +17,14 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -52,15 +53,21 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.data.model.OrderStatus
+import com.example.ui.business.CatalogueFamilySummaryUi
+import com.example.ui.business.CatalogueTransitaireSummaryUi
 import com.example.ui.theme.PlusJakartaSans
 
 @Composable
 fun LogisticWizardScreen(
     order: BusinessOrderEntity,
     cmupRate: Long,
-    availableYuans: Double = 1840.0,
+    availableYuans: Double = 0.0,
+    transitaires: List<CatalogueTransitaireSummaryUi> = emptyList(),
+    families: List<CatalogueFamilySummaryUi> = emptyList(),
+    accounts: List<com.example.data.local.entity.BusinessAccountEntity> = emptyList(),
     onSpendYuans: (amount: Double, rateAr: Double, note: String) -> Unit = { _, _, _ -> },
     onRefundYuans: (amount: Double, rateAr: Double, note: String) -> Unit = { _, _, _ -> },
+    onBuyYuans: (amountYuan: Double, rateAr: Double, platform: String, sourceAccountName: String) -> Unit = { _, _, _, _ -> },
     onDismiss: () -> Unit,
     onAdvanceStatus: (BusinessOrderEntity) -> Unit = {},
     onDeleteOrder: (BusinessOrderEntity) -> Unit,
@@ -88,6 +95,8 @@ fun LogisticWizardScreen(
         showExitConfirmDialog = true
     }
 
+    val colors = rememberTransitaireColors()
+
     Dialog(
         onDismissRequest = { showExitConfirmDialog = true },
         properties = DialogProperties(
@@ -97,7 +106,7 @@ fun LogisticWizardScreen(
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = Color(0xFFFAF8FF)
+            color = colors.pageBg
         ) {
             Box(
                 modifier = Modifier
@@ -112,7 +121,7 @@ fun LogisticWizardScreen(
                     // TOP APP HEADER: "← Business Import Wizard    [notif] [avatar]"
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = Color(0xFFFAF8FF).copy(alpha = 0.95f),
+                        color = colors.pageBg.copy(alpha = 0.95f),
                         shadowElevation = 1.dp
                     ) {
                         Row(
@@ -134,31 +143,34 @@ fun LogisticWizardScreen(
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                         contentDescription = "Retour",
-                                        tint = Color(0xFF131B2E),
+                                        tint = colors.textPrimary,
                                         modifier = Modifier.size(24.dp)
                                     )
                                 }
                                 Text(
-                                    text = "Business Import Wizard",
+                                    text = "Assistant d'import",
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 18.sp,
-                                    color = Color(0xFF131B2E)
+                                    color = colors.textPrimary
                                 )
                             }
 
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                IconButton(
-                                    onClick = { Toast.makeText(context, "Pas de nouvelle notification", Toast.LENGTH_SHORT).show() }
+                                Surface(
+                                    shape = RoundedCornerShape(9999.dp),
+                                    color = colors.cyanSoftBg
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Notifications,
-                                        contentDescription = "Notifications",
-                                        tint = Color(0xFF3D494C),
-                                        modifier = Modifier.size(22.dp)
+                                    Text(
+                                        text = if (isSuccessScreen) "Terminé" else "Lot #${order.id} · ${currentStepIndex + 1}/6",
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = colors.cyanAccent,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                                     )
                                 }
                                 Box(
@@ -166,28 +178,36 @@ fun LogisticWizardScreen(
                                         .padding(end = 8.dp)
                                         .size(32.dp)
                                         .clip(CircleShape)
-                                        .background(Color(0xFF00687A)),
+                                        .background(colors.cyanAccent),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Person,
+                                        imageVector = Icons.Default.Inventory2,
                                         contentDescription = null,
                                         tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(17.dp)
                                     )
                                 }
                             }
                         }
                     }
 
-                    // SCROLLABLE CONTENT WITH STEPS 1 TO 6 OR FINAL SUCCESS VIEW
-                    Column(
+                    // SCROLLABLE RESPONSIVE CONTENT WITH STEPS 1 TO 6 OR FINAL SUCCESS VIEW
+                    BoxWithConstraints(
                         modifier = Modifier
                             .fillMaxSize()
-                            .verticalScroll(scrollState)
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                            .verticalScroll(scrollState),
+                        contentAlignment = Alignment.TopCenter
                     ) {
+                        val contentMaxWidth = if (maxWidth >= 840.dp) 1040.dp else 680.dp
+                        val horizontalPad = if (maxWidth >= 600.dp) 24.dp else 16.dp
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = contentMaxWidth)
+                                .padding(horizontal = horizontalPad, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
                         if (isSuccessScreen) {
                             // ÉCRAN FINAL DE SUCCÈS : Achat Terminé avec Succès !
                             LogisticSuccessView(
@@ -213,7 +233,12 @@ fun LogisticWizardScreen(
                                 order = order,
                                 cmupRate = cmupRate,
                                 availableYuans = availableYuans,
+                                transitaires = transitaires,
+                                families = families,
+                                accounts = accounts,
+                                onUpdateOrder = onUpdateOrder,
                                 onSpendYuans = onSpendYuans,
+                                onBuyYuans = onBuyYuans,
                                 onConfirmOrder = { updated ->
                                     onUpdateOrder(updated)
                                 },
@@ -229,6 +254,9 @@ fun LogisticWizardScreen(
                             LogisticStep2View(
                                 order = order,
                                 cmupRate = cmupRate,
+                                transitaires = transitaires,
+                                families = families,
+                                onUpdateOrder = onUpdateOrder,
                                 onAdvanceToWeighing = { updated ->
                                     onUpdateOrder(updated)
                                 },
@@ -300,6 +328,7 @@ fun LogisticWizardScreen(
                         }
 
                         Spacer(modifier = Modifier.height(20.dp))
+                        }
                     }
                 }
             }

@@ -24,6 +24,10 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import com.example.ui.business.managers.FinancialReporter
+import com.example.ui.business.managers.SalesManager
+import com.example.ui.business.managers.StockManager
+import com.example.ui.business.managers.TransitaireManager
 import com.example.util.CurrencyFormatter
 
 private data class BusinessRawData(
@@ -35,7 +39,8 @@ private data class BusinessRawData(
     val clients: List<ClientEntity>,
     val transitaires: List<CatalogueTransitaireEntity>,
     val businessTransactions: List<com.example.data.local.entity.BusinessTransactionEntity> = emptyList(),
-    val salePayments: List<com.example.data.local.entity.SalePaymentEntity> = emptyList()
+    val salePayments: List<com.example.data.local.entity.SalePaymentEntity> = emptyList(),
+    val accounts: List<com.example.data.local.entity.BusinessAccountEntity> = emptyList()
 )
 
 private data class PurchasesFilters(
@@ -62,6 +67,7 @@ private data class CatalogueFilters(
     val subTab: String,
     val searchQuery: String,
     val family: String,
+    val stockFilter: String,
     val showHidden: Boolean,
     val sort: String,
     val viewMode: String
@@ -79,6 +85,11 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     private val db = AppDatabase.getInstance(application)
     private val settingsDataStore = SettingsDataStore(application)
     private val repository = AppRepository(application, db, settingsDataStore)
+
+    val salesManager = SalesManager(repository)
+    val stockManager = StockManager(repository)
+    val transitaireManager = TransitaireManager(repository)
+    val financialReporter = FinancialReporter(repository)
 
     private val selectedContextFlow = MutableStateFlow("Business")
     private val selectedSubTabFlow = MutableStateFlow("Aperçu")
@@ -113,8 +124,9 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     private val catalogueSubTabFlow = MutableStateFlow("Articles") // "Articles", "Familles", "Plateformes"
     private val catalogueSearchQueryFlow = MutableStateFlow("")
     private val catalogueFamilyFilterFlow = MutableStateFlow("Toutes")
+    private val catalogueStockFilterFlow = MutableStateFlow("Tous")
     private val catalogueShowHiddenFlow = MutableStateFlow(false)
-    private val catalogueSortFlow = MutableStateFlow("Plus vendus") // "Plus vendus", "Dernier coût", "Nom"
+    private val catalogueSortFlow = MutableStateFlow("Plus vendus") // "Plus vendus", "Marge élevée", "Stock bas", "Dernier coût", "Nom", "Plus récents"
     private val catalogueViewModeFlow = MutableStateFlow("LIST") // "LIST" ou "GRID"
 
     private val clientsFilterFlow = MutableStateFlow("all")
@@ -125,18 +137,27 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         repository.yuanTransactions,
         repository.businessSales,
         combine(repository.catalogueFamilies, repository.cataloguePlatforms, repository.salePayments) { f, p, sp -> Triple(f, p, sp) },
-        combine(repository.clients, repository.catalogueTransitaires, repository.allBusinessTransactions) { c, t, tx -> Triple(c, t, tx) }
-    ) { orders, yuanTxs, sales, famPlatPay, clientTransTx ->
+        combine(
+            repository.clients,
+            repository.catalogueTransitaires,
+            repository.allBusinessTransactions,
+            repository.allBusinessAccounts
+        ) { c, t, tx, acc ->
+            listOf(c, t, tx, acc)
+        }
+    ) { orders, yuanTxs, sales, famPlatPay, other ->
+        @Suppress("UNCHECKED_CAST")
         BusinessRawData(
-            orders,
-            yuanTxs,
-            sales,
-            famPlatPay.first,
-            famPlatPay.second,
-            clientTransTx.first,
-            clientTransTx.second,
-            clientTransTx.third,
-            famPlatPay.third
+            orders = orders,
+            yuanTxs = yuanTxs,
+            sales = sales,
+            families = famPlatPay.first,
+            platforms = famPlatPay.second,
+            clients = other[0] as List<ClientEntity>,
+            transitaires = other[1] as List<CatalogueTransitaireEntity>,
+            businessTransactions = other[2] as List<com.example.data.local.entity.BusinessTransactionEntity>,
+            salePayments = famPlatPay.third,
+            accounts = other[3] as List<com.example.data.local.entity.BusinessAccountEntity>
         )
     }
 
@@ -177,9 +198,10 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     private val cataloguePart2Flow = combine(
         catalogueShowHiddenFlow,
         catalogueSortFlow,
-        catalogueViewModeFlow
-    ) { hidden, sort, mode ->
-        listOf(hidden.toString(), sort, mode)
+        catalogueViewModeFlow,
+        catalogueStockFilterFlow
+    ) { hidden, sort, mode, stockFilter ->
+        listOf(hidden.toString(), sort, mode, stockFilter)
     }
 
     private val catalogueFiltersFlow = combine(
@@ -193,7 +215,8 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             family = p1[3],
             showHidden = p2[0].toBoolean(),
             sort = p2[1],
-            viewMode = p2[2]
+            viewMode = p2[2],
+            stockFilter = p2[3]
         )
     }
 
@@ -253,7 +276,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         val monthSales = sales.filter { it.saleDate in startOfMonthMs..endOfMonthMs }
         val monthOrders = orders.filter { it.orderDate in startOfMonthMs..endOfMonthMs }
 
-        // 2. Portefeuille Yuans
+        // 2. Portefeuille Yuans (source réelle : comptes Yuan actifs + CMUP exact sans troncature)
         val buyTxs = yuanTxs.filter { it.type == "BUY" }
         val refundTxs = yuanTxs.filter { it.type == "REFUND" }
         val spendTxs = yuanTxs.filter { it.type == "SPEND" }
@@ -262,9 +285,17 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         val totalSpentYuan = spendTxs.sumOf { it.amountYuan }
         val totalCostAr = buyTxs.sumOf { it.amountAr }
 
-        val availableYuans = totalBoughtYuan + totalRefundedYuan - totalSpentYuan
-        val cmupRate = if (totalBoughtYuan > 0.0) (totalCostAr / totalBoughtYuan).toLong() else 650L
-        val estimatedYuanValue = (availableYuans.coerceAtLeast(0.0) * cmupRate).toLong()
+        val activeYuanAccounts = raw.accounts.filter { it.isYuanAccount && it.isActive }
+        val txNetYuans = (totalBoughtYuan + totalRefundedYuan - totalSpentYuan).coerceAtLeast(0.0)
+        val accountsYuanSum = activeYuanAccounts.sumOf { it.balanceYuan }
+        val availableYuans = when {
+            activeYuanAccounts.isEmpty() -> 0.0
+            accountsYuanSum == 0.0 && txNetYuans > 0.0 -> txNetYuans
+            else -> accountsYuanSum.coerceAtLeast(0.0)
+        }
+        val exactCmupRate = if (totalBoughtYuan > 0.0) totalCostAr.toDouble() / totalBoughtYuan else 650.0
+        val cmupRate = kotlin.math.round(exactCmupRate).toLong()
+        val estimatedYuanValue = kotlin.math.round(availableYuans * exactCmupRate).toLong()
 
         // Alerte yuans insuffisants si brouillon présent
         val draftOrders = orders.filter { it.status == "DRAFT" }
@@ -296,6 +327,10 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         val freightAndExpenses = monthOrders.sumOf { it.freightCostAr }
         val netProfit = salesTotal - salesCost - freightAndExpenses
 
+        val (allTimeSalesTotal, allTimeSalesCost) = computeCashInAndCost(0L, Long.MAX_VALUE)
+        val allTimeFreightCost = orders.sumOf { it.freightCostAr }
+        val cumulativeBusinessProfitAr = allTimeSalesTotal - allTimeSalesCost - allTimeFreightCost
+
         val prevRefDate = refDate.minusMonths(1)
         val startOfPrevMonthMs = prevRefDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
         val endOfPrevMonthMs = prevRefDate.plusMonths(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() - 1
@@ -308,8 +343,12 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         } else 0
 
         // 4. Alertes trésorerie
+        val totalTransitairePaidRecorded = raw.businessTransactions
+            .filter { it.referenceTag.startsWith("TRANSITAIRE_") && it.type == "EXPENSE" }
+            .sumOf { it.amountAr }
+        val totalFreightInvoiced = orders.sumOf { it.freightCostAr }
+        val freightDueAmount = (totalFreightInvoiced - totalTransitairePaidRecorded).coerceAtLeast(0L)
         val unpaidFreightOrders = orders.filter { !it.isFreightPaid }
-        val freightDueAmount = unpaidFreightOrders.sumOf { it.freightCostAr }
         val unpaidSales = sales.filter { !it.isFullyPaid }
         val clientReceivables = unpaidSales.sumOf { it.totalPriceAr - it.paidAmountAr }
         val pendingClientsCount = unpaidSales.map { it.clientName }.filter { it.isNotBlank() }.distinct().size
@@ -339,7 +378,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 id = o.id,
                 productName = o.product,
                 variants = if (o.variants.isNotBlank()) o.variants else "Quantité : ${o.quantityBought}",
-                carrier = if (o.carrier.isNotBlank()) o.carrier else "Transitaire MadaAir",
+                carrier = if (o.carrier.isNotBlank()) o.carrier else "Non spécifié",
                 delayBadge = when (o.status) {
                     "CUSTOMS" -> "En douane"
                     "QUALITY_CONTROL" -> "Contrôle qualité"
@@ -539,9 +578,6 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         // ==========================================
         // 13. CALCULS DYNAMIQUES DU MODULE CATALOGUE
         // ==========================================
-        val activeCatalogueCount = orders.count { !it.isHidden }
-        val hiddenCatalogueCount = orders.count { it.isHidden }
-
         // Puces de familles pour le catalogue
         val defaultFamilies = listOf(
             CatalogueFamilyEntity(id = 1, name = "Électronique & Audio", emoji = "🎧", colorHex = "#06B6D4", displayOrder = 1),
@@ -551,22 +587,195 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         )
         val availableFamilies = if (raw.families.isNotEmpty()) raw.families else defaultFamilies
 
+        // Regroupement des lots par article (SKU ou nom normalisé) pour une fiche produit consolidée
+        val inTransitStatuses = setOf("ORDERED", "WAREHOUSE", "GUANGZHOU", "FLIGHT", "CUSTOMS", "QUALITY_CONTROL")
+        val allCatalogueArticles = orders
+            .groupBy { order ->
+                val skuKey = order.referenceCode.trim().lowercase()
+                val nameKey = order.product.trim().lowercase()
+                if (skuKey.isNotBlank()) "sku:$skuKey" else "name:$nameKey"
+            }
+            .map { (articleKey, groupLots) ->
+                val sortedLots = groupLots.sortedByDescending { it.orderDate }
+                val primary = sortedLots.firstOrNull { !it.isHidden } ?: sortedLots.first()
+
+                // Hérite les métadonnées riches si absentes du lot le plus récent
+                val resolvedImage = sortedLots.firstOrNull { it.imageUrl.isNotBlank() }?.imageUrl ?: ""
+                val resolvedFamily = sortedLots.firstOrNull { it.family.isNotBlank() }?.family ?: "Divers"
+                val resolvedPlatform = sortedLots.firstOrNull { it.platform.isNotBlank() }?.platform ?: primary.supplier
+                val resolvedWeight = sortedLots.firstOrNull { (it.weightKg ?: 0.0) > 0.0 }?.weightKg
+                val resolvedResale = sortedLots.firstOrNull { it.resalePriceAr > 0L }?.resalePriceAr ?: primary.resalePriceAr
+                val resolvedSku = sortedLots.firstOrNull { it.referenceCode.isNotBlank() }?.referenceCode ?: primary.referenceCode
+                val resolvedNotes = sortedLots.firstOrNull { it.receptionNotes.isNotBlank() }?.receptionNotes ?: ""
+
+                val hydratedPrimary = primary.copy(
+                    imageUrl = resolvedImage,
+                    family = resolvedFamily,
+                    platform = resolvedPlatform,
+                    weightKg = resolvedWeight,
+                    resalePriceAr = resolvedResale,
+                    referenceCode = resolvedSku,
+                    receptionNotes = resolvedNotes
+                )
+
+                val totalStock = sortedLots.sumOf { it.stockCount.coerceAtLeast(0) }
+                val totalTransit = sortedLots.filter { it.status in inTransitStatuses }.sumOf { it.quantityBought.coerceAtLeast(0) }
+                val totalReserved = sortedLots.sumOf { it.reservedCount.coerceAtLeast(0) }
+                val totalDefective = sortedLots.sumOf { it.defectiveCount.coerceAtLeast(0) }
+                val totalBought = sortedLots.sumOf { if (it.status == "CATALOGUE") 0 else it.quantityBought.coerceAtLeast(0) }
+
+                val lotIds = sortedLots.map { it.id }.toSet()
+                val normalizedProduct = hydratedPrimary.product.trim().lowercase()
+                val matchingSales = sales.filter { sale ->
+                    (sale.linkedOrderId != null && sale.linkedOrderId in lotIds) ||
+                    (normalizedProduct.isNotBlank() && sale.productName.trim().lowercase() == normalizedProduct)
+                }.sortedByDescending { it.saleDate }
+
+                val salesQty = matchingSales.sumOf { it.quantity }
+                val lotSoldSum = sortedLots.sumOf { it.unitsSold.coerceAtLeast(0) }
+                val totalSold = maxOf(lotSoldSum, salesQty)
+
+                val latestCostLot = sortedLots.firstOrNull {
+                    it.unitCostAr > 0L || it.priceYuan > 0.0
+                } ?: hydratedPrimary
+                val latestPriceYuan = latestCostLot.priceYuan
+                val latestUnitCostAr = when {
+                    latestCostLot.unitCostAr > 0L -> latestCostLot.unitCostAr
+                    latestCostLot.priceYuan > 0.0 -> {
+                        val effRate = if (latestCostLot.exchangeRate > 0.0) latestCostLot.exchangeRate else cmupRate.toDouble()
+                        val unitFreight = if (latestCostLot.freightCostAr > 0L && latestCostLot.quantityBought > 0) {
+                            latestCostLot.freightCostAr / latestCostLot.quantityBought
+                        } else 0L
+                        kotlin.math.round(latestCostLot.priceYuan * effRate).toLong() + unitFreight
+                    }
+                    else -> 0L
+                }
+
+                val computedMarginPct = when {
+                    resolvedResale > 0L && latestUnitCostAr > 0L ->
+                        (((resolvedResale - latestUnitCostAr).toDouble() / resolvedResale.toDouble()) * 100).toInt()
+                    hydratedPrimary.marginPercent != 0 -> hydratedPrimary.marginPercent
+                    else -> 0
+                }
+
+                val totalRevenueAr = if (matchingSales.isNotEmpty()) {
+                    matchingSales.sumOf { it.totalPriceAr }
+                } else {
+                    totalSold.toLong() * resolvedResale
+                }
+                val realProfitAr = if (matchingSales.isNotEmpty()) {
+                    matchingSales.sumOf { sale ->
+                        val c = if (sale.unitCostAr > 0L) sale.unitCostAr else latestUnitCostAr
+                        (sale.totalPriceAr - (c * sale.quantity))
+                    }
+                } else {
+                    (resolvedResale - latestUnitCostAr).coerceAtLeast(0L) * totalSold
+                }
+
+                val matchedFam = availableFamilies.firstOrNull { fam ->
+                    resolvedFamily.equals(fam.name, ignoreCase = true) ||
+                    fam.name.contains(resolvedFamily, ignoreCase = true) ||
+                    (resolvedFamily.length >= 4 && fam.name.contains(resolvedFamily.take(4), ignoreCase = true))
+                }
+
+                val isHiddenArticle = sortedLots.all { it.isHidden }
+                val isRefOnly = sortedLots.all { it.status == "CATALOGUE" && it.quantityBought == 0 && it.stockCount == 0 }
+                val statusTag = when {
+                    isHiddenArticle -> "Masqué"
+                    totalStock > 5 -> "En stock"
+                    totalStock in 1..5 -> "Stock faible"
+                    totalTransit > 0 -> "En transit"
+                    isRefOnly -> "Référentiel"
+                    else -> "Rupture"
+                }
+
+                val combinedVariants = sortedLots
+                    .flatMap { com.example.ui.business.components.VariantColorUtils.parseVariants(it.variants) }
+                    .distinct()
+
+                CatalogueArticleSummaryUi(
+                    articleKey = articleKey,
+                    primaryOrder = hydratedPrimary,
+                    lots = sortedLots,
+                    lotsCount = sortedLots.size,
+                    totalStockCount = totalStock,
+                    totalInTransitCount = totalTransit,
+                    totalReservedCount = totalReserved,
+                    totalDefectiveCount = totalDefective,
+                    totalBoughtCount = totalBought,
+                    totalSoldCount = totalSold,
+                    totalRevenueAr = totalRevenueAr,
+                    realProfitAr = realProfitAr,
+                    latestPriceYuan = latestPriceYuan,
+                    latestUnitCostAr = latestUnitCostAr,
+                    resalePriceAr = resolvedResale,
+                    marginPercent = computedMarginPct,
+                    familyEmoji = matchedFam?.emoji ?: "📦",
+                    familyColorHex = matchedFam?.colorHex ?: "#06B6D4",
+                    statusTag = statusTag,
+                    isHidden = isHiddenArticle,
+                    isReferenceOnly = isRefOnly,
+                    allVariants = combinedVariants,
+                    salesHistory = matchingSales
+                )
+            }
+
+        val activeCatalogueCount = allCatalogueArticles.count { !it.isHidden }
+        val hiddenCatalogueCount = allCatalogueArticles.count { it.isHidden }
+
         val catalogueFamilyPills = mutableListOf<FamilyFilterUi>()
         catalogueFamilyPills.add(FamilyFilterUi("Toutes", activeCatalogueCount))
         availableFamilies.forEach { fam ->
-            val countForFam = orders.filter { o ->
-                !o.isHidden && (
-                    o.family.equals(fam.name, ignoreCase = true) ||
-                    fam.name.contains(o.family, ignoreCase = true) ||
-                    (o.family.length >= 4 && fam.name.contains(o.family.take(4), ignoreCase = true))
+            val countForFam = allCatalogueArticles.count { art ->
+                !art.isHidden && (
+                    art.primaryOrder.family.equals(fam.name, ignoreCase = true) ||
+                    fam.name.contains(art.primaryOrder.family, ignoreCase = true) ||
+                    (art.primaryOrder.family.length >= 4 && fam.name.contains(art.primaryOrder.family.take(4), ignoreCase = true))
                 )
-            }.size
+            }
             catalogueFamilyPills.add(FamilyFilterUi(fam.name, countForFam))
         }
 
-        // Filtrage des articles du catalogue
-        val catalogueBaseList = if (cFilters.showHidden) orders else orders.filter { !it.isHidden }
+        val visibleCatalogueArticles = allCatalogueArticles
+            .filter { art ->
+                val matchHidden = if (cFilters.showHidden) true else !art.isHidden
+                val matchSearch = if (cFilters.searchQuery.isBlank()) true else {
+                    val q = cFilters.searchQuery
+                    art.primaryOrder.product.contains(q, ignoreCase = true) ||
+                    art.primaryOrder.referenceCode.contains(q, ignoreCase = true) ||
+                    art.allVariants.any { it.contains(q, ignoreCase = true) } ||
+                    art.primaryOrder.family.contains(q, ignoreCase = true) ||
+                    art.primaryOrder.platform.contains(q, ignoreCase = true)
+                }
+                val matchFamily = if (cFilters.family == "Toutes") true else {
+                    val f = art.primaryOrder.family
+                    f.equals(cFilters.family, ignoreCase = true) ||
+                    cFilters.family.contains(f, ignoreCase = true) ||
+                    (f.length >= 4 && cFilters.family.contains(f.take(4), ignoreCase = true))
+                }
+                val matchStock = when (cFilters.stockFilter) {
+                    "En stock" -> art.totalStockCount > 0
+                    "En transit" -> art.totalInTransitCount > 0
+                    "Rupture" -> art.totalStockCount == 0 && art.totalInTransitCount == 0 && !art.isReferenceOnly
+                    "Référentiel" -> art.isReferenceOnly
+                    else -> true
+                }
+                matchHidden && matchSearch && matchFamily && matchStock
+            }
+            .let { list ->
+                when (cFilters.sort) {
+                    "Plus vendus" -> list.sortedByDescending { it.totalSoldCount }
+                    "Marge élevée" -> list.sortedByDescending { it.marginPercent }
+                    "Stock bas" -> list.sortedBy { it.totalStockCount }
+                    "Dernier coût" -> list.sortedByDescending { it.latestUnitCostAr }
+                    "Nom" -> list.sortedBy { it.primaryOrder.product.lowercase() }
+                    "Plus récents" -> list.sortedByDescending { it.primaryOrder.orderDate }
+                    else -> list.sortedByDescending { it.totalSoldCount }
+                }
+            }
 
+        // Compatibilité descendante pour visibleCatalogueOrders
+        val catalogueBaseList = if (cFilters.showHidden) orders else orders.filter { !it.isHidden }
         val filteredCatalogueOrders = catalogueBaseList.filter { order ->
             val matchSearch = if (cFilters.searchQuery.isBlank()) true else {
                 order.product.contains(cFilters.searchQuery, ignoreCase = true) ||
@@ -574,13 +783,11 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 order.variants.contains(cFilters.searchQuery, ignoreCase = true) ||
                 order.family.contains(cFilters.searchQuery, ignoreCase = true)
             }
-
             val matchFamily = if (cFilters.family == "Toutes") true else {
                 order.family.equals(cFilters.family, ignoreCase = true) ||
                 cFilters.family.contains(order.family, ignoreCase = true) ||
                 (order.family.length >= 4 && cFilters.family.contains(order.family.take(4), ignoreCase = true))
             }
-
             matchSearch && matchFamily
         }.let { list ->
             when (cFilters.sort) {
@@ -703,20 +910,54 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             val balanceDue = (totalInvoiced - paidAmount).coerceAtLeast(0L)
             val totalWeight = transOrders.sumOf { it.weightKg ?: 0.0 }
             val effectiveRate = if (totalWeight > 0.0 && totalInvoiced > 0L) (totalInvoiced / totalWeight).toLong() else 0L
-            val latestOrder = transOrders.maxByOrNull { it.orderDate }
+            val sortedOrders = transOrders.sortedByDescending { it.orderDate }
+            val latestOrder = sortedOrders.firstOrNull()
             val lastDate = latestOrder?.let { dateFmt.format(java.util.Date(it.orderDate)) } ?: ""
             val lastCode = latestOrder?.referenceCode?.ifBlank { "#CMD-${latestOrder.id}" } ?: ""
+            val recentShipments = sortedOrders.take(6).map { ord ->
+                val isDelivered = ord.status in listOf("STOCK", "DELIVERED", "SOLD", "ARRIVED")
+                val statusLabel = when (ord.status) {
+                    "ORDERED" -> "Commandé"
+                    "GUANGZHOU" -> "Entrepôt Chine"
+                    "FLIGHT" -> "En transit"
+                    "CUSTOMS" -> "Douane Mada"
+                    "QUALITY_CONTROL" -> "Contrôle qualité"
+                    "STOCK", "ARRIVED" -> "Arrivé Mada"
+                    "DELIVERED", "SOLD" -> "Livré / Vendu"
+                    else -> ord.status
+                }
+                val modeStr = if (ord.freightMode.equals("SEA", ignoreCase = true) || ord.freightMode.equals("MARITIME", ignoreCase = true)) {
+                    "SEA"
+                } else {
+                    "AIR"
+                }
+                TransitaireShipmentSummaryUi(
+                    id = ord.id,
+                    code = ord.referenceCode.ifBlank { "#CMD-${ord.id}" },
+                    title = ord.product.ifBlank { "Colis #${ord.id}" },
+                    transportMode = modeStr,
+                    weightKg = ord.weightKg ?: 0.0,
+                    volumeCbm = ord.volumeM3 ?: 0.0,
+                    freightCostAr = ord.freightCostAr,
+                    statusLabel = statusLabel,
+                    isDelivered = isDelivered,
+                    dateLabel = dateFmt.format(java.util.Date(ord.orderDate))
+                )
+            }
+            val dynamicHub = t.address.lines().firstOrNull()?.trim()?.take(38)?.ifBlank { null }
+                ?: "Fret Chine → Madagascar"
 
             CatalogueTransitaireSummaryUi(
                 id = t.id,
                 name = t.name,
                 initials = inits,
-                routeHub = "Hub Chine → Madagascar",
+                routeHub = dynamicHub,
                 airRateAr = if (t.airNormalRateAr > 0) t.airNormalRateAr else (if (t.defaultTariffPerKg > 0) t.defaultTariffPerKg else 45000L),
                 airFastRateAr = if (t.airFastRateAr > 0) t.airFastRateAr else 60000L,
                 seaRateAr = if (t.seaRateAr > 0) t.seaRateAr else 18000L,
                 contact = t.contact,
                 chinaWarehouseAddress = t.address,
+                rateApplicationDate = t.rateApplicationDate,
                 internalNotes = t.notes.removePrefix("[ARCHIVED]").trim(),
                 isArchived = t.notes.startsWith("[ARCHIVED]"),
                 activeShipmentsCount = inTransitCount,
@@ -729,7 +970,8 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 airLeadDays = t.airNormalLeadDays.ifBlank { "7 à 10 jours" },
                 airFastLeadDays = t.airFastLeadDays.ifBlank { "3 à 5 jours" },
                 seaLeadDays = t.seaNormalLeadDays.ifBlank { "30 à 45 jours" },
-                goodsCategoryDelays = t.goodsCategoryDelays.ifBlank { "Générale: Normal | Batterie: +2j | Poudre/Liquide: +3j | Téléphone: +2j" }
+                goodsCategoryDelays = t.goodsCategoryDelays,
+                recentShipments = recentShipments
             )
         }
 
@@ -841,6 +1083,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             catalogueSubTab = cFilters.subTab,
             catalogueSearchQuery = cFilters.searchQuery,
             catalogueFamilyFilter = cFilters.family,
+            catalogueStockFilter = cFilters.stockFilter,
             catalogueShowHidden = cFilters.showHidden,
             catalogueSort = cFilters.sort,
             catalogueViewMode = cFilters.viewMode,
@@ -848,12 +1091,15 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             hiddenCatalogueCount = hiddenCatalogueCount,
             catalogueFamilyPills = catalogueFamilyPills,
             visibleCatalogueOrders = filteredCatalogueOrders,
+            allCatalogueArticles = allCatalogueArticles,
+            visibleCatalogueArticles = visibleCatalogueArticles,
             catalogueFamilies = catalogueFamiliesSummary,
             cataloguePlatforms = cataloguePlatformsSummary,
             catalogueTransitaires = catalogueTransitairesSummary,
 
             // Hero
             netProfit = netProfit,
+            cumulativeBusinessProfitAr = cumulativeBusinessProfitAr,
             vsPrevMonthPercent = vsPrevMonthPercent,
             salesTotal = salesTotal,
             salesCost = salesCost,
@@ -864,6 +1110,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             availableYuans = availableYuans,
             cmupRate = cmupRate,
             estimatedYuanValueAr = estimatedYuanValue,
+            businessAccounts = raw.accounts,
             insufficientYuanShortage = insufficientShortage,
             freightDueAmount = freightDueAmount,
             freightDueDays = freightDueDays,
@@ -999,6 +1246,10 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         catalogueFamilyFilterFlow.value = family
     }
 
+    fun onCatalogueStockFilterSelected(filter: String) {
+        catalogueStockFilterFlow.value = filter
+    }
+
     fun onToggleCatalogueShowHidden() {
         catalogueShowHiddenFlow.value = !catalogueShowHiddenFlow.value
     }
@@ -1020,37 +1271,30 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         resaleAr: Long,
         stockCount: Int,
         weightKg: Double = 0.2,
-        platform: String = "1688"
+        platform: String = "1688",
+        imageUrl: String = "",
+        freightMode: String = "AÉRIEN",
+        notes: String = "",
+        estimatedFreightPerKgAr: Long = 45000L
     ) {
         viewModelScope.launch {
-            val sku = referenceCode.ifBlank {
-                val cleanPrefix = product.take(4).uppercase().replace(" ", "")
-                "$cleanPrefix-${(100..999).random()}"
-            }
-            repository.insertBusinessOrder(
-                BusinessOrderEntity(
-                    product = product,
-                    supplier = platform,
-                    platform = platform,
-                    referenceCode = sku,
-                    quantityBought = stockCount,
-                    priceYuan = priceYuan,
-                    exchangeRate = uiState.value.cmupRate.toDouble(),
-                    resalePriceAr = resaleAr,
-                    stockCount = stockCount,
-                    weightKg = weightKg,
-                    status = if (stockCount > 0) "DELIVERY_READY" else "CATALOGUE",
-                    category = "BUSINESS",
-                    family = family,
-                    carrier = "Transitaire MadaAir",
-                    variants = variants,
-                    freightCostAr = 0L,
-                    isFreightPaid = true,
-                    unitsSold = 0,
-                    marginPercent = if (priceYuan > 0) (((resaleAr - (priceYuan * 650.0)) / resaleAr.coerceAtLeast(1L)) * 100).toInt() else 45
-                )
+            val msg = stockManager.addCatalogueArticle(
+                product = product,
+                family = family,
+                referenceCode = referenceCode,
+                variants = variants,
+                priceYuan = priceYuan,
+                resaleAr = resaleAr,
+                stockCount = stockCount,
+                weightKg = weightKg,
+                platform = platform,
+                cmupRate = uiState.value.cmupRate.toDouble(),
+                imageUrl = imageUrl,
+                freightMode = freightMode,
+                notes = notes,
+                estimatedFreightPerKgAr = estimatedFreightPerKgAr
             )
-            snackbarFlow.value = "$product ajouté au catalogue ($sku)"
+            snackbarFlow.value = msg
         }
     }
 
@@ -1062,48 +1306,72 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         isHidden: Boolean
     ) {
         viewModelScope.launch {
-            repository.updateBusinessOrder(
-                order.copy(
-                    priceYuan = newPriceYuan,
-                    resalePriceAr = newResaleAr,
-                    variants = newVariants,
-                    isHidden = isHidden
-                )
+            val msg = stockManager.updateCatalogueArticle(order, newPriceYuan, newResaleAr, newVariants, isHidden)
+            snackbarFlow.value = msg
+        }
+    }
+
+    fun updateCatalogueArticleFull(
+        article: CatalogueArticleSummaryUi,
+        newProduct: String,
+        newReferenceCode: String,
+        newFamily: String,
+        newPlatform: String,
+        newPriceYuan: Double,
+        newResaleAr: Long,
+        newWeightKg: Double?,
+        newFreightMode: String,
+        newVariants: String,
+        newImageUrl: String,
+        newNotes: String,
+        isHidden: Boolean
+    ) {
+        viewModelScope.launch {
+            val msg = stockManager.updateCatalogueArticleFull(
+                article = article,
+                newProduct = newProduct,
+                newReferenceCode = newReferenceCode,
+                newFamily = newFamily,
+                newPlatform = newPlatform,
+                newPriceYuan = newPriceYuan,
+                newResaleAr = newResaleAr,
+                newWeightKg = newWeightKg,
+                newFreightMode = newFreightMode,
+                newVariants = newVariants,
+                newImageUrl = newImageUrl,
+                newNotes = newNotes,
+                isHidden = isHidden,
+                cmupRate = uiState.value.cmupRate.toDouble()
             )
-            snackbarFlow.value = "${order.product} mis à jour"
+            snackbarFlow.value = msg
+        }
+    }
+
+    fun toggleHideCatalogueArticle(article: CatalogueArticleSummaryUi) {
+        viewModelScope.launch {
+            val msg = stockManager.toggleHideCatalogueArticle(article)
+            snackbarFlow.value = msg
+        }
+    }
+
+    fun deleteCatalogueArticle(article: CatalogueArticleSummaryUi) {
+        viewModelScope.launch {
+            val msg = stockManager.deleteCatalogueArticle(article)
+            snackbarFlow.value = msg
         }
     }
 
     fun addCatalogueFamily(name: String, emoji: String = "✨", colorHex: String = "#06B6D4") {
-        if (name.isBlank()) return
         viewModelScope.launch {
-            val snapshot = repository.getAllCatalogueFamiliesSnapshot()
-            val nextOrder = (snapshot.maxOfOrNull { it.displayOrder } ?: 0) + 1
-            repository.insertCatalogueFamily(
-                CatalogueFamilyEntity(
-                    name = name.trim(),
-                    emoji = emoji,
-                    colorHex = colorHex,
-                    displayOrder = nextOrder,
-                    isDemo = false
-                )
-            )
-            snackbarFlow.value = "Famille '${name.trim()}' créée avec succès"
+            val msg = stockManager.addCatalogueFamily(name, emoji, colorHex)
+            if (msg != null) snackbarFlow.value = msg
         }
     }
 
     fun deleteCatalogueFamily(family: CatalogueFamilySummaryUi, targetFamilyName: String = "Divers") {
         viewModelScope.launch {
-            // Protection des données : transfert des articles associés vers la famille cible
-            val allOrders = repository.businessOrders.firstOrNull() ?: emptyList()
-            val toMigrate = allOrders.filter { it.family.equals(family.name, ignoreCase = true) }
-            toMigrate.forEach { order ->
-                repository.updateBusinessOrder(order.copy(family = targetFamilyName))
-            }
-            if (family.id > 0) {
-                repository.deleteCatalogueFamily(family.id)
-            }
-            snackbarFlow.value = "Famille '${family.name}' supprimée (articles transférés vers $targetFamilyName)"
+            val msg = stockManager.deleteCatalogueFamily(family, targetFamilyName)
+            snackbarFlow.value = msg
         }
     }
 
@@ -1145,29 +1413,22 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         assignedClient: String
     ) {
         viewModelScope.launch {
-            repository.updateBusinessOrder(
-                order.copy(
-                    stockCount = newStockCount.coerceAtLeast(0),
-                    reservedCount = newReservedCount.coerceAtLeast(0),
-                    defectiveCount = newDefectiveCount.coerceAtLeast(0),
-                    assignedClient = assignedClient
-                )
-            )
-            snackbarFlow.value = "Stock mis à jour pour ${order.product}"
+            val msg = stockManager.adjustStock(order, newStockCount, newReservedCount, newDefectiveCount, assignedClient)
+            snackbarFlow.value = msg
         }
     }
 
     fun toggleHideStockItem(order: BusinessOrderEntity) {
         viewModelScope.launch {
-            repository.updateBusinessOrder(order.copy(isHidden = !order.isHidden))
-            snackbarFlow.value = if (!order.isHidden) "${order.product} masqué" else "${order.product} réaffiché"
+            val msg = stockManager.toggleHideStockItem(order)
+            snackbarFlow.value = msg
         }
     }
 
     fun deleteStockOrder(order: BusinessOrderEntity) {
         viewModelScope.launch {
-            repository.deleteBusinessOrder(order.id)
-            snackbarFlow.value = "${order.product} supprimé"
+            val msg = stockManager.deleteStockOrder(order)
+            snackbarFlow.value = msg
         }
     }
 
@@ -1186,25 +1447,8 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
 
     fun recordSalePayment(sale: BusinessSaleEntity, additionalPaymentAr: Long, paymentMethod: String = "ESPECES") {
         viewModelScope.launch {
-            if (additionalPaymentAr <= 0L) return@launch
-            val remainingDue = (sale.totalPriceAr - sale.paidAmountAr).coerceAtLeast(0L)
-            val appliedAmount = additionalPaymentAr.coerceAtMost(remainingDue)
-            if (appliedAmount <= 0L) return@launch
-            val newPaid = sale.paidAmountAr + appliedAmount
-            val updated = sale.copy(
-                paidAmountAr = newPaid,
-                isFullyPaid = newPaid >= sale.totalPriceAr
-            )
-            repository.updateBusinessSale(updated)
-            repository.insertSalePayment(
-                SalePaymentEntity(
-                    saleId = sale.id,
-                    amountAr = appliedAmount,
-                    paymentDate = System.currentTimeMillis(),
-                    paymentMethod = paymentMethod
-                )
-            )
-            snackbarFlow.value = "Règlement de ${CurrencyFormatter.formatAriary(appliedAmount)} enregistré pour ${sale.clientName}"
+            val msg = salesManager.recordSalePayment(sale, additionalPaymentAr, paymentMethod)
+            if (msg != null) snackbarFlow.value = msg
         }
     }
 
@@ -1221,196 +1465,65 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         linkedOrderId: Long? = null
     ) {
         viewModelScope.launch {
-            val totalPrice = unitPriceAr * quantity
-            val allSales = repository.businessSales.firstOrNull() ?: emptyList()
-
-            // Numérotation séquentielle et unique (ex: FAC-0001, FAC-0002...)
-            val maxInvoiceSeq = allSales.mapNotNull { s ->
-                val digits = s.invoiceNumber.filter { it.isDigit() }
-                digits.toIntOrNull()
-            }.maxOrNull() ?: 0
-            val nextSeq = maxInvoiceSeq + 1
-            val newInvoiceNum = String.format(Locale.US, "FAC-%04d", nextSeq)
-
-            // Trouver ou associer la fiche client
-            val trimmedClientName = clientName.trim()
-            val existingClient = repository.findClientByName(trimmedClientName)
-            val finalClientId = existingClient?.id ?: repository.insertClient(
-                ClientEntity(
-                    name = trimmedClientName,
-                    phone = clientPhone.trim(),
-                    category = if (domain == "BUSINESS") "Business" else "Famille & amis",
-                    avatarType = if (domain == "BUSINESS") "CYAN" else "VIOLET"
-                )
+            val msg = salesManager.addNewSale(
+                productName, clientName, clientPhone, quantity, unitPriceAr, unitCostAr,
+                paidAmountAr, saleSource, domain, linkedOrderId
             )
+            snackbarFlow.value = msg
+        }
+    }
 
-            // Résolution de linkedOrderId si non fourni mais produit correspond à un lot en stock
-            val allOrders = repository.businessOrders.firstOrNull() ?: emptyList()
-            val resolvedOrderId = linkedOrderId ?: allOrders.firstOrNull {
-                it.stockCount > 0 && it.product.trim().equals(productName.trim(), ignoreCase = true)
-            }?.id
-
-            val actualPaid = paidAmountAr.coerceAtMost(totalPrice)
-            val saleId = repository.insertBusinessSale(
-                BusinessSaleEntity(
-                    productName = productName.trim(),
-                    clientName = trimmedClientName,
-                    clientPhone = clientPhone.trim(),
-                    quantity = quantity,
-                    unitResalePriceAr = unitPriceAr,
-                    unitCostAr = unitCostAr,
-                    totalPriceAr = totalPrice,
-                    paidAmountAr = actualPaid,
-                    isFullyPaid = actualPaid >= totalPrice,
-                    invoiceNumber = newInvoiceNum,
-                    saleSource = saleSource,
-                    domain = domain,
-                    linkedOrderId = resolvedOrderId,
-                    clientId = finalClientId
-                )
+    fun addBusinessSale(
+        clientName: String,
+        clientPhone: String,
+        productName: String,
+        quantity: Int,
+        unitResalePriceAr: Long,
+        unitCostAr: Long,
+        paidAmountAr: Long
+    ) {
+        viewModelScope.launch {
+            val msg = salesManager.addBusinessSale(
+                clientName, clientPhone, productName, quantity, unitResalePriceAr, unitCostAr, paidAmountAr
             )
-
-            // Historique de règlement
-            if (actualPaid > 0L) {
-                repository.insertSalePayment(
-                    SalePaymentEntity(
-                        saleId = saleId,
-                        amountAr = actualPaid,
-                        paymentDate = System.currentTimeMillis(),
-                        paymentMethod = "ESPECES"
-                    )
-                )
-            }
-
-            // Décrémenter le stock et incrémenter les unités vendues
-            if (resolvedOrderId != null && resolvedOrderId > 0L) {
-                val targetOrder = allOrders.firstOrNull { it.id == resolvedOrderId }
-                if (targetOrder != null) {
-                    val newStock = (targetOrder.stockCount - quantity).coerceAtLeast(0)
-                    val newUnitsSold = targetOrder.unitsSold + quantity
-                    repository.updateBusinessOrder(
-                        targetOrder.copy(
-                            stockCount = newStock,
-                            unitsSold = newUnitsSold
-                        )
-                    )
-                }
-            }
-
-            snackbarFlow.value = "Facture $newInvoiceNum créée pour $trimmedClientName"
+            snackbarFlow.value = msg
         }
     }
 
     fun deleteSale(sale: BusinessSaleEntity) {
         viewModelScope.launch {
-            // Réintégration du stock si la vente était liée à une commande
-            if (sale.linkedOrderId != null && sale.linkedOrderId > 0L) {
-                val allOrders = repository.businessOrders.firstOrNull() ?: emptyList()
-                val targetOrder = allOrders.firstOrNull { it.id == sale.linkedOrderId }
-                if (targetOrder != null) {
-                    val restoredStock = targetOrder.stockCount + sale.quantity
-                    val restoredUnitsSold = (targetOrder.unitsSold - sale.quantity).coerceAtLeast(0)
-                    repository.updateBusinessOrder(
-                        targetOrder.copy(
-                            stockCount = restoredStock,
-                            unitsSold = restoredUnitsSold
-                        )
-                    )
-                }
-            }
-            repository.deleteBusinessSale(sale.id)
-            snackbarFlow.value = "Facture ${sale.invoiceNumber.ifBlank { "#---" }} de ${sale.clientName} annulée et stock réintégré"
+            val msg = salesManager.deleteSale(sale)
+            snackbarFlow.value = msg
         }
     }
 
     fun onAdvanceQualityControl(order: BusinessOrderEntity) {
         viewModelScope.launch {
-            repository.updateBusinessOrder(order.copy(status = "DELIVERY_READY"))
-            snackbarFlow.value = "Contrôle qualité validé pour ${order.product}"
+            val msg = stockManager.onAdvanceQualityControl(order)
+            snackbarFlow.value = msg
         }
     }
 
-    fun buyYuans(amountYuan: Double, rateAr: Double, platform: String) {
+    fun buyYuans(amountYuan: Double, rateAr: Double, platform: String, sourceAccountName: String = "") {
         viewModelScope.launch {
-            val amountAr = (amountYuan * rateAr).toLong()
-            repository.insertYuanTransaction(
-                YuanTransactionEntity(
-                    type = "BUY",
-                    amountYuan = amountYuan,
-                    exchangeRate = rateAr,
-                    amountAr = amountAr,
-                    platform = platform,
-                    note = "Recharge $platform"
-                )
-            )
-            snackbarFlow.value = "¥ ${amountYuan.toInt()} achetés avec succès"
+            val msg = financialReporter.buyYuans(amountYuan, rateAr, platform, sourceAccountName)
+            snackbarFlow.value = msg
         }
     }
 
     fun refundYuans(amountYuan: Double, rateAr: Double, platform: String = "Alipay", note: String = "", orderId: Long? = null) {
         viewModelScope.launch {
-            if (amountYuan <= 0.0) return@launch
-            if (orderId != null && orderId > 0L) {
-                val existingTxs = repository.yuanTransactions.firstOrNull() ?: emptyList()
-                val alreadyRefunded = existingTxs.any { it.orderId == orderId && it.type == "REFUND" }
-                if (alreadyRefunded) {
-                    snackbarFlow.value = "Remboursement déjà effectué pour ce lot"
-                    return@launch
-                }
-            }
-            val amountAr = (amountYuan * rateAr).toLong()
-            val insertedId = repository.insertYuanTransaction(
-                YuanTransactionEntity(
-                    type = "REFUND",
-                    amountYuan = amountYuan,
-                    exchangeRate = rateAr,
-                    amountAr = amountAr,
-                    platform = platform,
-                    note = note,
-                    orderId = orderId
-                )
-            )
-            if (insertedId == -1L) {
-                snackbarFlow.value = "Remboursement déjà enregistré pour ce lot"
-            } else {
-                snackbarFlow.value = "Remboursement usine de ¥ ${amountYuan.toInt()} enregistré"
-            }
+            val msg = financialReporter.refundYuans(amountYuan, rateAr, platform, note, orderId)
+            if (msg.isNotBlank()) snackbarFlow.value = msg
         }
     }
 
     fun spendYuans(amountYuan: Double, rateAr: Double, platform: String, note: String, orderId: Long? = null, skipBalanceCheck: Boolean = false) {
         viewModelScope.launch {
-            if (amountYuan <= 0.0) return@launch
-            val currentAvailable = uiState.value.availableYuans
-            if (!skipBalanceCheck && amountYuan > currentAvailable) {
-                snackbarFlow.value = "Solde Alipay insuffisant (¥ ${currentAvailable.toInt()} dispo, ¥ ${amountYuan.toInt()} requis)"
-                return@launch
-            }
-            if (orderId != null && orderId > 0L) {
-                val existingTxs = repository.yuanTransactions.firstOrNull() ?: emptyList()
-                val alreadyDebited = existingTxs.any { it.orderId == orderId && it.type == "SPEND" }
-                if (alreadyDebited) {
-                    snackbarFlow.value = "Paiement déjà effectué pour ce lot"
-                    return@launch
-                }
-            }
-            val amountAr = (amountYuan * rateAr).toLong()
-            val insertedId = repository.insertYuanTransaction(
-                YuanTransactionEntity(
-                    type = "SPEND",
-                    amountYuan = amountYuan,
-                    exchangeRate = rateAr,
-                    amountAr = amountAr,
-                    platform = platform,
-                    note = note,
-                    orderId = orderId
-                )
+            val msg = financialReporter.spendYuans(
+                amountYuan, rateAr, platform, note, orderId, uiState.value.availableYuans, skipBalanceCheck
             )
-            if (insertedId == -1L) {
-                snackbarFlow.value = "Paiement déjà effectué pour ce lot"
-            } else {
-                snackbarFlow.value = "Paiement de ¥ ${amountYuan.toInt()} enregistré"
-            }
+            if (msg.isNotBlank()) snackbarFlow.value = msg
         }
     }
 
@@ -1429,120 +1542,45 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         family: String = "Électronique"
     ) {
         viewModelScope.launch {
-            repository.insertBusinessOrder(
-                BusinessOrderEntity(
-                    product = product,
-                    supplier = supplier,
-                    platform = platform,
-                    referenceCode = referenceCode.ifBlank { "LOT-${System.currentTimeMillis() % 10000}" },
-                    quantityBought = quantity,
-                    priceYuan = priceYuan,
-                    exchangeRate = uiState.value.cmupRate.toDouble(),
-                    resalePriceAr = resaleAr,
-                    status = "ORDERED",
-                    category = category,
-                    family = family,
-                    carrier = carrier,
-                    variants = variants,
-                    freightCostAr = freightAr,
-                    isFreightPaid = false
-                )
+            val msg = stockManager.addBusinessOrder(
+                product, supplier, quantity, priceYuan, resaleAr, category, carrier, variants,
+                freightAr, platform, referenceCode, family, uiState.value.cmupRate.toDouble()
             )
-            snackbarFlow.value = "Nouvelle commande enregistrée"
-        }
-    }
-
-    fun addBusinessSale(
-        clientName: String,
-        clientPhone: String,
-        productName: String,
-        quantity: Int,
-        unitResalePriceAr: Long,
-        unitCostAr: Long,
-        paidAmountAr: Long
-    ) {
-        viewModelScope.launch {
-            val totalPrice = unitResalePriceAr * quantity
-            repository.insertBusinessSale(
-                BusinessSaleEntity(
-                    productName = productName,
-                    clientName = clientName,
-                    clientPhone = clientPhone,
-                    quantity = quantity,
-                    unitResalePriceAr = unitResalePriceAr,
-                    unitCostAr = unitCostAr,
-                    totalPriceAr = totalPrice,
-                    paidAmountAr = paidAmountAr,
-                    isFullyPaid = paidAmountAr >= totalPrice
-                )
-            )
-            snackbarFlow.value = "Vente enregistrée pour $clientName"
+            snackbarFlow.value = msg
         }
     }
 
     fun advanceOrderStatus(order: BusinessOrderEntity) {
-        val nextStatus = when (order.status) {
-            "DRAFT" -> "ORDERED"
-            "ORDERED" -> "WAREHOUSE"
-            "WAREHOUSE" -> "GUANGZHOU"
-            "GUANGZHOU" -> "FLIGHT"
-            "FLIGHT" -> "CUSTOMS"
-            "CUSTOMS" -> "QUALITY_CONTROL"
-            "QUALITY_CONTROL" -> "DELIVERY_READY"
-            "DELIVERY_READY" -> "SOLD"
-            else -> "SOLD"
-        }
-        val statusLabelFr = when (nextStatus) {
-            "DRAFT" -> "Brouillon"
-            "ORDERED" -> "Commandé 1688"
-            "WAREHOUSE" -> "Reçu entrepôt Chine"
-            "GUANGZHOU" -> "Hub Guangzhou"
-            "FLIGHT" -> "En vol / Transit"
-            "CUSTOMS" -> "Dédouanement Mada"
-            "QUALITY_CONTROL" -> "Contrôle qualité"
-            "DELIVERY_READY" -> "Prêt à livrer / En stock"
-            "SOLD" -> "Vendu"
-            else -> nextStatus
-        }
         viewModelScope.launch {
-            repository.updateBusinessOrder(order.copy(status = nextStatus))
-            snackbarFlow.value = "Statut mis à jour : $statusLabelFr"
+            val msg = stockManager.advanceOrderStatus(order)
+            snackbarFlow.value = msg
         }
     }
 
     fun updateBusinessOrder(order: BusinessOrderEntity) {
         viewModelScope.launch {
-            repository.updateBusinessOrder(order)
-            snackbarFlow.value = "${order.product} mis à jour"
+            val msg = stockManager.updateBusinessOrder(order)
+            snackbarFlow.value = msg
         }
     }
 
     fun duplicateBusinessOrder(order: BusinessOrderEntity) {
         viewModelScope.launch {
-            val duplicate = order.copy(
-                id = 0,
-                lotNumber = "${order.lotNumber} (Copie)",
-                orderDate = System.currentTimeMillis()
-            )
-            repository.insertBusinessOrder(duplicate)
-            snackbarFlow.value = "Commande dupliquée : ${order.product}"
+            val msg = stockManager.duplicateBusinessOrder(order)
+            snackbarFlow.value = msg
         }
     }
 
     fun togglePlatformActive(platformId: Long, isActive: Boolean) {
         viewModelScope.launch {
-            repository.updatePlatformActive(platformId, isActive)
+            stockManager.togglePlatformActive(platformId, isActive)
         }
     }
 
     fun updatePlatformShippingTag(platformId: Long, newShippingTag: String) {
         viewModelScope.launch {
-            val snapshot = repository.getAllCataloguePlatformsSnapshot()
-            val target = snapshot.find { it.id == platformId }
-            if (target != null) {
-                repository.updateCataloguePlatform(target.copy(shippingTag = newShippingTag))
-                snackbarFlow.value = "Mode de port mis à jour : $newShippingTag"
-            }
+            val msg = stockManager.updatePlatformShippingTag(platformId, newShippingTag)
+            if (msg != null) snackbarFlow.value = msg
         }
     }
 
@@ -1555,43 +1593,15 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         colorHex: String = "#712ae2"
     ) {
         viewModelScope.launch {
-            val count = repository.getAllCataloguePlatformsSnapshot().size
-            val isVerified = name.contains("1688", ignoreCase = true)
-            val badge = if (name.contains("taobao", ignoreCase = true)) "C2C / B2C"
-                        else if (name.contains("pinduoduo", ignoreCase = true)) "Usine Direct"
-                        else ""
-            val shipIcon = if (shippingTag.contains("gratuit", ignoreCase = true)) "check_circle"
-                           else if (shippingTag.contains("devis", ignoreCase = true)) "request_quote"
-                           else "local_shipping"
-            val alias = name.split(" ").firstOrNull() ?: name
-
-            val newPlat = CataloguePlatformEntity(
-                name = name.trim(),
-                aliasKey = alias,
-                subtitle = subtitle.trim(),
-                badgeText = badge,
-                isVerified = isVerified,
-                iconType = iconType,
-                colorHex = colorHex,
-                shippingTag = shippingTag.trim(),
-                shippingTagIcon = shipIcon,
-                secondaryTag = secondaryTag.trim(),
-                isActive = true,
-                displayOrder = count + 1,
-                defaultYuanSpent = 0.0,
-                defaultOrdersCount = 0,
-                defaultLastDate = "Nouvelle plateforme",
-                transitNotes = "Frais de port intérieurs et logistique configurable."
-            )
-            repository.insertCataloguePlatform(newPlat)
-            snackbarFlow.value = "Plateforme « $name » ajoutée au catalogue"
+            val msg = stockManager.addCataloguePlatform(name, subtitle, shippingTag, secondaryTag, iconType, colorHex)
+            snackbarFlow.value = msg
         }
     }
 
     fun deleteCataloguePlatform(platformId: Long) {
         viewModelScope.launch {
-            repository.deleteCataloguePlatform(platformId)
-            snackbarFlow.value = "Plateforme supprimée"
+            val msg = stockManager.deleteCataloguePlatform(platformId)
+            snackbarFlow.value = msg
         }
     }
 
@@ -1612,23 +1622,11 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         goodsCategoryDelays: String = "Générale: Normal | Batterie: +2j | Poudre/Liquide: +3j | Téléphone: +2j"
     ) {
         viewModelScope.launch {
-            repository.insertCatalogueTransitaire(
-                CatalogueTransitaireEntity(
-                    name = name.trim(),
-                    contact = contact.trim(),
-                    address = chinaWarehouseAddress.ifBlank { hub }.trim(),
-                    defaultTariffPerKg = airRate,
-                    airNormalRateAr = airRate,
-                    airFastRateAr = airFastRate,
-                    seaRateAr = seaRate,
-                    airNormalLeadDays = airLeadDays.ifBlank { "7 à 10 jours" },
-                    airFastLeadDays = airFastLeadDays.ifBlank { "3 à 5 jours" },
-                    seaNormalLeadDays = seaLeadDays.ifBlank { "30 à 45 jours" },
-                    goodsCategoryDelays = goodsCategoryDelays,
-                    notes = internalNotes.trim()
-                )
+            val msg = transitaireManager.addCatalogueTransitaire(
+                name, hub, airRate, seaRate, contact, chinaWarehouseAddress, isActive,
+                rateApplicationDate, airLeadDays, seaLeadDays, internalNotes, airFastRate, airFastLeadDays, goodsCategoryDelays
             )
-            snackbarFlow.value = "Transitaire « $name » ajouté"
+            snackbarFlow.value = msg
         }
     }
 
@@ -1650,86 +1648,39 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         goodsCategoryDelays: String
     ) {
         viewModelScope.launch {
-            val list = repository.getAllCatalogueTransitairesSnapshot()
-            val existing = list.firstOrNull { it.id == id }
-            if (existing != null) {
-                repository.updateCatalogueTransitaire(
-                    existing.copy(
-                        name = name.trim(),
-                        contact = contact.trim(),
-                        address = chinaWarehouseAddress.ifBlank { hub }.trim(),
-                        defaultTariffPerKg = airRate,
-                        airNormalRateAr = airRate,
-                        airFastRateAr = airFastRate,
-                        seaRateAr = seaRate,
-                        airNormalLeadDays = airLeadDays.ifBlank { "7 à 10 jours" },
-                        airFastLeadDays = airFastLeadDays.ifBlank { "3 à 5 jours" },
-                        seaNormalLeadDays = seaLeadDays.ifBlank { "30 à 45 jours" },
-                        goodsCategoryDelays = goodsCategoryDelays,
-                        notes = internalNotes.trim()
-                    )
-                )
-                snackbarFlow.value = "Transitaire « $name » modifié"
-            }
+            val msg = transitaireManager.updateCatalogueTransitaire(
+                id, name, hub, airRate, seaRate, contact, chinaWarehouseAddress, isActive,
+                rateApplicationDate, airLeadDays, seaLeadDays, internalNotes, airFastRate, airFastLeadDays, goodsCategoryDelays
+            )
+            if (msg != null) snackbarFlow.value = msg
         }
     }
 
     fun deleteCatalogueTransitaire(id: Long) {
         viewModelScope.launch {
-            repository.deleteCatalogueTransitaire(id)
-            snackbarFlow.value = "Transitaire supprimé"
+            val msg = transitaireManager.deleteCatalogueTransitaire(id)
+            snackbarFlow.value = msg
         }
     }
 
     fun updateTransitaireRates(id: Long, airRate: Long, seaRate: Long) {
         viewModelScope.launch {
-            val list = repository.getAllCatalogueTransitairesSnapshot()
-            val existing = list.firstOrNull { it.id == id }
-            if (existing != null) {
-                repository.updateCatalogueTransitaire(
-                    existing.copy(
-                        defaultTariffPerKg = airRate,
-                        airNormalRateAr = airRate,
-                        seaRateAr = seaRate
-                    )
-                )
-                snackbarFlow.value = "Tarifs mis à jour"
-            }
+            val msg = transitaireManager.updateTransitaireRates(id, airRate, seaRate)
+            if (msg != null) snackbarFlow.value = msg
         }
     }
 
     fun toggleTransitaireArchived(id: Long) {
         viewModelScope.launch {
-            val list = repository.getAllCatalogueTransitairesSnapshot()
-            val existing = list.firstOrNull { it.id == id }
-            if (existing != null) {
-                val isCurrentlyArchived = existing.notes.startsWith("[ARCHIVED]")
-                val newNotes = if (isCurrentlyArchived) {
-                    existing.notes.removePrefix("[ARCHIVED]").trim()
-                } else {
-                    "[ARCHIVED] ${existing.notes}".trim()
-                }
-                repository.updateCatalogueTransitaire(existing.copy(notes = newNotes))
-                snackbarFlow.value = if (isCurrentlyArchived) "Transitaire réactivé" else "Transitaire archivé"
-            }
+            val msg = transitaireManager.toggleTransitaireArchived(id)
+            if (msg != null) snackbarFlow.value = msg
         }
     }
 
     fun recordTransitairePayment(id: Long, amountAr: Long) {
         viewModelScope.launch {
-            val list = repository.getAllCatalogueTransitairesSnapshot()
-            val transName = list.firstOrNull { it.id == id }?.name ?: "Transitaire"
-            repository.insertBusinessTransaction(
-                com.example.data.local.entity.BusinessTransactionEntity(
-                    title = "Règlement Fret — $transName",
-                    type = "EXPENSE",
-                    amountAr = amountAr,
-                    accountName = "Business",
-                    referenceTag = "TRANSITAIRE_$id",
-                    dateMillis = System.currentTimeMillis()
-                )
-            )
-            snackbarFlow.value = "Règlement transitaire de ${CurrencyFormatter.formatAriary(amountAr)} enregistré"
+            val msg = transitaireManager.recordTransitairePayment(id, amountAr)
+            snackbarFlow.value = msg
         }
     }
 
@@ -1743,68 +1694,15 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
 
     fun addClient(name: String, category: String, phone: String, initialPurchaseAr: Long) {
         viewModelScope.launch {
-            val trimmedName = name.trim()
-            repository.insertClient(
-                ClientEntity(
-                    name = trimmedName,
-                    phone = phone.trim(),
-                    category = category,
-                    avatarType = if (category == "Business") "CYAN" else "VIOLET"
-                )
-            )
-            if (initialPurchaseAr > 0L) {
-                addNewSale(
-                    productName = "Achat initial",
-                    clientName = trimmedName,
-                    clientPhone = phone.trim(),
-                    quantity = 1,
-                    unitPriceAr = initialPurchaseAr,
-                    unitCostAr = 0L,
-                    paidAmountAr = initialPurchaseAr,
-                    saleSource = "STOCK",
-                    domain = if (category == "Business") "BUSINESS" else "FAMILY_FRIENDS",
-                    linkedOrderId = null
-                )
-            }
-            snackbarFlow.value = "Client « $trimmedName » ajouté"
+            val msg = salesManager.addClient(name, category, phone, initialPurchaseAr)
+            snackbarFlow.value = msg
         }
     }
 
     fun recordClientPayment(clientId: Long, amountAr: Long) {
         viewModelScope.launch {
-            if (amountAr <= 0L) return@launch
-            val client = repository.getClientById(clientId)
-            val clientName = client?.name ?: ""
-            val allSales = repository.businessSales.firstOrNull() ?: emptyList()
-            val unpaidSales = allSales.filter { sale ->
-                (sale.clientId == clientId || (clientName.isNotBlank() && sale.clientName.trim().equals(clientName.trim(), ignoreCase = true))) &&
-                !sale.isFullyPaid
-            }.sortedBy { it.saleDate }
-
-            var remaining = amountAr
-            for (sale in unpaidSales) {
-                if (remaining <= 0) break
-                val dueOnSale = sale.totalPriceAr - sale.paidAmountAr
-                if (dueOnSale > 0) {
-                    val pay = minOf(remaining, dueOnSale)
-                    val newPaid = sale.paidAmountAr + pay
-                    val updatedSale = sale.copy(
-                        paidAmountAr = newPaid,
-                        isFullyPaid = newPaid >= sale.totalPriceAr,
-                        clientId = if (sale.clientId == null) clientId else sale.clientId
-                    )
-                    repository.updateBusinessSale(updatedSale)
-                    repository.insertSalePayment(
-                        SalePaymentEntity(
-                            saleId = sale.id,
-                            amountAr = pay,
-                            paymentDate = System.currentTimeMillis()
-                        )
-                    )
-                    remaining -= pay
-                }
-            }
-            snackbarFlow.value = "Encaissement de ${CurrencyFormatter.formatAriary(amountAr)} enregistré pour ${if (clientName.isNotBlank()) clientName else "le client"}"
+            val msg = salesManager.recordClientPayment(clientId, amountAr)
+            if (msg != null) snackbarFlow.value = msg
         }
     }
 
@@ -1829,18 +1727,48 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun addBusinessAccount(name: String, subtitle: String, initialBalanceAr: Long) {
+    fun addBusinessAccount(
+        name: String,
+        subtitle: String,
+        initialBalanceAr: Long,
+        isYuanAccount: Boolean = false,
+        initialBalanceYuan: Double = 0.0
+    ) {
         viewModelScope.launch {
-            val shortCode = name.trim().take(2).uppercase().ifBlank { "CP" }
-            repository.insertBusinessAccount(
-                com.example.data.local.entity.BusinessAccountEntity(
-                    name = name.trim(),
-                    subtitle = subtitle.trim().ifBlank { "Compte" },
-                    shortCode = shortCode,
-                    balanceAr = initialBalanceAr
-                )
+            val msg = financialReporter.addBusinessAccount(
+                name = name,
+                subtitle = subtitle,
+                initialBalanceAr = initialBalanceAr,
+                isYuanAccount = isYuanAccount,
+                initialBalanceYuan = initialBalanceYuan
             )
-            snackbarFlow.value = "Compte « $name » ajouté"
+            snackbarFlow.value = msg
+        }
+    }
+
+    fun updateBusinessAccount(
+        existing: com.example.data.local.entity.BusinessAccountEntity,
+        newName: String,
+        newSubtitle: String,
+        newBalanceAr: Long,
+        newBalanceYuan: Double
+    ) {
+        viewModelScope.launch {
+            val msg = financialReporter.updateBusinessAccount(
+                existing = existing,
+                newName = newName,
+                newSubtitle = newSubtitle,
+                newBalanceAr = newBalanceAr,
+                newBalanceYuan = newBalanceYuan
+            )
+            snackbarFlow.value = msg
+        }
+    }
+
+    fun deleteBusinessAccount(account: com.example.data.local.entity.BusinessAccountEntity) {
+        viewModelScope.launch {
+            val msg = financialReporter.deleteBusinessAccount(account)
+            snackbarFlow.value = msg
         }
     }
 
@@ -1856,19 +1784,88 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         type: String,
         amountAr: Long,
         accountName: String,
-        referenceTag: String = ""
+        referenceTag: String = "",
+        destinationAccount: String = ""
     ) {
         viewModelScope.launch {
-            repository.insertBusinessTransaction(
-                com.example.data.local.entity.BusinessTransactionEntity(
-                    title = title.trim(),
-                    type = type,
-                    amountAr = amountAr,
-                    accountName = accountName.trim().ifBlank { "Espèces" },
-                    referenceTag = referenceTag.trim()
-                )
+            val msg = financialReporter.addBusinessTransaction(title, type, amountAr, accountName, referenceTag, destinationAccount)
+            snackbarFlow.value = msg
+        }
+    }
+
+    fun deleteBusinessTransaction(tx: com.example.data.local.entity.BusinessTransactionEntity) {
+        viewModelScope.launch {
+            val msg = financialReporter.deleteBusinessTransaction(tx)
+            snackbarFlow.value = msg
+        }
+    }
+
+    val businessInvestments: StateFlow<List<com.example.data.local.entity.BusinessInvestmentEntity>> =
+        repository.allBusinessInvestments.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    fun recordCapitalMovement(
+        title: String,
+        isContribution: Boolean,
+        amountAr: Long,
+        accountName: String,
+        note: String = "",
+        affectAccount: Boolean = true,
+        dateMillis: Long = System.currentTimeMillis()
+    ) {
+        viewModelScope.launch {
+            val msg = financialReporter.recordCapitalMovement(
+                title = title,
+                isContribution = isContribution,
+                amountAr = amountAr,
+                accountName = accountName,
+                note = note,
+                affectAccount = affectAccount,
+                dateMillis = dateMillis
             )
-            snackbarFlow.value = "Opération « $title » enregistrée"
+            snackbarFlow.value = msg
+        }
+    }
+
+    fun addBusinessInvestment(
+        title: String,
+        category: String,
+        amountAr: Long,
+        estimatedValueAr: Long,
+        generatedReturnAr: Long,
+        accountName: String,
+        notes: String = "",
+        dateMillis: Long = System.currentTimeMillis()
+    ) {
+        viewModelScope.launch {
+            val msg = financialReporter.addBusinessInvestment(
+                title = title,
+                category = category,
+                amountAr = amountAr,
+                estimatedValueAr = estimatedValueAr,
+                generatedReturnAr = generatedReturnAr,
+                accountName = accountName,
+                notes = notes,
+                dateMillis = dateMillis
+            )
+            snackbarFlow.value = msg
+        }
+    }
+
+    fun updateBusinessInvestment(investment: com.example.data.local.entity.BusinessInvestmentEntity) {
+        viewModelScope.launch {
+            val msg = financialReporter.updateBusinessInvestment(investment)
+            snackbarFlow.value = msg
+        }
+    }
+
+    fun deleteBusinessInvestment(investment: com.example.data.local.entity.BusinessInvestmentEntity) {
+        viewModelScope.launch {
+            val msg = financialReporter.deleteBusinessInvestment(investment)
+            snackbarFlow.value = msg
         }
     }
 }

@@ -106,8 +106,16 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.ui.business.BusinessUiState
+import com.example.ui.business.CatalogueArticleSummaryUi
 import com.example.ui.business.CatalogueFamilySummaryUi
 import com.example.ui.business.CataloguePlatformSummaryUi
 import com.example.ui.theme.CyanPrimary
@@ -122,11 +130,15 @@ fun CatalogueView(
     onSubTabSelected: (String) -> Unit,
     onSearchQueryChanged: (String) -> Unit,
     onFamilyFilterSelected: (String) -> Unit,
+    onStockFilterSelected: (String) -> Unit = {},
     onToggleShowHidden: () -> Unit,
     onSortChanged: (String) -> Unit,
     onViewModeChanged: (String) -> Unit,
-    onArticleClick: (BusinessOrderEntity) -> Unit,
-    onToggleHideArticle: (BusinessOrderEntity) -> Unit,
+    onArticleClick: (CatalogueArticleSummaryUi) -> Unit,
+    onEditArticleClick: (CatalogueArticleSummaryUi) -> Unit = {},
+    onQuickRestockArticle: (CatalogueArticleSummaryUi) -> Unit = {},
+    onToggleHideArticle: (CatalogueArticleSummaryUi) -> Unit,
+    onDeleteArticle: (CatalogueArticleSummaryUi) -> Unit = {},
     onNewArticleClick: () -> Unit,
     onNewFamilyClick: () -> Unit,
     onCreateFamily: (name: String, emoji: String, colorHex: String) -> Unit = { _, _, _ -> },
@@ -175,6 +187,7 @@ fun CatalogueView(
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+    val colors = rememberTransitaireColors()
     var showSortMenu by remember { mutableStateOf(false) }
     var showAddTransitaireDialog by remember { mutableStateOf(false) }
 
@@ -312,47 +325,6 @@ fun CatalogueView(
                         )
                     }
                 }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                            .clickable {
-                                Toast.makeText(context, "Recherche avancée", Toast.LENGTH_SHORT).show()
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Recherche",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFF97316).copy(alpha = 0.15f))
-                            .clickable {
-                                Toast.makeText(context, "Filtres catalogue", Toast.LENGTH_SHORT).show()
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Tune,
-                            contentDescription = "Filtres",
-                            tint = Color(0xFFEA580C),
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
-                }
             }
 
             // -------------------------------------------------------------
@@ -376,7 +348,7 @@ fun CatalogueView(
                 ).forEach { (tabKey, icon, label) ->
                     val isSelected = uiState.catalogueSubTab == tabKey
                     val selectedBg = when (tabKey) {
-                        "Plateformes" -> Color(0xFF712AE2)
+                        "Plateformes" -> colors.violetSolidBg
                         "Transitaires" -> Color(0xFF06B6D4)
                         else -> CyanPrimary
                     }
@@ -421,12 +393,17 @@ fun CatalogueView(
                         uiState = uiState,
                         onSearchQueryChanged = onSearchQueryChanged,
                         onFamilyFilterSelected = onFamilyFilterSelected,
+                        onStockFilterSelected = onStockFilterSelected,
                         onToggleShowHidden = onToggleShowHidden,
                         onSortChanged = onSortChanged,
                         onViewModeChanged = onViewModeChanged,
                         onArticleClick = onArticleClick,
+                        onEditArticleClick = onEditArticleClick,
+                        onQuickRestockArticle = onQuickRestockArticle,
                         onToggleHideArticle = onToggleHideArticle,
+                        onDeleteArticle = onDeleteArticle,
                         onNewFamilyClick = onNewFamilyClick,
+                        onNewArticleClick = onNewArticleClick,
                         showSortMenu = showSortMenu,
                         onDismissSortMenu = { showSortMenu = false },
                         onOpenSortMenu = { showSortMenu = true }
@@ -456,7 +433,11 @@ fun CatalogueView(
                     TransitairesSubTabContent(
                         transitaires = uiState.catalogueTransitaires,
                         onCreateTransitaire = { name, hub, air, sea ->
-                            onCreateTransitaire(name, hub, air, sea, "", "", true, "24/10/2026", "7 à 10 jours", "30 à 45 jours", "", 60000L, "3 à 5 jours", "Générale: Normal | Batterie: +2j | Poudre/Liquide: +3j | Téléphone: +2j")
+                            val today = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.FRANCE).format(java.util.Date())
+                            val defaultGrid = com.example.ui.business.model.TariffGridParser.encode(
+                                com.example.ui.business.model.TariffGridParser.defaultTariffs(air, 60000L, sea)
+                            )
+                            onCreateTransitaire(name, hub, air, sea, "", "", true, today, "7 à 10 jours", "30 à 45 jours", "", 60000L, "3 à 5 jours", defaultGrid)
                         },
                         onUpdateTransitaire = onUpdateTransitaire,
                         onToggleArchived = onToggleTransitaireArchived,
@@ -482,27 +463,81 @@ fun CatalogueView(
 }
 
 // ---------------------------------------------------------------------------
-// SUB-TAB: ARTICLES CONTENT
+// SUB-TAB: ARTICLES CONTENT (REFONTE COMPLÈTE)
 // ---------------------------------------------------------------------------
 @Composable
 private fun ArticlesSubTabContent(
     uiState: BusinessUiState,
     onSearchQueryChanged: (String) -> Unit,
     onFamilyFilterSelected: (String) -> Unit,
+    onStockFilterSelected: (String) -> Unit,
     onToggleShowHidden: () -> Unit,
     onSortChanged: (String) -> Unit,
     onViewModeChanged: (String) -> Unit,
-    onArticleClick: (BusinessOrderEntity) -> Unit,
-    onToggleHideArticle: (BusinessOrderEntity) -> Unit,
+    onArticleClick: (CatalogueArticleSummaryUi) -> Unit,
+    onEditArticleClick: (CatalogueArticleSummaryUi) -> Unit,
+    onQuickRestockArticle: (CatalogueArticleSummaryUi) -> Unit,
+    onToggleHideArticle: (CatalogueArticleSummaryUi) -> Unit,
+    onDeleteArticle: (CatalogueArticleSummaryUi) -> Unit,
     onNewFamilyClick: () -> Unit,
+    onNewArticleClick: () -> Unit,
     showSortMenu: Boolean,
     onDismissSortMenu: () -> Unit,
     onOpenSortMenu: () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
+    val colors = rememberTransitaireColors()
+    var articlePendingDelete by remember { mutableStateOf<CatalogueArticleSummaryUi?>(null) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        // Search Bar with Cancel button
+    val activeArticles = remember(uiState.allCatalogueArticles) {
+        uiState.allCatalogueArticles.filter { !it.isHidden }
+    }
+    val totalStockPieces = remember(activeArticles) { activeArticles.sumOf { it.totalStockCount } }
+    val lowOrRuptureCount = remember(activeArticles) {
+        activeArticles.count { !it.isReferenceOnly && it.totalStockCount <= 5 && it.totalInTransitCount == 0 }
+    }
+    val totalStockValueAr = remember(activeArticles) {
+        activeArticles.sumOf { it.totalStockCount.toLong() * it.latestUnitCostAr }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // 1. Compact KPI Strip
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ArticleKpiChip(
+                label = "Actifs",
+                value = "${activeArticles.size}",
+                accent = colors.cyanAccent,
+                bg = colors.cyanSoftBg
+            )
+            ArticleKpiChip(
+                label = "Stock rayon",
+                value = "$totalStockPieces pcs",
+                accent = colors.successAccent,
+                bg = colors.successSoftBg
+            )
+            ArticleKpiChip(
+                label = "Alerte / Rupture",
+                value = "$lowOrRuptureCount",
+                accent = if (lowOrRuptureCount > 0) colors.dangerAccent else colors.textSecondary,
+                bg = if (lowOrRuptureCount > 0) colors.dangerSoftBg else colors.badgeNeutralBg
+            )
+            ArticleKpiChip(
+                label = "Valeur stock",
+                value = CurrencyFormatter.formatAriary(totalStockValueAr),
+                accent = colors.violetAccent,
+                bg = colors.violetSoftBg
+            )
+        }
+
+        // 2. Search Bar
         OutlinedTextField(
             value = uiState.catalogueSearchQuery,
             onValueChange = onSearchQueryChanged,
@@ -511,17 +546,19 @@ private fun ArticlesSubTabContent(
                 .testTag("catalogue_search_input"),
             placeholder = {
                 Text(
-                    text = "TWS",
+                    text = "Rechercher nom, SKU, variante, plateforme...",
                     fontFamily = Inter,
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.outline
+                    fontSize = 13.sp,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             },
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Default.Search,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = colors.textSecondary,
                     modifier = Modifier.size(20.dp)
                 )
             },
@@ -529,12 +566,12 @@ private fun ArticlesSubTabContent(
                 if (uiState.catalogueSearchQuery.isNotEmpty()) {
                     IconButton(
                         onClick = { onSearchQueryChanged("") },
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Effacer la recherche",
-                            tint = MaterialTheme.colorScheme.outline,
+                            tint = colors.textSecondary,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -543,16 +580,16 @@ private fun ArticlesSubTabContent(
             singleLine = true,
             shape = RoundedCornerShape(14.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                focusedContainerColor = colors.cardBg,
+                unfocusedContainerColor = colors.cardBg,
                 focusedBorderColor = CyanPrimary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                unfocusedBorderColor = colors.border
             ),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
         )
 
-        // Family Pills (Scrollable with + Famille)
+        // 3. Family Pills with real emojis + "+ Famille"
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -562,106 +599,134 @@ private fun ArticlesSubTabContent(
         ) {
             uiState.catalogueFamilyPills.forEach { pill ->
                 val isSelected = uiState.catalogueFamilyFilter.equals(pill.name, ignoreCase = true)
-                Box(
+                val famEmoji = uiState.catalogueFamilies.firstOrNull {
+                    it.name.equals(pill.name, ignoreCase = true)
+                }?.emoji ?: ""
+                Surface(
+                    shape = RoundedCornerShape(9999.dp),
+                    color = if (isSelected) CyanPrimary else colors.cardBg,
+                    border = if (isSelected) null else BorderStroke(1.dp, colors.border),
                     modifier = Modifier
-                        .clip(RoundedCornerShape(9999.dp))
-                        .background(if (isSelected) CyanPrimary else MaterialTheme.colorScheme.surface)
+                        .height(36.dp)
                         .clickable { onFamilyFilterSelected(pill.name) }
-                        .padding(horizontal = 14.dp, vertical = 7.dp),
-                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "${pill.name} ${pill.count}",
-                        fontFamily = PlusJakartaSans,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.sp,
-                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Box(
+                        modifier = Modifier.padding(horizontal = 13.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (famEmoji.isNotBlank()) "$famEmoji ${pill.name} (${pill.count})" else "${pill.name} (${pill.count})",
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                            fontSize = 12.sp,
+                            color = if (isSelected) Color.Black else colors.textSecondary
+                        )
+                    }
                 }
             }
 
-            // + Famille button
-            Box(
+            Surface(
+                shape = RoundedCornerShape(9999.dp),
+                color = colors.innerCardBg,
+                border = BorderStroke(1.dp, colors.border),
                 modifier = Modifier
-                    .clip(RoundedCornerShape(9999.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(9999.dp))
+                    .height(36.dp)
                     .clickable { onNewFamilyClick() }
-                    .padding(horizontal = 12.dp, vertical = 7.dp),
-                contentAlignment = Alignment.Center
             ) {
                 Row(
+                    modifier = Modifier.padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(14.dp)
-                    )
+                    Icon(Icons.Default.Add, null, tint = colors.cyanAccent, modifier = Modifier.size(14.dp))
                     Text(
                         text = "Famille",
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = colors.cyanAccent
                     )
                 }
             }
         }
 
-        // Secondary Bar: Afficher masqués (X) | Trier: Plus vendus | List/Grid
+        // 4. Stock Status Chips + Controls Row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            listOf("Tous", "En stock", "En transit", "Rupture", "Référentiel").forEach { filterOption ->
+                val isSelected = uiState.catalogueStockFilter == filterOption
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isSelected) colors.violetSoftBg else colors.innerCardBg,
+                    border = if (isSelected) BorderStroke(1.dp, colors.violetAccent) else null,
+                    modifier = Modifier.clickable { onStockFilterSelected(filterOption) }
+                ) {
+                    Text(
+                        text = filterOption,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        fontSize = 11.sp,
+                        color = if (isSelected) colors.violetAccent else colors.textSecondary,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
+        }
+
+        // 5. Utility Bar: Hidden toggle | Sort | List/Grid
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Afficher masqués (N)
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (uiState.catalogueShowHidden) CyanPrimary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                    .clickable { onToggleShowHidden() }
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = if (uiState.catalogueShowHidden) colors.cyanSoftBg else colors.innerCardBg,
+                modifier = Modifier.clickable { onToggleShowHidden() }
             ) {
-                Icon(
-                    imageVector = if (uiState.catalogueShowHidden) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                    contentDescription = null,
-                    tint = if (uiState.catalogueShowHidden) CyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(15.dp)
-                )
-                Text(
-                    text = "Afficher masqués (${uiState.hiddenCatalogueCount})",
-                    fontFamily = PlusJakartaSans,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 12.sp,
-                    color = if (uiState.catalogueShowHidden) CyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Icon(
+                        imageVector = if (uiState.catalogueShowHidden) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                        contentDescription = null,
+                        tint = if (uiState.catalogueShowHidden) colors.cyanAccent else colors.textSecondary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = "Masqués (${uiState.hiddenCatalogueCount})",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 11.sp,
+                        color = if (uiState.catalogueShowHidden) colors.cyanAccent else colors.textSecondary
+                    )
+                }
             }
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Trier dropdown trigger
                 Box {
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                            .clickable { onOpenSortMenu() }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = colors.innerCardBg,
+                        modifier = Modifier.clickable { onOpenSortMenu() }
                     ) {
                         Text(
-                            text = "Trier: ${uiState.catalogueSort}",
+                            text = "Tri : ${uiState.catalogueSort}",
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Medium,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            fontSize = 11.sp,
+                            color = colors.textSecondary,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
                         )
                     }
 
@@ -669,9 +734,16 @@ private fun ArticlesSubTabContent(
                         expanded = showSortMenu,
                         onDismissRequest = onDismissSortMenu
                     ) {
-                        listOf("Plus vendus", "Dernier coût", "Nom").forEach { sortOption ->
+                        listOf("Plus vendus", "Marge élevée", "Stock bas", "Dernier coût", "Nom", "Plus récents").forEach { sortOption ->
                             DropdownMenuItem(
-                                text = { Text(sortOption, fontFamily = PlusJakartaSans) },
+                                text = {
+                                    Text(
+                                        text = sortOption,
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = if (uiState.catalogueSort == sortOption) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (uiState.catalogueSort == sortOption) colors.cyanAccent else colors.textPrimary
+                                    )
+                                },
                                 onClick = {
                                     onSortChanged(sortOption)
                                     onDismissSortMenu()
@@ -685,36 +757,36 @@ private fun ArticlesSubTabContent(
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        .background(colors.innerCardBg)
                         .padding(2.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(28.dp)
+                            .size(30.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(if (uiState.catalogueViewMode == "LIST") MaterialTheme.colorScheme.surface else Color.Transparent)
+                            .background(if (uiState.catalogueViewMode == "LIST") colors.cardBg else Color.Transparent)
                             .clickable { onViewModeChanged("LIST") },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.ViewList,
                             contentDescription = "Vue liste",
-                            tint = if (uiState.catalogueViewMode == "LIST") CyanPrimary else MaterialTheme.colorScheme.outline,
+                            tint = if (uiState.catalogueViewMode == "LIST") colors.cyanAccent else colors.textSecondary,
                             modifier = Modifier.size(16.dp)
                         )
                     }
                     Box(
                         modifier = Modifier
-                            .size(28.dp)
+                            .size(30.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(if (uiState.catalogueViewMode == "GRID") MaterialTheme.colorScheme.surface else Color.Transparent)
+                            .background(if (uiState.catalogueViewMode == "GRID") colors.cardBg else Color.Transparent)
                             .clickable { onViewModeChanged("GRID") },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.GridView,
                             contentDescription = "Vue grille",
-                            tint = if (uiState.catalogueViewMode == "GRID") CyanPrimary else MaterialTheme.colorScheme.outline,
+                            tint = if (uiState.catalogueViewMode == "GRID") colors.cyanAccent else colors.textSecondary,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -722,205 +794,392 @@ private fun ArticlesSubTabContent(
             }
         }
 
-        // Articles List or Grid
-        if (uiState.visibleCatalogueOrders.isEmpty()) {
+        // 6. Articles List / Responsive Grid
+        if (uiState.visibleCatalogueArticles.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 40.dp),
+                    .weight(1f)
+                    .padding(vertical = 32.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.Inventory2,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(CircleShape)
+                            .background(colors.cyanSoftBg),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Inventory2,
+                            contentDescription = null,
+                            tint = colors.cyanAccent,
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
                     Text(
-                        text = "Aucun article dans cette sélection",
+                        text = "Aucun article trouvé",
                         fontFamily = PlusJakartaSans,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = colors.textPrimary
                     )
+                    Text(
+                        text = "Ajustez vos filtres ou ajoutez une nouvelle fiche produit.",
+                        fontFamily = Inter,
+                        fontSize = 12.sp,
+                        color = colors.textSecondary
+                    )
+                    Button(
+                        onClick = onNewArticleClick,
+                        colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary, contentColor = Color.Black),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Créer un article", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         } else {
-            if (uiState.catalogueViewMode == "GRID") {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 60.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 70.dp)
-                ) {
-                    items(uiState.visibleCatalogueOrders, key = { it.id }) { order ->
-                        if (order.isHidden) {
-                            HiddenCatalogueCard(
-                                order = order,
-                                onRestoreClick = { onToggleHideArticle(order) },
-                                modifier = Modifier.clickable { onArticleClick(order) }
-                            )
-                        } else {
-                            ActiveCatalogueCard(
-                                order = order,
-                                onArticleClick = { onArticleClick(order) },
-                                onToggleHide = { onToggleHideArticle(order) }
-                            )
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                val isTablet = maxWidth >= 600.dp
+
+                if (uiState.catalogueViewMode == "GRID") {
+                    val columns = if (isTablet) GridCells.Adaptive(185.dp) else GridCells.Fixed(2)
+                    LazyVerticalGrid(
+                        columns = columns,
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(bottom = 84.dp)
+                    ) {
+                        items(uiState.visibleCatalogueArticles, key = { it.articleKey }) { article ->
+                            if (article.isHidden) {
+                                HiddenCatalogueCard(
+                                    article = article,
+                                    onRestoreClick = { onToggleHideArticle(article) },
+                                    onClick = { onArticleClick(article) }
+                                )
+                            } else {
+                                ActiveCatalogueGridCard(
+                                    article = article,
+                                    onArticleClick = { onArticleClick(article) },
+                                    onEditClick = { onEditArticleClick(article) },
+                                    onQuickRestock = { onQuickRestockArticle(article) },
+                                    onToggleHide = { onToggleHideArticle(article) },
+                                    onDeleteRequest = { articlePendingDelete = article }
+                                )
+                            }
                         }
                     }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 60.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 70.dp)
-                ) {
-                    items(uiState.visibleCatalogueOrders, key = { it.id }) { order ->
-                        if (order.isHidden) {
-                            HiddenCatalogueCard(
-                                order = order,
-                                onRestoreClick = { onToggleHideArticle(order) },
-                                modifier = Modifier.clickable { onArticleClick(order) }
-                            )
-                        } else {
-                            ActiveCatalogueCard(
-                                order = order,
-                                onArticleClick = { onArticleClick(order) },
-                                onToggleHide = { onToggleHideArticle(order) }
-                            )
+                } else if (isTablet) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 84.dp)
+                    ) {
+                        items(uiState.visibleCatalogueArticles, key = { it.articleKey }) { article ->
+                            if (article.isHidden) {
+                                HiddenCatalogueCard(
+                                    article = article,
+                                    onRestoreClick = { onToggleHideArticle(article) },
+                                    onClick = { onArticleClick(article) }
+                                )
+                            } else {
+                                ActiveCatalogueListCard(
+                                    article = article,
+                                    onArticleClick = { onArticleClick(article) },
+                                    onEditClick = { onEditArticleClick(article) },
+                                    onQuickRestock = { onQuickRestockArticle(article) },
+                                    onToggleHide = { onToggleHideArticle(article) },
+                                    onDeleteRequest = { articlePendingDelete = article }
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 84.dp)
+                    ) {
+                        items(uiState.visibleCatalogueArticles, key = { it.articleKey }) { article ->
+                            if (article.isHidden) {
+                                HiddenCatalogueCard(
+                                    article = article,
+                                    onRestoreClick = { onToggleHideArticle(article) },
+                                    onClick = { onArticleClick(article) }
+                                )
+                            } else {
+                                ActiveCatalogueListCard(
+                                    article = article,
+                                    onArticleClick = { onArticleClick(article) },
+                                    onEditClick = { onEditArticleClick(article) },
+                                    onQuickRestock = { onQuickRestockArticle(article) },
+                                    onToggleHide = { onToggleHideArticle(article) },
+                                    onDeleteRequest = { articlePendingDelete = article }
+                                )
+                            }
                         }
                     }
                 }
             }
         }
     }
+
+    articlePendingDelete?.let { pending ->
+        AlertDialog(
+            onDismissRequest = { articlePendingDelete = null },
+            title = {
+                Text(
+                    text = "Supprimer cet article ?",
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.dangerAccent
+                )
+            },
+            text = {
+                val lotsSuffix = if (pending.lotsCount > 1) " et ses ${pending.lotsCount} lots liés" else ""
+                Text(
+                    text = "Voulez-vous supprimer définitivement « ${pending.primaryOrder.product} »$lotsSuffix ? Cette action est irréversible. Astuce : vous pouvez plutôt masquer l'article.",
+                    fontFamily = Inter,
+                    fontSize = 13.sp,
+                    color = colors.textPrimary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteArticle(pending)
+                        articlePendingDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.dangerAccent, contentColor = Color.White)
+                ) {
+                    Text("Supprimer", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { articlePendingDelete = null }) {
+                    Text("Annuler", fontFamily = PlusJakartaSans)
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ArticleKpiChip(
+    label: String,
+    value: String,
+    accent: Color,
+    bg: Color
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = bg
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(1.dp)
+        ) {
+            Text(
+                text = label,
+                fontFamily = Inter,
+                fontSize = 10.sp,
+                color = accent.copy(alpha = 0.85f)
+            )
+            Text(
+                text = value,
+                fontFamily = PlusJakartaSans,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 13.sp,
+                color = accent
+            )
+        }
+    }
+}
+
+@Composable
+private fun ArticleVisualThumbnail(
+    imageUrl: String,
+    fallbackEmoji: String,
+    familyColor: Color,
+    productName: String,
+    modifier: Modifier = Modifier,
+    emojiFontSize: Int = 30
+) {
+    val isPhoto = imageUrl.startsWith("content://") ||
+        imageUrl.startsWith("file://") ||
+        imageUrl.startsWith("http")
+    val displayEmoji = if (imageUrl.isNotBlank() && !imageUrl.contains("/")) imageUrl else fallbackEmoji
+
+    Box(
+        modifier = modifier.background(
+            Brush.linearGradient(
+                listOf(
+                    familyColor.copy(alpha = 0.16f),
+                    MaterialTheme.colorScheme.surfaceVariant
+                )
+            )
+        ),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isPhoto) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = productName,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Text(
+                text = displayEmoji,
+                fontSize = emojiFontSize.sp
+            )
+        }
+    }
+}
+
+private fun parseColorSafe(hex: String, fallback: Color): Color {
+    return try {
+        Color(android.graphics.Color.parseColor(hex))
+    } catch (_: Exception) {
+        fallback
+    }
+}
+
+private fun formatYuanPrecise(value: Double): String {
+    if (value <= 0.0) return "—"
+    return if (value % 1.0 == 0.0) "¥ ${value.toInt()}"
+    else String.format(Locale.US, "¥ %.2f", value)
+}
+
+@Composable
+private fun ArticleStatusPill(
+    statusTag: String,
+    stockCount: Int,
+    transitCount: Int,
+    colors: TransitaireColors
+) {
+    val (bg, fg, label) = when (statusTag) {
+        "En stock" -> Triple(colors.successSoftBg, colors.successAccent, "$stockCount en stock")
+        "Stock faible" -> Triple(colors.expressSoftBg, colors.expressAccent, "$stockCount stock bas")
+        "En transit" -> Triple(colors.violetSoftBg, colors.violetAccent, "$transitCount en transit")
+        "Référentiel" -> Triple(colors.cyanSoftBg, colors.cyanAccent, "Référentiel")
+        else -> Triple(colors.dangerSoftBg, colors.dangerAccent, "Rupture")
+    }
+    Surface(
+        shape = RoundedCornerShape(9999.dp),
+        color = bg
+    ) {
+        Text(
+            text = label,
+            fontFamily = PlusJakartaSans,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+            color = fg,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------
-// ACTIVE CATALOGUE ARTICLE CARD
+// ACTIVE CATALOGUE LIST CARD
 // ---------------------------------------------------------------------------
 @Composable
-private fun ActiveCatalogueCard(
-    order: BusinessOrderEntity,
+private fun ActiveCatalogueListCard(
+    article: CatalogueArticleSummaryUi,
     onArticleClick: () -> Unit,
-    onToggleHide: () -> Unit
+    onEditClick: () -> Unit,
+    onQuickRestock: () -> Unit,
+    onToggleHide: () -> Unit,
+    onDeleteRequest: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
-
-    // Family color
-    val isMode = order.family.equals("Mode", ignoreCase = true)
-    val isMaison = order.family.equals("Maison", ignoreCase = true)
-    val familyColor = when {
-        isMode -> Color(0xFF712AE2)
-        isMaison -> Color(0xFFEA580C)
-        else -> CyanPrimary
+    val colors = rememberTransitaireColors()
+    val order = article.primaryOrder
+    val familyColor = remember(article.familyColorHex, colors) {
+        parseColorSafe(article.familyColorHex, colors.cyanAccent)
     }
+    val isTop = article.totalSoldCount >= 10
+    val unitProfitAr = if (article.resalePriceAr > 0L && article.latestUnitCostAr > 0L) {
+        article.resalePriceAr - article.latestUnitCostAr
+    } else 0L
 
-    val isTop = order.unitsSold > 10
-
-    val lastCostAr = if (order.unitCostAr > 0L) {
-        order.unitCostAr
-    } else if (order.priceYuan > 0.0) {
-        (order.priceYuan * order.exchangeRate).toLong() + (if (order.quantityBought > 0) order.freightCostAr / order.quantityBought else 0L)
-    } else {
-        0L
-    }
-
-    Box(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
-            .clickable { onArticleClick() }
-            .padding(14.dp)
+            .clickable { onArticleClick() },
+        shape = RoundedCornerShape(20.dp),
+        color = colors.cardBg,
+        border = BorderStroke(1.dp, colors.border),
+        shadowElevation = 1.dp
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            // Header Row: Thumbnail + Info + Menu
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top
             ) {
-                // Product Thumbnail
                 Box(
                     modifier = Modifier
-                        .size(80.dp)
+                        .size(78.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    familyColor.copy(alpha = 0.15f),
-                                    MaterialTheme.colorScheme.surfaceVariant
-                                )
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
                 ) {
-                    val iconVector = when {
-                        order.imageUrl == "earbuds" || order.product.contains("Écouteurs", ignoreCase = true) -> Icons.Default.Headphones
-                        order.imageUrl == "smartwatch" || order.product.contains("Montre", ignoreCase = true) -> Icons.Default.Watch
-                        order.imageUrl == "bag" || order.product.contains("Sacoche", ignoreCase = true) -> Icons.Default.ShoppingBag
-                        else -> Icons.Default.Inventory2
-                    }
-
-                    Icon(
-                        imageVector = iconVector,
-                        contentDescription = null,
-                        tint = familyColor,
-                        modifier = Modifier.size(34.dp)
+                    ArticleVisualThumbnail(
+                        imageUrl = order.imageUrl,
+                        fallbackEmoji = article.familyEmoji,
+                        familyColor = familyColor,
+                        productName = order.product,
+                        modifier = Modifier.fillMaxSize(),
+                        emojiFontSize = 32
                     )
 
-                    // Top badge in top-left
                     if (isTop) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
                                 .padding(4.dp)
-                                .clip(RoundedCornerShape(4.dp))
+                                .clip(RoundedCornerShape(6.dp))
                                 .background(Color(0xFFF59E0B))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                .padding(horizontal = 5.dp, vertical = 1.dp)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Star,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(9.dp)
-                                )
-                                Text(
-                                    text = "Top",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 9.sp,
-                                    color = Color.White
-                                )
+                                Icon(Icons.Default.Star, null, tint = Color.White, modifier = Modifier.size(9.dp))
+                                Text("Top", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 9.sp, color = Color.White)
                             }
                         }
                     }
 
-                    // Variants count in bottom-end
-                    if (order.variants.isNotBlank()) {
+                    if (article.allVariants.isNotEmpty()) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(4.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0xFF131B2E).copy(alpha = 0.85f))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color.Black.copy(alpha = 0.72f))
+                                .padding(horizontal = 5.dp, vertical = 1.dp)
                         ) {
-                            val varsCount = order.variants.split("·", ",").size
                             Text(
-                                text = "$varsCount vars",
+                                text = "${article.allVariants.size} var.",
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 9.sp,
@@ -930,199 +1189,442 @@ private fun ActiveCatalogueCard(
                     }
                 }
 
-                // Middle Column: Category, Name, SKU
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(9999.dp))
-                                .background(familyColor.copy(alpha = 0.12f))
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Text(
-                                text = order.family.ifBlank { "Catalogue" },
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = familyColor
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(9999.dp),
+                                color = familyColor.copy(alpha = 0.14f)
+                            ) {
+                                Text(
+                                    text = order.family.ifBlank { "Catalogue" },
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp,
+                                    color = familyColor,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                            if (article.lotsCount > 1) {
+                                Surface(
+                                    shape = RoundedCornerShape(9999.dp),
+                                    color = colors.badgeNeutralBg
+                                ) {
+                                    Text(
+                                        text = "${article.lotsCount} lots",
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 10.sp,
+                                        color = colors.textSecondary,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
                         }
 
-                        // Context Menu
                         Box {
                             IconButton(
                                 onClick = { showMenu = true },
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(32.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = "Options",
-                                    tint = MaterialTheme.colorScheme.outline,
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                Icon(Icons.Default.MoreVert, "Options", tint = colors.textSecondary, modifier = Modifier.size(18.dp))
                             }
-
-                            DropdownMenu(
+                            ArticleActionDropdown(
                                 expanded = showMenu,
-                                onDismissRequest = { showMenu = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Modifier l'article", fontFamily = PlusJakartaSans) },
-                                    onClick = {
-                                        showMenu = false
-                                        onArticleClick()
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Masquer l'article", fontFamily = PlusJakartaSans) },
-                                    onClick = {
-                                        showMenu = false
-                                        onToggleHide()
-                                    }
-                                )
-                            }
+                                isHidden = article.isHidden,
+                                onDismiss = { showMenu = false },
+                                onOpenDetail = { showMenu = false; onArticleClick() },
+                                onEdit = { showMenu = false; onEditClick() },
+                                onRestock = { showMenu = false; onQuickRestock() },
+                                onToggleHide = { showMenu = false; onToggleHide() },
+                                onDelete = { showMenu = false; onDeleteRequest() }
+                            )
                         }
                     }
 
                     Text(
-                        text = order.product,
+                        text = order.product.ifBlank { "Article #${order.id}" },
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = colors.textPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                            .padding(horizontal = 6.dp, vertical = 1.dp)
-                    ) {
-                        Text(
-                            text = order.referenceCode.ifBlank { "REF-${order.id}" },
-                            fontFamily = Inter,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
-                }
-            }
-
-            // Variants & Logistics Specs
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (order.variants.isNotBlank()) order.variants else "${order.quantityBought} pcs",
-                    fontFamily = Inter,
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.outline,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-
-                if (order.weightKg != null && order.weightKg > 0.0) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Scale,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Text(
-                            text = "${(order.weightKg * 1000).toInt()} g",
-                            fontFamily = Inter,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.outline
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.innerCardBg
+                        ) {
+                            Text(
+                                text = order.referenceCode.ifBlank { "REF-${order.id}" },
+                                fontFamily = Inter,
+                                fontSize = 10.sp,
+                                color = colors.textSecondary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        if (order.platform.isNotBlank()) {
+                            Text(
+                                text = "• ${order.platform}",
+                                fontFamily = Inter,
+                                fontSize = 11.sp,
+                                color = colors.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
 
-            // Divider
-            Box(
+            // Pricing & Margin Strip
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(1.dp)
-                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
-            )
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(colors.innerCardBg)
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Coût revient", fontFamily = Inter, fontSize = 10.sp, color = colors.textSecondary)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        Text(
+                            text = if (article.latestUnitCostAr > 0L) CurrencyFormatter.formatAriary(article.latestUnitCostAr) else "—",
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = colors.textPrimary
+                        )
+                        Text(
+                            text = formatYuanPrecise(article.latestPriceYuan),
+                            fontFamily = Inter,
+                            fontSize = 10.sp,
+                            color = colors.textSecondary
+                        )
+                    }
+                }
 
-            // Bottom Row: Stock Badge & Last Cost (Ar & ¥)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Prix vente", fontFamily = Inter, fontSize = 10.sp, color = colors.textSecondary)
+                    Text(
+                        text = if (article.resalePriceAr > 0L) CurrencyFormatter.formatAriary(article.resalePriceAr) else "À définir",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = colors.cyanAccent
+                    )
+                }
+
+                val marginColor = when {
+                    article.marginPercent >= 25 -> colors.successAccent
+                    article.marginPercent > 0 -> colors.violetAccent
+                    article.resalePriceAr > 0L && unitProfitAr <= 0L -> colors.dangerAccent
+                    else -> colors.textSecondary
+                }
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = marginColor.copy(alpha = 0.14f)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Text(
+                            text = if (article.resalePriceAr > 0L && article.latestUnitCostAr > 0L) "${article.marginPercent}%" else "—",
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 13.sp,
+                            color = marginColor
+                        )
+                        if (unitProfitAr != 0L) {
+                            Text(
+                                text = (if (unitProfitAr > 0) "+" else "") + CurrencyFormatter.formatAriary(unitProfitAr),
+                                fontFamily = Inter,
+                                fontSize = 9.sp,
+                                color = marginColor
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Bottom Footer: Stock status + Sold + Weight
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Stock Pill
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF16A34A))
-                    )
-                    Text(
-                        text = "Stock: ",
-                        fontFamily = PlusJakartaSans,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "${order.stockCount} pcs",
-                        fontFamily = PlusJakartaSans,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
+                ArticleStatusPill(
+                    statusTag = article.statusTag,
+                    stockCount = article.totalStockCount,
+                    transitCount = article.totalInTransitCount,
+                    colors = colors
+                )
 
-                // Last Cost
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "Dernier coût",
-                        fontFamily = PlusJakartaSans,
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                    Row(
-                        verticalAlignment = Alignment.Bottom,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (article.totalSoldCount > 0) {
                         Text(
-                            text = CurrencyFormatter.formatAriary(lastCostAr),
+                            text = "${article.totalSoldCount} vendus",
                             fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = CyanPrimary
-                        )
-                        Text(
-                            text = "(¥ ${order.priceYuan.toInt()})",
-                            fontFamily = Inter,
+                            fontWeight = FontWeight.SemiBold,
                             fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.outline
+                            color = colors.violetAccent
                         )
+                    }
+                    if (order.weightKg != null && order.weightKg > 0.0) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(Icons.Default.Scale, null, tint = colors.textSecondary, modifier = Modifier.size(12.dp))
+                            Text(
+                                text = "${(order.weightKg * 1000).toInt()} g",
+                                fontFamily = Inter,
+                                fontSize = 11.sp,
+                                color = colors.textSecondary
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ACTIVE CATALOGUE GRID CARD (COMPACT VERTICAL LAYOUT)
+// ---------------------------------------------------------------------------
+@Composable
+private fun ActiveCatalogueGridCard(
+    article: CatalogueArticleSummaryUi,
+    onArticleClick: () -> Unit,
+    onEditClick: () -> Unit,
+    onQuickRestock: () -> Unit,
+    onToggleHide: () -> Unit,
+    onDeleteRequest: () -> Unit
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    val colors = rememberTransitaireColors()
+    val order = article.primaryOrder
+    val familyColor = remember(article.familyColorHex, colors) {
+        parseColorSafe(article.familyColorHex, colors.cyanAccent)
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onArticleClick() },
+        shape = RoundedCornerShape(18.dp),
+        color = colors.cardBg,
+        border = BorderStroke(1.dp, colors.border),
+        shadowElevation = 1.dp
+    ) {
+        Column {
+            // Top Visual Banner
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(110.dp)
+            ) {
+                ArticleVisualThumbnail(
+                    imageUrl = order.imageUrl,
+                    fallbackEmoji = article.familyEmoji,
+                    familyColor = familyColor,
+                    productName = order.product,
+                    modifier = Modifier.fillMaxSize(),
+                    emojiFontSize = 40
+                )
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                ) {
+                    ArticleStatusPill(
+                        statusTag = article.statusTag,
+                        stockCount = article.totalStockCount,
+                        transitCount = article.totalInTransitCount,
+                        colors = colors
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(colors.cardBg.copy(alpha = 0.88f))
+                            .clickable { showMenu = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.MoreVert, "Options", tint = colors.textPrimary, modifier = Modifier.size(16.dp))
+                    }
+                    ArticleActionDropdown(
+                        expanded = showMenu,
+                        isHidden = article.isHidden,
+                        onDismiss = { showMenu = false },
+                        onOpenDetail = { showMenu = false; onArticleClick() },
+                        onEdit = { showMenu = false; onEditClick() },
+                        onRestock = { showMenu = false; onQuickRestock() },
+                        onToggleHide = { showMenu = false; onToggleHide() },
+                        onDelete = { showMenu = false; onDeleteRequest() }
+                    )
+                }
+
+                if (article.lotsCount > 1) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.Black.copy(alpha = 0.72f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "${article.lotsCount} lots",
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.sp,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier.padding(11.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Text(
+                    text = order.family.ifBlank { "Catalogue" },
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp,
+                    color = familyColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = order.product.ifBlank { "Article #${order.id}" },
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = colors.textPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    minLines = 2
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Column {
+                        Text(
+                            text = if (article.resalePriceAr > 0L) CurrencyFormatter.formatAriary(article.resalePriceAr) else "À définir",
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 13.sp,
+                            color = colors.cyanAccent
+                        )
+                        Text(
+                            text = formatYuanPrecise(article.latestPriceYuan),
+                            fontFamily = Inter,
+                            fontSize = 10.sp,
+                            color = colors.textSecondary
+                        )
+                    }
+                    if (article.resalePriceAr > 0L && article.latestUnitCostAr > 0L) {
+                        val mColor = if (article.marginPercent >= 20) colors.successAccent else colors.violetAccent
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = mColor.copy(alpha = 0.14f)
+                        ) {
+                            Text(
+                                text = "${article.marginPercent}%",
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                color = mColor,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArticleActionDropdown(
+    expanded: Boolean,
+    isHidden: Boolean,
+    onDismiss: () -> Unit,
+    onOpenDetail: () -> Unit,
+    onEdit: () -> Unit,
+    onRestock: () -> Unit,
+    onToggleHide: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val colors = rememberTransitaireColors()
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        DropdownMenuItem(
+            text = { Text("Fiche complète", fontFamily = PlusJakartaSans) },
+            leadingIcon = { Icon(Icons.Default.Info, null, tint = colors.cyanAccent) },
+            onClick = onOpenDetail
+        )
+        DropdownMenuItem(
+            text = { Text("Modifier", fontFamily = PlusJakartaSans) },
+            leadingIcon = { Icon(Icons.Default.Edit, null, tint = colors.textSecondary) },
+            onClick = onEdit
+        )
+        DropdownMenuItem(
+            text = { Text("Nouvel achat", fontFamily = PlusJakartaSans) },
+            leadingIcon = { Icon(Icons.Default.ShoppingCart, null, tint = colors.violetAccent) },
+            onClick = onRestock
+        )
+        DropdownMenuItem(
+            text = { Text(if (isHidden) "Réafficher" else "Masquer", fontFamily = PlusJakartaSans) },
+            leadingIcon = { Icon(if (isHidden) Icons.Default.Visibility else Icons.Default.VisibilityOff, null, tint = colors.textSecondary) },
+            onClick = onToggleHide
+        )
+        DropdownMenuItem(
+            text = { Text("Supprimer", fontFamily = PlusJakartaSans, color = colors.dangerAccent) },
+            leadingIcon = { Icon(Icons.Default.Delete, null, tint = colors.dangerAccent) },
+            onClick = onDelete
+        )
     }
 }
 
@@ -1131,1642 +1633,101 @@ private fun ActiveCatalogueCard(
 // ---------------------------------------------------------------------------
 @Composable
 private fun HiddenCatalogueCard(
-    order: BusinessOrderEntity,
+    article: CatalogueArticleSummaryUi,
     onRestoreClick: () -> Unit,
-    modifier: Modifier = Modifier
+    onClick: () -> Unit
 ) {
-    Box(
-        modifier = modifier
+    val colors = rememberTransitaireColors()
+    val order = article.primaryOrder
+    Surface(
+        modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
-            .padding(14.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(18.dp),
+        color = colors.innerCardBg,
+        border = BorderStroke(1.dp, colors.border)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            // Header Row
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Grayscale / Masked Icon Box
                 Box(
                     modifier = Modifier
-                        .size(76.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(colors.badgeNeutralBg),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.VisibilityOff,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(32.dp)
-                    )
+                    Icon(Icons.Default.VisibilityOff, null, tint = colors.textSecondary, modifier = Modifier.size(24.dp))
                 }
 
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Badge Masqué
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.VisibilityOff,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                text = "Masqué",
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-
-                        // Family
-                        Text(
-                            text = order.family.ifBlank { "Accessoires" },
-                            fontFamily = PlusJakartaSans,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
-
+                    Text(
+                        text = "Masqué • ${order.family.ifBlank { "Sans famille" }}",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.sp,
+                        color = colors.textSecondary
+                    )
                     Text(
                         text = order.product,
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        fontSize = 14.sp,
+                        color = colors.textPrimary.copy(alpha = 0.78f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(horizontal = 6.dp, vertical = 1.dp)
-                    ) {
-                        Text(
-                            text = order.referenceCode.ifBlank { "CAB-65W-USB" },
-                            fontFamily = Inter,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
+                    Text(
+                        text = order.referenceCode.ifBlank { "REF-${order.id}" },
+                        fontFamily = Inter,
+                        fontSize = 11.sp,
+                        color = colors.textSecondary
+                    )
                 }
             }
 
-            // Warning and Restore Button Footer
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        text = "N'apparaît plus aux achats",
-                        fontFamily = PlusJakartaSans,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                }
+                Text(
+                    text = "${article.totalStockCount} pcs • ${article.lotsCount} lot(s)",
+                    fontFamily = Inter,
+                    fontSize = 11.sp,
+                    color = colors.textSecondary
+                )
 
                 Button(
                     onClick = onRestoreClick,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = CyanPrimary.copy(alpha = 0.12f),
-                        contentColor = CyanPrimary
+                        containerColor = colors.cyanSoftBg,
+                        contentColor = colors.cyanAccent
                     ),
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     modifier = Modifier.height(34.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Visibility,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(
-                            text = "Réafficher",
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// SUB-TAB: FAMILLES CONTENT
-// ---------------------------------------------------------------------------
-@Composable
-private fun FamillesSubTabContent(
-    families: List<CatalogueFamilySummaryUi>,
-    onNewFamilyClick: () -> Unit,
-    onCreateFamily: (name: String, emoji: String, colorHex: String) -> Unit,
-    onFamilyClick: (CatalogueFamilySummaryUi) -> Unit
-) {
-    val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
-    var newFamilyName by remember { mutableStateOf("") }
-    var selectedEmoji by remember { mutableStateOf("✨") }
-    var selectedColorHex by remember { mutableStateOf("#67E8F9") }
-
-    LazyColumn(
-        state = listState,
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("catalogue_families_list"),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-        contentPadding = PaddingValues(bottom = 80.dp)
-    ) {
-        // 1. Summary Bar: X Familles actives / Y articles répertoriés + Pill button "+ Nouvelle famille"
-        item(key = "header_summary") {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "${families.size} Familles actives",
-                        fontFamily = PlusJakartaSans,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    val totalArticles = families.sumOf { it.articleCount }
-                    Text(
-                        text = "$totalArticles articles répertoriés",
-                        fontFamily = PlusJakartaSans,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                // Pill Button: "+ Nouvelle famille"
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(9999.dp))
-                        .background(CyanPrimary.copy(alpha = 0.15f))
-                        .clickable {
-                            onNewFamilyClick()
-                        }
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                        .testTag("btn_new_family_pill"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(18.dp)
-                                .clip(CircleShape)
-                                .border(1.5.dp, CyanPrimary, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = null,
-                                tint = CyanPrimary,
-                                modifier = Modifier.size(12.dp)
-                            )
-                        }
-                        Text(
-                            text = "Nouvelle famille",
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = CyanPrimary
-                        )
-                    }
-                }
-            }
-        }
-
-        // 2. Family Cards
-        items(families, key = { "family_${it.id}_${it.name}" }) { family ->
-            val parsedColor = remember(family.colorHex) {
-                try {
-                    Color(android.graphics.Color.parseColor(family.colorHex))
-                } catch (e: Exception) {
-                    when {
-                        family.name.contains("Mode", ignoreCase = true) -> Color(0xFFEC4899)
-                        family.name.contains("Maison", ignoreCase = true) -> Color(0xFFF97316)
-                        family.name.contains("Accessoires", ignoreCase = true) -> Color(0xFF8B5CF6)
-                        else -> CyanPrimary
-                    }
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
-                    .clickable { onFamilyClick(family) }
-                    .padding(14.dp)
-                    .testTag("family_card_${family.name}")
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        // Emoji Container
-                        Box(
-                            modifier = Modifier
-                                .size(54.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(parsedColor.copy(alpha = 0.16f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = family.emoji.ifBlank { "🎧" },
-                                fontSize = 24.sp
-                            )
-                        }
-
-                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text(
-                                text = family.name,
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-
-                            // Subtitle: "14 articles (12 actifs) · 2 masqués"
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)
-                            ) {
-                                Text(
-                                    text = "${family.articleCount} articles ",
-                                    fontFamily = Inter,
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "(${family.activeCount} actifs)",
-                                    fontFamily = Inter,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                if (family.hiddenCount > 0) {
-                                    Text(
-                                        text = " · ${family.hiddenCount} masqués",
-                                        fontFamily = Inter,
-                                        fontSize = 12.sp,
-                                        color = MaterialTheme.colorScheme.outline
-                                    )
-                                }
-                            }
-
-                            // Valeur stock : 1 845 000 Ar
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = "Valeur stock :",
-                                    fontFamily = PlusJakartaSans,
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                                Text(
-                                    text = CurrencyFormatter.formatAriary(family.stockValueAr),
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
-
-                    // Drag indicator & Chevron
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.DragIndicator,
-                            contentDescription = "Réorganiser",
-                            tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        // 3. Inline Card "Créer une famille"
-        item(key = "card_create_family") {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
-                    .padding(16.dp)
-                    .testTag("card_create_family")
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    // Header Row: Icon Squircle + Title + Badge
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(CyanPrimary.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Category,
-                                    contentDescription = null,
-                                    tint = CyanPrimary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            Text(
-                                text = "Créer une famille",
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(9999.dp))
-                                .background(MaterialTheme.colorScheme.secondaryContainer)
-                                .padding(horizontal = 10.dp, vertical = 3.dp)
-                        ) {
-                            Text(
-                                text = "Nouveau",
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                        }
-                    }
-
-                    // Nom de la famille
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "Nom de la famille",
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        OutlinedTextField(
-                            value = newFamilyName,
-                            onValueChange = { newFamilyName = it },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("input_family_name"),
-                            placeholder = {
-                                Text(
-                                    text = "ex: Beauté & Bien-être, Chaussures...",
-                                    fontFamily = Inter,
-                                    fontSize = 14.sp,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                            },
-                            trailingIcon = {
-                                if (newFamilyName.isNotEmpty()) {
-                                    IconButton(
-                                        onClick = { newFamilyName = "" },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Close,
-                                            contentDescription = "Effacer",
-                                            tint = MaterialTheme.colorScheme.outline,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-                            },
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                focusedBorderColor = CyanPrimary,
-                                unfocusedBorderColor = Color.Transparent
-                            )
-                        )
-                    }
-
-                    // Icône symbolique
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "Icône symbolique",
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        val emojiChoices = listOf("🎧", "👗", "🏠", "📱", "💄", "👟", "🧸", "✨")
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            emojiChoices.forEach { emoji ->
-                                val isSelected = selectedEmoji == emoji
-                                Box(
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(
-                                            if (isSelected) CyanPrimary.copy(alpha = 0.25f)
-                                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                                        )
-                                        .border(
-                                            width = if (isSelected) 2.dp else 1.dp,
-                                            color = if (isSelected) CyanPrimary else Color.Transparent,
-                                            shape = RoundedCornerShape(14.dp)
-                                        )
-                                        .clickable { selectedEmoji = emoji }
-                                        .testTag("emoji_btn_$emoji"),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = emoji,
-                                        fontSize = 22.sp
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Teinte d'identification
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "Teinte d'identification",
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        val colorChoices = listOf(
-                            "#06B6D4", // Cyan Primary
-                            "#EC4899", // Pink
-                            "#F97316", // Orange
-                            "#8B5CF6", // Purple
-                            "#10B981", // Emerald
-                            "#3B82F6", // Blue
-                            "#EAB308", // Yellow
-                            "#64748B"  // Slate
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            colorChoices.forEach { colorHex ->
-                                val isSelected = selectedColorHex.equals(colorHex, ignoreCase = true)
-                                val swatchColor = try {
-                                    Color(android.graphics.Color.parseColor(colorHex))
-                                } catch (e: Exception) {
-                                    CyanPrimary
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .size(34.dp)
-                                        .clip(CircleShape)
-                                        .background(swatchColor)
-                                        .border(
-                                            width = if (isSelected) 2.dp else 0.5.dp,
-                                            color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                                            shape = CircleShape
-                                        )
-                                        .clickable { selectedColorHex = colorHex }
-                                        .testTag("color_swatch_$colorHex"),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (isSelected) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = "Sélectionné",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Button "+ Créer la famille"
-                    Button(
-                        onClick = {
-                            if (newFamilyName.isNotBlank()) {
-                                onCreateFamily(newFamilyName.trim(), selectedEmoji, selectedColorHex)
-                                newFamilyName = ""
-                            }
-                        },
-                        enabled = newFamilyName.isNotBlank(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = CyanPrimary,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .testTag("btn_submit_create_family")
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = "Créer la famille",
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // 4. "Protection des données" Notice Card
-        item(key = "card_data_protection") {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f), RoundedCornerShape(18.dp))
-                    .padding(14.dp)
-                    .testTag("card_data_protection")
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(CyanPrimary.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Shield,
-                            contentDescription = null,
-                            tint = CyanPrimary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "Protection des données",
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "En cas de suppression d'une famille, les articles associés sont automatiquement transférés vers une famille de destination pour éviter toute perte de stock ou de chiffre d'affaires.",
-                            fontFamily = Inter,
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// SUB-TAB: PLATEFORMES CONTENT
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// SUB-TAB: PLATEFORMES CONTENT (100% Hors-ligne / Room persistant)
-// ---------------------------------------------------------------------------
-@Composable
-private fun PlateformesSubTabContent(
-    platforms: List<CataloguePlatformSummaryUi>,
-    onTogglePlatformActive: (Long, Boolean) -> Unit,
-    onUpdatePlatformShippingTag: (Long, String) -> Unit,
-    onCreatePlatform: (name: String, subtitle: String, shippingTag: String, secondaryTag: String, iconType: String, colorHex: String) -> Unit,
-    onDeletePlatform: (Long) -> Unit
-) {
-    var showAddPlatformDialog by remember { mutableStateOf(false) }
-    var selectedPlatformDetails by remember { mutableStateOf<CataloguePlatformSummaryUi?>(null) }
-
-    val activeCount = platforms.count { it.isActive }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("plateformes_subtab_list"),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(bottom = 80.dp)
-    ) {
-        // 1. Summary Banner Card
-        item(key = "card_platform_summary") {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
-                    .padding(16.dp)
-                    .testTag("card_platform_summary")
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.TravelExplore,
-                                    contentDescription = null,
-                                    tint = Color(0xFF712AE2),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = "SOURCING CHINE",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.sp,
-                                    letterSpacing = 0.8.sp,
-                                    color = Color(0xFF712AE2)
-                                )
-                            }
-
-                            Text(
-                                text = "Plateformes Chinoises d'Achat",
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 18.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-
-                            Text(
-                                text = "Suivi des fournisseurs, frais de port intérieurs et dépenses cumulées.",
-                                fontFamily = Inter,
-                                fontSize = 12.sp,
-                                lineHeight = 17.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0xFF712AE2).copy(alpha = 0.10f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Inventory2,
-                                contentDescription = null,
-                                tint = Color(0xFF712AE2),
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(CyanPrimary)
-                            )
-                            Text(
-                                text = "$activeCount actives répertoriées",
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        Button(
-                            onClick = { showAddPlatformDialog = true },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF712AE2),
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
-                            modifier = Modifier
-                                .height(36.dp)
-                                .testTag("btn_new_platform_banner")
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = "Nouvelle plateforme",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 2. Platforms Cards Stack (Persistant & Dynamique)
-        items(platforms, key = { it.id.toString() + "_" + it.name }) { platform ->
-            PlatformCardItem(
-                platform = platform,
-                onToggleActive = { isActive -> onTogglePlatformActive(platform.id, isActive) },
-                onDetailsClick = { selectedPlatformDetails = platform }
-            )
-        }
-
-        // 3. Quick Reference Info Card ("Frais de port en Chine")
-        item(key = "card_freight_info") {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
-                    .padding(16.dp)
-                    .testTag("card_freight_info")
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Lightbulb,
-                        contentDescription = null,
-                        tint = CyanPrimary,
-                        modifier = Modifier.size(24.dp)
-                    )
-
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "Frais de port en Chine (运费)",
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Si le port est payant sur la plateforme, il est imputé sur le coût de revient du lot avant l'envoi vers le transitaire.",
-                            fontFamily = Inter,
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-
-        // 4. Bottom Floating Action CTA
-        item(key = "card_bottom_add_button") {
-            Button(
-                onClick = { showAddPlatformDialog = true },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF712AE2),
-                    contentColor = Color.White
-                ),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("btn_bottom_add_platform")
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AddCircle,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        text = "Ajouter une plateforme",
-                        fontFamily = PlusJakartaSans,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
-                }
-            }
-        }
-    }
-
-    // Modal: Ajouter une plateforme
-    if (showAddPlatformDialog) {
-        AddPlatformDialog(
-            onDismiss = { showAddPlatformDialog = false },
-            onConfirm = { name, subtitle, shipping, secondary ->
-                val iconType = when {
-                    name.contains("1688", ignoreCase = true) -> "TEXT_1688"
-                    name.contains("taobao", ignoreCase = true) -> "CART"
-                    name.contains("pinduoduo", ignoreCase = true) -> "PRICE"
-                    name.contains("wechat", ignoreCase = true) -> "WECHAT"
-                    else -> "STORE"
-                }
-                onCreatePlatform(name, subtitle, shipping, secondary, iconType, "#712ae2")
-                showAddPlatformDialog = false
-            }
-        )
-    }
-
-    // Modal: Détails & Tarifs transit
-    selectedPlatformDetails?.let { plat ->
-        PlatformTransitDetailsDialog(
-            platform = plat,
-            onDismiss = { selectedPlatformDetails = null },
-            onUpdateShippingTag = { newTag ->
-                onUpdatePlatformShippingTag(plat.id, newTag)
-            },
-            onDelete = {
-                onDeletePlatform(plat.id)
-                selectedPlatformDetails = null
-            }
-        )
-    }
-}
-
-// ---------------------------------------------------------------------------
-// COMPOSABLE: PLATFORM CARD ITEM
-// ---------------------------------------------------------------------------
-@Composable
-private fun PlatformCardItem(
-    platform: CataloguePlatformSummaryUi,
-    onToggleActive: (Boolean) -> Unit,
-    onDetailsClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
-            .padding(16.dp)
-            .testTag("platform_card_${platform.name}")
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            // Header Row: Icon + Names + Switch
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    // Badge logo icon box
-                    PlatformBadgeIcon(
-                        iconType = platform.iconType,
-                        name = platform.name,
-                        colorHex = platform.colorHex
-                    )
-
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = platform.name,
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-
-                            if (platform.isVerified) {
-                                Icon(
-                                    imageVector = Icons.Default.Verified,
-                                    contentDescription = "Certifié",
-                                    tint = CyanPrimary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-
-                            if (platform.badgeText.isNotBlank()) {
-                                val isUsine = platform.badgeText.contains("Usine", ignoreCase = true)
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(if (isUsine) Color(0xFFFFDAD6) else MaterialTheme.colorScheme.surfaceVariant)
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = platform.badgeText,
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 10.sp,
-                                        color = if (isUsine) Color(0xFF93000A) else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-
-                        Text(
-                            text = platform.subtitle,
-                            fontFamily = Inter,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Switch(
-                    checked = platform.isActive,
-                    onCheckedChange = onToggleActive,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = Color(0xFF712AE2),
-                        uncheckedThumbColor = Color.White,
-                        uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                    ),
-                    modifier = Modifier.testTag("switch_platform_${platform.name}")
-                )
-            }
-
-            // Tags row (Port Chine + Condition)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val isFreeShipping = platform.shippingTag.contains("gratuit", ignoreCase = true) || platform.shippingTag.contains("包邮")
-                val isDevis = platform.shippingTag.contains("devis", ignoreCase = true)
-
-                // Shipping pill
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(9999.dp))
-                        .background(if (isFreeShipping) Color(0xFFACEDFF) else Color(0xFFEADDFF))
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = when {
-                                isFreeShipping -> Icons.Default.CheckCircle
-                                isDevis -> Icons.Default.RequestQuote
-                                else -> Icons.Default.LocalShipping
-                            },
-                            contentDescription = null,
-                            tint = if (isFreeShipping) Color(0xFF004E5C) else Color(0xFF5A00C6),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(
-                            text = platform.shippingTag,
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            color = if (isFreeShipping) Color(0xFF004E5C) else Color(0xFF5A00C6)
-                        )
-                    }
-                }
-
-                // Secondary tag pill
-                if (platform.secondaryTag.isNotBlank()) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(9999.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = platform.secondaryTag,
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            // Metrics Box (Dépenses totales + Activité récente)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    .padding(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Column 1: Dépenses totales
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            text = "Dépenses totales",
-                            fontFamily = PlusJakartaSans,
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "¥ ${formatYuanAmount(platform.totalSpentYuan)}",
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 17.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "~ ${CurrencyFormatter.formatAriary(platform.totalSpentAr)}",
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 11.sp,
-                            color = CyanPrimary
-                        )
-                    }
-
-                    // Column 2: Activité récente
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            text = if (platform.totalLots > 0) "Activité récente" else "Commandes passées",
-                            fontFamily = PlusJakartaSans,
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (platform.totalLots > 0) Icons.Default.ShoppingBag else Icons.Default.DoneAll,
-                                contentDescription = null,
-                                tint = CyanPrimary,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = "${platform.totalLots} commandes",
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        Text(
-                            text = if (platform.lastOrderDate.startsWith("Dernière") || platform.lastOrderDate.startsWith("Suivi") || platform.lastOrderDate.startsWith("Aucune") || platform.lastOrderDate.startsWith("Nouvelle")) platform.lastOrderDate else "Dernière : ${platform.lastOrderDate}",
-                            fontFamily = PlusJakartaSans,
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            // Action button for details
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(38.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(CyanPrimary.copy(alpha = 0.15f))
-                    .clickable { onDetailsClick() }
-                    .padding(horizontal = 14.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Détails & Tarifs transit",
-                        fontFamily = PlusJakartaSans,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        color = CyanPrimary
-                    )
+                    Icon(Icons.Default.Visibility, null, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = CyanPrimary,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Text("Réafficher", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                 }
             }
         }
     }
 }
 
-// ---------------------------------------------------------------------------
-// BADGE LOGO ICON CONTAINER
-// ---------------------------------------------------------------------------
-@Composable
-private fun PlatformBadgeIcon(
-    iconType: String,
-    name: String,
-    colorHex: String
-) {
-    val bgModifier = Modifier
-        .size(44.dp)
-        .clip(RoundedCornerShape(14.dp))
 
-    when {
-        iconType == "TEXT_1688" || name.contains("1688", ignoreCase = true) -> {
-            Box(
-                modifier = bgModifier.background(Color(0xFF712AE2).copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "1688",
-                    fontFamily = PlusJakartaSans,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 14.sp,
-                    color = Color(0xFF712AE2)
-                )
-            }
-        }
-        iconType == "CART" || name.contains("taobao", ignoreCase = true) -> {
-            Box(
-                modifier = bgModifier.background(Color(0xFF8A4CFC)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ShoppingCart,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
-        iconType == "PRICE" || name.contains("pinduoduo", ignoreCase = true) -> {
-            Box(
-                modifier = bgModifier.background(Color(0xFFFFDAD6)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PriceChange,
-                    contentDescription = null,
-                    tint = Color(0xFF93000A),
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
-        iconType == "WECHAT" || name.contains("wechat", ignoreCase = true) -> {
-            Box(
-                modifier = bgModifier.background(Color(0xFFACEDFF)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Forum,
-                    contentDescription = null,
-                    tint = Color(0xFF004E5C),
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
-        else -> {
-            val fallbackColor = try {
-                Color(android.graphics.Color.parseColor(colorHex))
-            } catch (e: Exception) {
-                Color(0xFF712AE2)
-            }
-            Box(
-                modifier = bgModifier.background(fallbackColor.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Storefront,
-                    contentDescription = null,
-                    tint = fallbackColor,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
-    }
-}
 
-// ---------------------------------------------------------------------------
-// DIALOG: AJOUTER UNE PLATEFORME (ROOM PERSISTANT)
-// ---------------------------------------------------------------------------
-@Composable
-private fun AddPlatformDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (name: String, subtitle: String, shippingTag: String, secondaryTag: String) -> Unit
-) {
-    var name by remember { mutableStateOf("") }
-    var subtitle by remember { mutableStateOf("") }
-    var shippingChoice by remember { mutableStateOf("Port Gratuit (包邮)") }
-    var secondaryTag by remember { mutableStateOf("") }
 
-    val shippingOptions = listOf(
-        "Port Gratuit (包邮)",
-        "Port Payant (¥ 10 - ¥ 25)",
-        "Port Payant (Sur devis)"
-    )
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = "Nouvelle plateforme sourcing",
-                fontFamily = PlusJakartaSans,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
-            )
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Nom de la plateforme") },
-                    placeholder = { Text("ex: AliExpress, Weidian, JD.com") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = subtitle,
-                    onValueChange = { subtitle = it },
-                    label = { Text("Description / Spécialité") },
-                    placeholder = { Text("ex: Grossiste électronique Shenzhen") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Text(
-                    text = "Mode de port intérieur en Chine",
-                    fontFamily = PlusJakartaSans,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    shippingOptions.forEach { opt ->
-                        val isSelected = shippingChoice == opt
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (isSelected) Color(0xFF712AE2).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                                .border(1.dp, if (isSelected) Color(0xFF712AE2) else Color.Transparent, RoundedCornerShape(10.dp))
-                                .clickable { shippingChoice = opt }
-                                .padding(horizontal = 12.dp, vertical = 8.dp)
-                        ) {
-                            Text(
-                                text = opt,
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 12.sp,
-                                color = if (isSelected) Color(0xFF712AE2) else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-
-                OutlinedTextField(
-                    value = secondaryTag,
-                    onValueChange = { secondaryTag = it },
-                    label = { Text("Condition / Tag") },
-                    placeholder = { Text("ex: Livraison rapide état côtier") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (name.isNotBlank()) {
-                        onConfirm(
-                            name.trim(),
-                            if (subtitle.isBlank()) "Fournisseur Chine" else subtitle.trim(),
-                            shippingChoice,
-                            secondaryTag.trim()
-                        )
-                    }
-                },
-                enabled = name.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF712AE2),
-                    contentColor = Color.White
-                )
-            ) {
-                Text("Enregistrer")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Annuler")
-            }
-        }
-    )
-}
-
-// ---------------------------------------------------------------------------
-// DIALOG: DÉTAILS ET TARIFS TRANSIT
-// ---------------------------------------------------------------------------
-@Composable
-private fun PlatformTransitDetailsDialog(
-    platform: CataloguePlatformSummaryUi,
-    onDismiss: () -> Unit,
-    onUpdateShippingTag: (String) -> Unit,
-    onDelete: () -> Unit
-) {
-    val shippingModes = listOf(
-        "Port Gratuit (包邮)",
-        "Port Payant (Sur devis)",
-        "Variable (Sur devis usine)"
-    )
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = platform.name,
-                    fontFamily = PlusJakartaSans,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                if (platform.isVerified) {
-                    Icon(
-                        imageVector = Icons.Default.Verified,
-                        contentDescription = "Certifié",
-                        tint = CyanPrimary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = platform.subtitle,
-                    fontFamily = Inter,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                // Toggle Mode de port intérieur
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Mode de port intérieur (Chine)",
-                        fontFamily = PlusJakartaSans,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        shippingModes.forEach { mode ->
-                            val isSelected = platform.shippingTag.equals(mode, ignoreCase = true) ||
-                                (mode.contains("Gratuit") && platform.shippingTag.contains("gratuit", ignoreCase = true)) ||
-                                (mode.contains("Payant") && platform.shippingTag.contains("payant", ignoreCase = true)) ||
-                                (mode.contains("Variable") && (platform.shippingTag.contains("variable", ignoreCase = true) || platform.shippingTag.contains("devis", ignoreCase = true)))
-
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onUpdateShippingTag(mode) },
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isSelected) CyanPrimary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                                border = BorderStroke(
-                                    width = if (isSelected) 1.5.dp else 0.5.dp,
-                                    color = if (isSelected) CyanPrimary else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-                                )
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = mode,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) CyanPrimary else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    if (isSelected) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = CyanPrimary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                        .padding(12.dp)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "Logistique & Notes",
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = CyanPrimary
-                        )
-                        Text(
-                            text = platform.transitNotes.ifBlank { "Les frais de port payants sont imputés au coût de revient du lot avant l'envoi vers le transitaire." },
-                            fontFamily = Inter,
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column {
-                        Text("Dépenses totales", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
-                        Text(
-                            "¥ ${formatYuanAmount(platform.totalSpentYuan)}",
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("Équivalent Ariary", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
-                        Text(
-                            CurrencyFormatter.formatAriary(platform.totalSpentAr),
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = CyanPrimary
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = CyanPrimary,
-                    contentColor = Color.White
-                )
-            ) {
-                Text("Fermer", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDelete,
-                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-            ) {
-                Text("Supprimer", fontFamily = PlusJakartaSans)
-            }
-        }
-    )
-}
-
-// ---------------------------------------------------------------------------
-// HELPER: FORMAT YUAN
-// ---------------------------------------------------------------------------
-private fun formatYuanAmount(amount: Double): String {
-    val rounded = amount.toLong()
-    return String.format(Locale.FRENCH, "%,d", rounded).replace('\u00A0', ' ')
-}
 

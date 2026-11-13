@@ -64,6 +64,7 @@ import com.example.ui.business.components.AddCatalogueArticleDialog
 import com.example.ui.business.components.AddClientDialog
 import com.example.ui.business.components.AddFamilyDialog
 import com.example.ui.business.components.AddOrderDialog
+import com.example.ui.business.components.AddOrEditBusinessAccountDialog
 import com.example.ui.business.components.AddSaleDialog
 import com.example.ui.business.components.NewActionMenuSheet
 import com.example.ui.business.components.AdjustStockDialog
@@ -106,6 +107,7 @@ fun BusinessScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val businessAccounts by viewModel.businessAccounts.collectAsStateWithLifecycle()
     val businessTransactions by viewModel.businessTransactions.collectAsStateWithLifecycle()
+    val businessInvestments by viewModel.businessInvestments.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
     val subTabsScrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -113,6 +115,7 @@ fun BusinessScreen(
 
     // Dialog states
     var showBuyYuansDialog by remember { mutableStateOf(false) }
+    var showQuickCreateYuanAccountDialog by remember { mutableStateOf(false) }
     var showPayPlatformDialog by remember { mutableStateOf(false) }
     var showAddOrderDialog by remember { mutableStateOf(false) }
     var showNewActionMenuSheet by remember { mutableStateOf(false) }
@@ -121,8 +124,8 @@ fun BusinessScreen(
     var showSelectOrderToAdjustDialog by remember { mutableStateOf(false) }
     var saleToRecordPayment by remember { mutableStateOf<BusinessSaleEntity?>(null) }
     var showAddSaleDialog by remember { mutableStateOf(false) }
-    var articleToEdit by remember { mutableStateOf<BusinessOrderEntity?>(null) }
-    var articleToEditInDialog by remember { mutableStateOf<BusinessOrderEntity?>(null) }
+    var selectedArticleKey by remember { mutableStateOf<String?>(null) }
+    var articleToEditInDialog by remember { mutableStateOf<CatalogueArticleSummaryUi?>(null) }
     var initialArticleForOrder by remember { mutableStateOf<BusinessOrderEntity?>(null) }
     var initialArticleForSale by remember { mutableStateOf<BusinessOrderEntity?>(null) }
     var selectedClientForRelance by remember { mutableStateOf<BusinessClientUi?>(null) }
@@ -132,6 +135,7 @@ fun BusinessScreen(
     var showAddClientDialog by remember { mutableStateOf(false) }
     var selectedOrderId by remember { mutableStateOf<Long?>(null) }
     val liveOrder = uiState.orders.firstOrNull { it.id == selectedOrderId }
+    val selectedArticle = uiState.allCatalogueArticles.firstOrNull { it.articleKey == selectedArticleKey }
 
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let { msg ->
@@ -143,13 +147,20 @@ fun BusinessScreen(
     // -------------------------------------------------------------
     // VUE DÉTAIL ARTICLE (Catalogue ou Stock)
     // -------------------------------------------------------------
-    articleToEdit?.let { article ->
+    selectedArticle?.let { article ->
+        val primaryOrder = article.primaryOrder
         BackHandler {
-            articleToEdit = null
+            if (selectedOrderId != null) {
+                selectedOrderId = null
+            } else {
+                selectedArticleKey = null
+            }
         }
         ArticleDetailScreen(
             article = article,
-            onBackClick = { articleToEdit = null },
+            transitaires = uiState.catalogueTransitaires,
+            cmupRate = uiState.cmupRate,
+            onBackClick = { selectedArticleKey = null },
             onBuyClick = { art ->
                 initialArticleForOrder = art
                 showAddOrderDialog = true
@@ -165,25 +176,60 @@ fun BusinessScreen(
                 articleToEditInDialog = art
             },
             onToggleHideArticle = { art ->
-                viewModel.toggleHideStockItem(art)
+                viewModel.toggleHideCatalogueArticle(art)
+            },
+            onDuplicateArticle = { art ->
+                viewModel.duplicateBusinessOrder(art)
             },
             onDeleteArticle = { art ->
-                viewModel.deleteStockOrder(art)
-                articleToEdit = null
+                viewModel.deleteCatalogueArticle(art)
+                selectedArticleKey = null
             },
-            onUpdateArticle = { updated ->
-                viewModel.updateBusinessOrder(updated)
-                articleToEdit = updated
+            onUpdateVisual = { newVisual ->
+                viewModel.updateCatalogueArticleFull(
+                    article = article,
+                    newProduct = primaryOrder.product,
+                    newReferenceCode = primaryOrder.referenceCode,
+                    newFamily = primaryOrder.family,
+                    newPlatform = primaryOrder.platform,
+                    newPriceYuan = article.latestPriceYuan,
+                    newResaleAr = article.resalePriceAr,
+                    newWeightKg = primaryOrder.weightKg,
+                    newFreightMode = primaryOrder.freightMode,
+                    newVariants = primaryOrder.variants,
+                    newImageUrl = newVisual,
+                    newNotes = primaryOrder.receptionNotes,
+                    isHidden = article.isHidden
+                )
+            },
+            onUpdateVariants = { newVariants ->
+                viewModel.updateCatalogueArticleFull(
+                    article = article,
+                    newProduct = primaryOrder.product,
+                    newReferenceCode = primaryOrder.referenceCode,
+                    newFamily = primaryOrder.family,
+                    newPlatform = primaryOrder.platform,
+                    newPriceYuan = article.latestPriceYuan,
+                    newResaleAr = article.resalePriceAr,
+                    newWeightKg = primaryOrder.weightKg,
+                    newFreightMode = primaryOrder.freightMode,
+                    newVariants = newVariants,
+                    newImageUrl = primaryOrder.imageUrl,
+                    newNotes = primaryOrder.receptionNotes,
+                    isHidden = article.isHidden
+                )
+            },
+            onLotClick = { lot ->
+                selectedOrderId = lot.id
             }
         )
 
-        // Render active dialogs on top of ArticleDetailScreen if open
         if (showAddOrderDialog) {
             AddOrderDialog(
                 cmupRate = uiState.cmupRate,
                 availableYuans = uiState.availableYuans,
                 availableArticles = uiState.orders,
-                initialArticle = initialArticleForOrder ?: article,
+                initialArticle = initialArticleForOrder ?: primaryOrder,
                 transitaires = uiState.catalogueTransitaires.filter { !it.isArchived }.map { it.name },
                 onDismiss = {
                     showAddOrderDialog = false
@@ -200,7 +246,7 @@ fun BusinessScreen(
         if (showAddSaleDialog) {
             AddSaleDialog(
                 availableStockOrders = uiState.visibleStockOrders,
-                initialArticle = initialArticleForSale ?: article,
+                initialArticle = initialArticleForSale ?: primaryOrder,
                 onDismiss = {
                     showAddSaleDialog = false
                     initialArticleForSale = null
@@ -226,11 +272,72 @@ fun BusinessScreen(
 
         articleToEditInDialog?.let { articleInDialog ->
             EditCatalogueArticleDialog(
-                order = articleInDialog,
+                article = articleInDialog,
+                availableFamilies = uiState.catalogueFamilies,
+                availablePlatforms = uiState.cataloguePlatforms.filter { it.isActive }.map { it.name },
+                transitaires = uiState.catalogueTransitaires,
+                cmupRate = uiState.cmupRate,
                 onDismiss = { articleToEditInDialog = null },
-                onConfirm = { newPriceYuan, newResaleAr, newVariants, isHidden ->
-                    viewModel.updateCatalogueArticle(articleInDialog, newPriceYuan, newResaleAr, newVariants, isHidden)
+                onConfirm = { newProd, newSku, newFam, newPlat, newPriceYuan, newResaleAr, newWeightKg, newFreightMode, newVariants, newImageUrl, newNotes, isHidden ->
+                    viewModel.updateCatalogueArticleFull(
+                        article = articleInDialog,
+                        newProduct = newProd,
+                        newReferenceCode = newSku,
+                        newFamily = newFam,
+                        newPlatform = newPlat,
+                        newPriceYuan = newPriceYuan,
+                        newResaleAr = newResaleAr,
+                        newWeightKg = newWeightKg,
+                        newFreightMode = newFreightMode,
+                        newVariants = newVariants,
+                        newImageUrl = newImageUrl,
+                        newNotes = newNotes,
+                        isHidden = isHidden
+                    )
                     articleToEditInDialog = null
+                }
+            )
+        }
+
+        liveOrder?.let { order ->
+            LogisticWizardScreen(
+                order = order,
+                cmupRate = uiState.cmupRate,
+                availableYuans = uiState.availableYuans,
+                transitaires = uiState.catalogueTransitaires.filter { !it.isArchived },
+                families = uiState.catalogueFamilies,
+                accounts = businessAccounts,
+                onSpendYuans = { amount, rate, note ->
+                    viewModel.spendYuans(amount, rate, "Alipay", note, orderId = order.id)
+                },
+                onRefundYuans = { amount, rate, note ->
+                    viewModel.refundYuans(amount, rate, "Alipay", note, orderId = order.id)
+                },
+                onBuyYuans = { amount, rate, platform, sourceAccountName ->
+                    viewModel.buyYuans(amount, rate, platform, sourceAccountName)
+                },
+                onDismiss = { selectedOrderId = null },
+                onDeleteOrder = {
+                    viewModel.deleteStockOrder(it)
+                    selectedOrderId = null
+                },
+                onUpdateOrder = { updated ->
+                    viewModel.updateBusinessOrder(updated)
+                },
+                onViewStock = {
+                    viewModel.onSelectSubTab("Stock")
+                    selectedOrderId = null
+                    selectedArticleKey = null
+                },
+                onCreateSale = {
+                    viewModel.onSelectSubTab("Ventes")
+                    selectedOrderId = null
+                    selectedArticleKey = null
+                },
+                onReorder = {
+                    viewModel.onSelectSubTab("Achats")
+                    selectedOrderId = null
+                    selectedArticleKey = null
                 }
             )
         }
@@ -251,11 +358,18 @@ fun BusinessScreen(
             onSubTabSelected = { viewModel.onCatalogueSubTabSelected(it) },
             onSearchQueryChanged = { viewModel.onCatalogueSearchQueryChanged(it) },
             onFamilyFilterSelected = { viewModel.onCatalogueFamilyFilterSelected(it) },
+            onStockFilterSelected = { viewModel.onCatalogueStockFilterSelected(it) },
             onToggleShowHidden = { viewModel.onToggleCatalogueShowHidden() },
             onSortChanged = { viewModel.onCatalogueSortChanged(it) },
             onViewModeChanged = { viewModel.onCatalogueViewModeChanged(it) },
-            onArticleClick = { articleToEdit = it },
-            onToggleHideArticle = { viewModel.toggleHideStockItem(it) },
+            onArticleClick = { selectedArticleKey = it.articleKey },
+            onEditArticleClick = { articleToEditInDialog = it },
+            onQuickRestockArticle = { art ->
+                initialArticleForOrder = art.primaryOrder
+                showAddOrderDialog = true
+            },
+            onToggleHideArticle = { viewModel.toggleHideCatalogueArticle(it) },
+            onDeleteArticle = { viewModel.deleteCatalogueArticle(it) },
             onNewArticleClick = { showAddCatalogueArticleDialog = true },
             onNewFamilyClick = { showAddFamilyDialog = true },
             onCreateFamily = { name, emoji, color -> viewModel.addCatalogueFamily(name, emoji, color) },
@@ -279,10 +393,76 @@ fun BusinessScreen(
         if (showAddCatalogueArticleDialog) {
             AddCatalogueArticleDialog(
                 availableFamilies = uiState.catalogueFamilies.map { it.name },
+                familySummaries = uiState.catalogueFamilies,
+                availablePlatforms = uiState.cataloguePlatforms.filter { it.isActive }.map { it.name },
+                transitaires = uiState.catalogueTransitaires,
+                cmupRate = uiState.cmupRate,
                 onDismiss = { showAddCatalogueArticleDialog = false },
-                onConfirm = { prod, fam, sku, vars, pYuan, rAr, sCount, wKg, plat ->
-                    viewModel.addCatalogueArticle(prod, fam, sku, vars, pYuan, rAr, sCount, wKg, plat)
+                onConfirm = { prod, fam, sku, vars, pYuan, rAr, sCount, wKg, plat, imgUrl, freightMode, notes, estFreightPerKg ->
+                    viewModel.addCatalogueArticle(
+                        product = prod,
+                        family = fam,
+                        referenceCode = sku,
+                        variants = vars,
+                        priceYuan = pYuan,
+                        resaleAr = rAr,
+                        stockCount = sCount,
+                        weightKg = wKg,
+                        platform = plat,
+                        imageUrl = imgUrl,
+                        freightMode = freightMode,
+                        notes = notes,
+                        estimatedFreightPerKgAr = estFreightPerKg
+                    )
                     showAddCatalogueArticleDialog = false
+                }
+            )
+        }
+
+        articleToEditInDialog?.let { articleInDialog ->
+            EditCatalogueArticleDialog(
+                article = articleInDialog,
+                availableFamilies = uiState.catalogueFamilies,
+                availablePlatforms = uiState.cataloguePlatforms.filter { it.isActive }.map { it.name },
+                transitaires = uiState.catalogueTransitaires,
+                cmupRate = uiState.cmupRate,
+                onDismiss = { articleToEditInDialog = null },
+                onConfirm = { newProd, newSku, newFam, newPlat, newPriceYuan, newResaleAr, newWeightKg, newFreightMode, newVariants, newImageUrl, newNotes, isHidden ->
+                    viewModel.updateCatalogueArticleFull(
+                        article = articleInDialog,
+                        newProduct = newProd,
+                        newReferenceCode = newSku,
+                        newFamily = newFam,
+                        newPlatform = newPlat,
+                        newPriceYuan = newPriceYuan,
+                        newResaleAr = newResaleAr,
+                        newWeightKg = newWeightKg,
+                        newFreightMode = newFreightMode,
+                        newVariants = newVariants,
+                        newImageUrl = newImageUrl,
+                        newNotes = newNotes,
+                        isHidden = isHidden
+                    )
+                    articleToEditInDialog = null
+                }
+            )
+        }
+
+        if (showAddOrderDialog) {
+            AddOrderDialog(
+                cmupRate = uiState.cmupRate,
+                availableYuans = uiState.availableYuans,
+                availableArticles = uiState.orders,
+                initialArticle = initialArticleForOrder,
+                transitaires = uiState.catalogueTransitaires.filter { !it.isArchived }.map { it.name },
+                onDismiss = {
+                    showAddOrderDialog = false
+                    initialArticleForOrder = null
+                },
+                onConfirm = { prod, supp, q, pY, rAr, cat, carr, varStr, fAr ->
+                    viewModel.addBusinessOrder(prod, supp, q, pY, rAr, cat, carr, varStr, fAr)
+                    showAddOrderDialog = false
+                    initialArticleForOrder = null
                 }
             )
         }
@@ -580,7 +760,12 @@ fun BusinessScreen(
                         onToggleHideItem = { viewModel.toggleHideStockItem(it) },
                         onDeleteItem = { viewModel.deleteStockOrder(it) },
                         onCorrectStockFabClick = { showSelectOrderToAdjustDialog = true },
-                        onArticleClick = { articleToEdit = it },
+                        onArticleClick = { order ->
+                            val matched = uiState.allCatalogueArticles.firstOrNull { summary ->
+                                summary.primaryOrder.id == order.id || summary.lots.any { it.id == order.id }
+                            }
+                            selectedArticleKey = matched?.articleKey
+                        },
                         onOpenCatalogue = { viewModel.openCatalogue() },
                         onOpenCatalogueWithHidden = { viewModel.openCatalogue(showHidden = true) }
                     )
@@ -639,10 +824,33 @@ fun BusinessScreen(
                         uiState = uiState,
                         accounts = businessAccounts,
                         transactions = businessTransactions,
-                        onAddAccount = { name, sub, bal -> viewModel.addBusinessAccount(name, sub, bal) },
-                        onAddTransaction = { title, type, amountAr, accountName, ref ->
-                            viewModel.addBusinessTransaction(title, type, amountAr, accountName, ref)
+                        investments = businessInvestments,
+                        onAddAccount = { name, sub, balAr, isYuan, balYuan ->
+                            viewModel.addBusinessAccount(name, sub, balAr, isYuan, balYuan)
                         },
+                        onUpdateAccount = { existing, newName, newSub, newBalAr, newBalYuan ->
+                            viewModel.updateBusinessAccount(existing, newName, newSub, newBalAr, newBalYuan)
+                        },
+                        onDeleteAccount = { acc ->
+                            viewModel.deleteBusinessAccount(acc)
+                        },
+                        onAddTransaction = { title, type, amountAr, accountName, ref, dest ->
+                            viewModel.addBusinessTransaction(title, type, amountAr, accountName, ref, dest)
+                        },
+                        onBuyYuansFromTx = { amountYuan, rateAr, platform, sourceAccountName ->
+                            viewModel.buyYuans(amountYuan, rateAr, platform, sourceAccountName)
+                        },
+                        onDeleteTransaction = { tx ->
+                            viewModel.deleteBusinessTransaction(tx)
+                        },
+                        onRecordCapitalMovement = { title, isContrib, amountAr, accName, note, affectAccount, dateMillis ->
+                            viewModel.recordCapitalMovement(title, isContrib, amountAr, accName, note, affectAccount, dateMillis)
+                        },
+                        onAddInvestment = { title, cat, amountAr, estValAr, returnAr, accName, notes, dateMillis ->
+                            viewModel.addBusinessInvestment(title, cat, amountAr, estValAr, returnAr, accName, notes, dateMillis)
+                        },
+                        onUpdateInvestment = { viewModel.updateBusinessInvestment(it) },
+                        onDeleteInvestment = { viewModel.deleteBusinessInvestment(it) },
                         onPrevMonth = { viewModel.onPrevMonth() },
                         onNextMonth = { viewModel.onNextMonth() },
                         onBuyYuansClick = { showBuyYuansDialog = true },
@@ -762,7 +970,7 @@ fun BusinessScreen(
                     IncomingArrivalsSection(
                         parcels = uiState.incomingParcels,
                         onParcelClick = { parcel ->
-                            val matched = uiState.visibleCatalogueOrders.find { it.id == parcel.id }
+                            val matched = uiState.orders.find { it.id == parcel.id }
                                 ?: uiState.visibleStockOrders.find { it.id == parcel.id }
                                 ?: uiState.filteredPurchases.find { it.id == parcel.id }
                             if (matched != null) {
@@ -798,9 +1006,27 @@ fun BusinessScreen(
     // Dialogs
     if (showBuyYuansDialog) {
         BuyYuansDialog(
+            accounts = businessAccounts,
+            defaultRate = uiState.cmupRate,
             onDismiss = { showBuyYuansDialog = false },
-            onConfirm = { amountYuan, rateAr, platform ->
-                viewModel.buyYuans(amountYuan, rateAr, platform)
+            onConfirm = { amountYuan, rateAr, platform, sourceAccountName ->
+                viewModel.buyYuans(amountYuan, rateAr, platform, sourceAccountName)
+            },
+            onCreateAccountClick = { showQuickCreateYuanAccountDialog = true }
+        )
+    }
+
+    if (showQuickCreateYuanAccountDialog) {
+        AddOrEditBusinessAccountDialog(
+            existingAccounts = businessAccounts,
+            defaultIsYuan = true,
+            onDismiss = { showQuickCreateYuanAccountDialog = false },
+            onConfirmCreate = { name, subtitle, initialBalanceAr, isYuanAccount, initialBalanceYuan ->
+                viewModel.addBusinessAccount(name, subtitle, initialBalanceAr, isYuanAccount, initialBalanceYuan)
+                showQuickCreateYuanAccountDialog = false
+                if (isYuanAccount) {
+                    showBuyYuansDialog = true
+                }
             }
         )
     }
@@ -822,6 +1048,35 @@ fun BusinessScreen(
             onNewArticleClick = { showAddCatalogueArticleDialog = true },
             onNewPurchaseClick = { showAddOrderDialog = true },
             onNewSaleClick = { showAddSaleDialog = true }
+        )
+    }
+
+    if (showAddCatalogueArticleDialog) {
+        AddCatalogueArticleDialog(
+            availableFamilies = uiState.catalogueFamilies.map { it.name },
+            familySummaries = uiState.catalogueFamilies,
+            availablePlatforms = uiState.cataloguePlatforms.filter { it.isActive }.map { it.name },
+            transitaires = uiState.catalogueTransitaires,
+            cmupRate = uiState.cmupRate,
+            onDismiss = { showAddCatalogueArticleDialog = false },
+            onConfirm = { prod, fam, sku, vars, pYuan, rAr, sCount, wKg, plat, imgUrl, freightMode, notes, estFreightPerKg ->
+                viewModel.addCatalogueArticle(
+                    product = prod,
+                    family = fam,
+                    referenceCode = sku,
+                    variants = vars,
+                    priceYuan = pYuan,
+                    resaleAr = rAr,
+                    stockCount = sCount,
+                    weightKg = wKg,
+                    platform = plat,
+                    imageUrl = imgUrl,
+                    freightMode = freightMode,
+                    notes = notes,
+                    estimatedFreightPerKgAr = estFreightPerKg
+                )
+                showAddCatalogueArticleDialog = false
+            }
         )
     }
 
@@ -854,12 +1109,30 @@ fun BusinessScreen(
         )
     }
 
-    articleToEditInDialog?.let { article ->
+    articleToEditInDialog?.let { articleInDialog ->
         EditCatalogueArticleDialog(
-            order = article,
+            article = articleInDialog,
+            availableFamilies = uiState.catalogueFamilies,
+            availablePlatforms = uiState.cataloguePlatforms.filter { it.isActive }.map { it.name },
+            transitaires = uiState.catalogueTransitaires,
+            cmupRate = uiState.cmupRate,
             onDismiss = { articleToEditInDialog = null },
-            onConfirm = { newPriceYuan, newResaleAr, newVariants, isHidden ->
-                viewModel.updateCatalogueArticle(article, newPriceYuan, newResaleAr, newVariants, isHidden)
+            onConfirm = { newProd, newSku, newFam, newPlat, newPriceYuan, newResaleAr, newWeightKg, newFreightMode, newVariants, newImageUrl, newNotes, isHidden ->
+                viewModel.updateCatalogueArticleFull(
+                    article = articleInDialog,
+                    newProduct = newProd,
+                    newReferenceCode = newSku,
+                    newFamily = newFam,
+                    newPlatform = newPlat,
+                    newPriceYuan = newPriceYuan,
+                    newResaleAr = newResaleAr,
+                    newWeightKg = newWeightKg,
+                    newFreightMode = newFreightMode,
+                    newVariants = newVariants,
+                    newImageUrl = newImageUrl,
+                    newNotes = newNotes,
+                    isHidden = isHidden
+                )
                 articleToEditInDialog = null
             }
         )
@@ -920,11 +1193,17 @@ fun BusinessScreen(
             order = order,
             cmupRate = uiState.cmupRate,
             availableYuans = uiState.availableYuans,
+            transitaires = uiState.catalogueTransitaires.filter { !it.isArchived },
+            families = uiState.catalogueFamilies,
+            accounts = businessAccounts,
             onSpendYuans = { amount, rate, note ->
                 viewModel.spendYuans(amount, rate, "Alipay", note, orderId = order.id)
             },
             onRefundYuans = { amount, rate, note ->
                 viewModel.refundYuans(amount, rate, "Alipay", note, orderId = order.id)
+            },
+            onBuyYuans = { amount, rate, platform, sourceAccountName ->
+                viewModel.buyYuans(amount, rate, platform, sourceAccountName)
             },
             onDismiss = { selectedOrderId = null },
             onDeleteOrder = {

@@ -976,7 +976,7 @@ private fun PurchaseDetailedCard(
                         )
                     }
                     Text(
-                        text = order.carrier.ifBlank { "Transitaire MadaAir" },
+                        text = order.carrier.ifBlank { "Non attribué" },
                         fontFamily = PlusJakartaSans,
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

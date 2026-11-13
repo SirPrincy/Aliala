@@ -8,6 +8,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.local.dao.BudgetDao
 import com.example.data.local.dao.BusinessAccountDao
+import com.example.data.local.dao.BusinessInvestmentDao
 import com.example.data.local.dao.BusinessOrderDao
 import com.example.data.local.dao.BusinessSaleDao
 import com.example.data.local.dao.BusinessTransactionDao
@@ -26,6 +27,7 @@ import com.example.data.local.dao.WalletDao
 import com.example.data.local.dao.YuanTransactionDao
 import com.example.data.local.entity.BudgetEntity
 import com.example.data.local.entity.BusinessAccountEntity
+import com.example.data.local.entity.BusinessInvestmentEntity
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.data.local.entity.BusinessSaleEntity
 import com.example.data.local.entity.BusinessTransactionEntity
@@ -69,9 +71,10 @@ import kotlinx.coroutines.launch
         CatalogueTransitaireEntity::class,
         SalePaymentEntity::class,
         BusinessAccountEntity::class,
-        BusinessTransactionEntity::class
+        BusinessTransactionEntity::class,
+        BusinessInvestmentEntity::class
     ],
-    version = 19,
+    version = 24,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -93,6 +96,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun salePaymentDao(): SalePaymentDao
     abstract fun businessAccountDao(): BusinessAccountDao
     abstract fun businessTransactionDao(): BusinessTransactionDao
+    abstract fun businessInvestmentDao(): BusinessInvestmentDao
 
     companion object {
         @Volatile
@@ -147,13 +151,60 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `catalogue_transitaires` ADD COLUMN `rateApplicationDate` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `business_orders` ADD COLUMN `supplierDispatchDelay` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `business_transactions` ADD COLUMN `destinationAccount` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `business_transactions` ADD COLUMN `yuanTransactionId` INTEGER DEFAULT NULL")
+            }
+        }
+
+        val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `business_orders` ADD COLUMN `parcelDetailsJson` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        val MIGRATION_23_24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `business_investments` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `category` TEXT NOT NULL,
+                        `amountAr` INTEGER NOT NULL,
+                        `estimatedValueAr` INTEGER NOT NULL,
+                        `generatedReturnAr` INTEGER NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `accountName` TEXT NOT NULL,
+                        `linkedTransactionId` INTEGER DEFAULT NULL,
+                        `dateMillis` INTEGER NOT NULL,
+                        `notes` TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "ma_vie_database.db"
-                ).addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
+                ).addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)

@@ -1446,7 +1446,7 @@ fun LogisticStep3View(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "Port Chine domestique (¥ ${Calculations.DOMESTIC_PORT_YUAN.toInt()}) :",
+                                text = "Port Chine domestique (¥ ${String.format(java.util.Locale.US, "%.2f", order.domesticShippingYuan)}) :",
                                 fontFamily = Inter,
                                 fontSize = 12.sp,
                                 color = Color(0xFF3D494C)

@@ -35,7 +35,7 @@ object LotCostCalculator {
         val isOrderDataComplete = totalQty > 0 && unitPriceYuan > 0.0 && effectiveRate > 0.0
 
         val merchandiseTotalAr = if (isOrderDataComplete) (totalQty * unitPriceYuan * effectiveRate).toLong() else 0L
-        val domesticPortAr = if (effectiveRate > 0.0) (Calculations.DOMESTIC_PORT_YUAN * effectiveRate).toLong() else 0L
+        val domesticPortAr = if (effectiveRate > 0.0) (order.domesticShippingYuan * effectiveRate).toLong() else 0L
 
         val isMaritime = order.freightMode.equals("MARITIME", ignoreCase = true) || order.freightMode.equals("SEA", ignoreCase = true)
 

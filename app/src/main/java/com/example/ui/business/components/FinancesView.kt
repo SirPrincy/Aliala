@@ -1,7 +1,9 @@
 package com.example.ui.business.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +32,8 @@ import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CurrencyExchange
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FlightTakeoff
 import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Payments
@@ -89,8 +93,41 @@ fun FinancesView(
     uiState: BusinessUiState,
     accounts: List<com.example.data.local.entity.BusinessAccountEntity> = emptyList(),
     transactions: List<com.example.data.local.entity.BusinessTransactionEntity> = emptyList(),
-    onAddAccount: (name: String, subtitle: String, initialBalanceAr: Long) -> Unit = { _, _, _ -> },
-    onAddTransaction: (title: String, type: String, amountAr: Long, accountName: String, referenceTag: String) -> Unit = { _, _, _, _, _ -> },
+    investments: List<com.example.data.local.entity.BusinessInvestmentEntity> = emptyList(),
+    onAddAccount: (
+        name: String,
+        subtitle: String,
+        initialBalanceAr: Long,
+        isYuanAccount: Boolean,
+        initialBalanceYuan: Double
+    ) -> Unit = { _, _, _, _, _ -> },
+    onUpdateAccount: (
+        existing: com.example.data.local.entity.BusinessAccountEntity,
+        newName: String,
+        newSubtitle: String,
+        newBalanceAr: Long,
+        newBalanceYuan: Double
+    ) -> Unit = { _, _, _, _, _ -> },
+    onDeleteAccount: (com.example.data.local.entity.BusinessAccountEntity) -> Unit = {},
+    onAddTransaction: (
+        title: String,
+        type: String,
+        amountAr: Long,
+        accountName: String,
+        referenceTag: String,
+        destinationAccount: String
+    ) -> Unit = { _, _, _, _, _, _ -> },
+    onBuyYuansFromTx: (
+        amountYuan: Double,
+        rateAr: Double,
+        platform: String,
+        sourceAccountName: String
+    ) -> Unit = { _, _, _, _ -> },
+    onDeleteTransaction: (com.example.data.local.entity.BusinessTransactionEntity) -> Unit = {},
+    onRecordCapitalMovement: (title: String, isContribution: Boolean, amountAr: Long, accountName: String, note: String, affectAccount: Boolean, dateMillis: Long) -> Unit = { _, _, _, _, _, _, _ -> },
+    onAddInvestment: (title: String, category: String, amountAr: Long, estimatedValueAr: Long, generatedReturnAr: Long, accountName: String, notes: String, dateMillis: Long) -> Unit = { _, _, _, _, _, _, _, _ -> },
+    onUpdateInvestment: (com.example.data.local.entity.BusinessInvestmentEntity) -> Unit = {},
+    onDeleteInvestment: (com.example.data.local.entity.BusinessInvestmentEntity) -> Unit = {},
     onPrevMonth: () -> Unit,
     onNextMonth: () -> Unit,
     onBuyYuansClick: () -> Unit,
@@ -100,10 +137,20 @@ fun FinancesView(
     onWhatsAppRelance: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedScope by remember { mutableStateOf("Business") } // "Business" or "Global"
+    val colors = rememberTransitaireColors()
     var forecastHorizon by remember { mutableStateOf("30 j") } // "30 j", "60 j", "90 j"
     var selectedTxFilter by remember { mutableStateOf("Tout") } // "Tout", "Entrées", "Sorties", "Transferts", "Change ¥"
+    var showTxSearchBar by remember { mutableStateOf(false) }
+    var showTxAccountFilter by remember { mutableStateOf(false) }
+    var txSearchQuery by remember { mutableStateOf("") }
+    var selectedAccountFilter by remember { mutableStateOf("Tous") }
+    var showAllTransactions by remember { mutableStateOf(false) }
     var showAddTxDialog by remember { mutableStateOf(false) }
+    var showAddAccountDialog by remember { mutableStateOf(false) }
+    var defaultNewAccountIsYuan by remember { mutableStateOf(false) }
+    var editingAccount by remember { mutableStateOf<com.example.data.local.entity.BusinessAccountEntity?>(null) }
+    var deletingAccount by remember { mutableStateOf<com.example.data.local.entity.BusinessAccountEntity?>(null) }
+    var selectedTxForDetail by remember { mutableStateOf<com.example.data.local.entity.BusinessTransactionEntity?>(null) }
     var presetTxTitle by remember { mutableStateOf("") }
     var presetTxType by remember { mutableStateOf("IN") }
     var presetTxTag by remember { mutableStateOf("") }
@@ -115,6 +162,30 @@ fun FinancesView(
         showAddTxDialog = true
     }
 
+    val activeAccounts = remember(accounts) {
+        accounts.filter { it.isActive }
+    }
+    val ariaryAccounts = remember(activeAccounts) {
+        activeAccounts.filter { !it.isYuanAccount }
+    }
+    val yuanAccounts = remember(activeAccounts) {
+        activeAccounts.filter { it.isYuanAccount }
+    }
+    val totalTreasuryAr = remember(ariaryAccounts) {
+        ariaryAccounts.sumOf { it.balanceAr }
+    }
+    val totalLiquidityAr = totalTreasuryAr + uiState.estimatedYuanValueAr
+    val cashTransactions = remember(transactions) {
+        transactions.filter { it.type != "CAPITAL_IN" && it.type != "CAPITAL_OUT" }
+    }
+    val totalTxInAr = remember(cashTransactions) {
+        cashTransactions.filter { it.type == "IN" || it.type == "INCOME" }.sumOf { it.amountAr }
+    }
+    val totalTxOutAr = remember(cashTransactions) {
+        cashTransactions.filter { it.type == "OUT" || it.type == "EXPENSE" || it.type == "YUAN" }.sumOf { it.amountAr }
+    }
+    val netTxFlowAr = totalTxInAr - totalTxOutAr
+
     val unpaidSales = remember(uiState.sales) {
         uiState.sales.filter { !it.isFullyPaid && (it.totalPriceAr - it.paidAmountAr) > 0L }
     }
@@ -122,22 +193,12 @@ fun FinancesView(
         uiState.orders.filter { !it.isFreightPaid && it.freightCostAr > 0L }
     }
 
-    // Capital & Investissement
-    val totalApportsCapital = remember(transactions, accounts) {
-        val fromTx = transactions.filter { it.referenceTag.contains("Capital", ignoreCase = true) || it.title.contains("Apport", ignoreCase = true) }.sumOf { it.amountAr }
-        if (fromTx > 0L) fromTx else accounts.sumOf { it.balanceAr }.coerceAtLeast(1500000L)
-    }
-    val totalRetraitsPerso = remember(transactions) {
-        transactions.filter { it.referenceTag.contains("Perso", ignoreCase = true) || it.title.contains("Retrait", ignoreCase = true) }.sumOf { it.amountAr }
-    }
-    val netCapital = (totalApportsCapital - totalRetraitsPerso).coerceAtLeast(0L)
-
     // Compte Associé
     val avancesPerso = remember(transactions) {
         transactions.filter { it.referenceTag.contains("Associé", ignoreCase = true) && it.type == "IN" }.sumOf { it.amountAr }
     }
     val remboursementsPerso = remember(transactions) {
-        transactions.filter { it.referenceTag.contains("Associé", ignoreCase = true) && it.type == "OUT" }.sumOf { it.amountAr }
+        transactions.filter { it.referenceTag.contains("Associé", ignoreCase = true) && (it.type == "OUT" || it.type == "EXPENSE") }.sumOf { it.amountAr }
     }
     val soldeAssocié = avancesPerso - remboursementsPerso
 
@@ -146,14 +207,14 @@ fun FinancesView(
         transactions.filter { it.referenceTag.contains("Emprunt", ignoreCase = true) && it.type == "IN" }.sumOf { it.amountAr }
     }
     val totalPrêtsTiers = remember(transactions) {
-        transactions.filter { it.referenceTag.contains("Prêt", ignoreCase = true) && it.type == "OUT" }.sumOf { it.amountAr }
+        transactions.filter { it.referenceTag.contains("Prêt", ignoreCase = true) && (it.type == "OUT" || it.type == "EXPENSE") }.sumOf { it.amountAr }
     }
 
     val orangeColor = Color(0xFFEA580C)
-    val violetColor = Color(0xFF712AE2)
-    val cyanColor = CyanPrimary
-    val emeraldColor = Color(0xFF059669)
-    val redColor = Color(0xFFBA1A1A)
+    val violetColor = colors.violetAccent
+    val cyanColor = colors.cyanAccent
+    val emeraldColor = colors.successAccent
+    val redColor = colors.dangerAccent
 
     Box(modifier = modifier.fillMaxWidth()) {
         Column(
@@ -224,18 +285,22 @@ fun FinancesView(
                             }
                         }
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                    .background(
+                                        if (showTxSearchBar) cyanColor.copy(alpha = 0.2f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    )
+                                    .clickable { showTxSearchBar = !showTxSearchBar },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Search,
-                                    contentDescription = "Recherche",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    contentDescription = "Rechercher une transaction",
+                                    tint = if (showTxSearchBar) cyanColor else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -243,13 +308,17 @@ fun FinancesView(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                    .background(
+                                        if (showTxAccountFilter) cyanColor.copy(alpha = 0.2f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    )
+                                    .clickable { showTxAccountFilter = !showTxAccountFilter },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Tune,
-                                    contentDescription = "Filtrer",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    contentDescription = "Filtrer par compte",
+                                    tint = if (showTxAccountFilter) cyanColor else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -303,7 +372,7 @@ fun FinancesView(
                                 }
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "TRÉSORERIE DISPONIBLE",
+                                    text = "TRÉSORERIE TOTALE (Ar + ¥)",
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp,
@@ -327,8 +396,13 @@ fun FinancesView(
                                         modifier = Modifier.size(13.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
+                                    val yuanHeroFmt = if (uiState.availableYuans % 1.0 == 0.0) {
+                                        "${uiState.availableYuans.toInt()}"
+                                    } else {
+                                        String.format(java.util.Locale.US, "%.2f", uiState.availableYuans)
+                                    }
                                     Text(
-                                        text = "+18% vs sept.",
+                                        text = "${cashTransactions.size} op. • ¥ $yuanHeroFmt",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.sp,
                                         color = Color.White
@@ -340,7 +414,7 @@ fun FinancesView(
                         Column {
                             Row(verticalAlignment = Alignment.Bottom) {
                                 Text(
-                                    text = CurrencyFormatter.formatAriary(uiState.salesTotal).replace(" Ar", ""),
+                                    text = CurrencyFormatter.formatAriary(totalLiquidityAr).replace(" Ar", ""),
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 32.sp,
@@ -357,9 +431,9 @@ fun FinancesView(
                                 )
                             }
                             Text(
-                                text = "Liquidité active sur l'ensemble des comptes Mada",
+                                text = "Ariary : ${CurrencyFormatter.formatAriary(totalTreasuryAr)} (${ariaryAccounts.size} cpte) • Yuans : ≈ ${CurrencyFormatter.formatAriary(uiState.estimatedYuanValueAr)} (${yuanAccounts.size} cpte ¥)",
                                 fontSize = 11.sp,
-                                color = Color.White.copy(alpha = 0.75f)
+                                color = Color.White.copy(alpha = 0.85f)
                             )
                         }
 
@@ -393,7 +467,7 @@ fun FinancesView(
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = CurrencyFormatter.formatAriary(uiState.salesTotal),
+                                        text = CurrencyFormatter.formatAriary(totalTxInAr),
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
@@ -402,7 +476,7 @@ fun FinancesView(
                                 }
                             }
 
-                            // Sorties
+                            // Sorties & Change ¥
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
@@ -420,14 +494,14 @@ fun FinancesView(
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = "Sorties",
+                                            text = "Sorties & ¥",
                                             fontSize = 10.sp,
                                             color = Color.White.copy(alpha = 0.75f)
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = CurrencyFormatter.formatAriary(uiState.salesCost + uiState.freightAndExpenses),
+                                        text = CurrencyFormatter.formatAriary(totalTxOutAr),
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
@@ -436,7 +510,7 @@ fun FinancesView(
                                 }
                             }
 
-                            // Net mois
+                            // Flux net
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
@@ -454,14 +528,14 @@ fun FinancesView(
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = "Net mois",
+                                            text = "Flux net",
                                             fontSize = 10.sp,
                                             color = Color.White.copy(alpha = 0.75f)
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "${if (uiState.netProfit >= 0) "+" else ""}${CurrencyFormatter.formatAriary(uiState.netProfit)}",
+                                        text = "${if (netTxFlowAr >= 0) "+" else ""}${CurrencyFormatter.formatAriary(netTxFlowAr)}",
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
@@ -569,7 +643,7 @@ fun FinancesView(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "${accounts.size} comptes actifs",
+                                    text = "${ariaryAccounts.size} compte(s) Ar • ${yuanAccounts.size} compte(s) ¥",
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -578,11 +652,19 @@ fun FinancesView(
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { }
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    defaultNewAccountIsYuan = false
+                                    editingAccount = null
+                                    showAddAccountDialog = true
+                                }
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                                .testTag("btn_add_account")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
-                                contentDescription = "Ajouter",
+                                contentDescription = "Ajouter un compte",
                                 tint = cyanColor,
                                 modifier = Modifier.size(16.dp)
                             )
@@ -597,314 +679,216 @@ fun FinancesView(
                         }
                     }
 
-                    // Horizontal cards list
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // Espèces
+                    // Dynamic Accounts Horizontal List
+                    if (activeAccounts.isEmpty()) {
                         Box(
                             modifier = Modifier
-                                .width(180.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(12.dp)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                                .padding(14.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(28.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(emeraldColor.copy(alpha = 0.15f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Payments,
-                                            contentDescription = null,
-                                            tint = emeraldColor,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                    Text(
-                                        text = "Caisse",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "Espèces",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "185 000 Ar",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(text = "+450k", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = emeraldColor)
-                                    Text(text = "-265k", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = redColor)
-                                }
-                            }
+                            Text(
+                                text = "Aucun compte enregistré. Créez Espèces, Mvola, Alipay ou Wechat Pay.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-
-                        // MVola
-                        Box(
+                    } else {
+                        Row(
                             modifier = Modifier
-                                .width(180.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(12.dp)
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(28.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(Color(0xFFF59E0B).copy(alpha = 0.2f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "MV",
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 11.sp,
-                                            color = Color(0xFFB45309)
+                            activeAccounts.forEach { acc ->
+                                val isYuan = acc.isYuanAccount
+                                val isFilteredHere = selectedAccountFilter.equals(acc.name, ignoreCase = true)
+                                val accInAr = remember(transactions, acc.name) {
+                                    transactions.filter {
+                                        (it.type == "IN" || it.type == "INCOME" || it.type == "CAPITAL_IN") &&
+                                            it.accountName.equals(acc.name, ignoreCase = true) ||
+                                            (it.type == "TRANSFER" && it.destinationAccount.equals(acc.name, ignoreCase = true))
+                                    }.sumOf { it.amountAr }
+                                }
+                                val accOutAr = remember(transactions, acc.name) {
+                                    transactions.filter {
+                                        ((it.type == "OUT" || it.type == "EXPENSE" || it.type == "YUAN" || it.type == "TRANSFER" || it.type == "CAPITAL_OUT") &&
+                                            it.accountName.equals(acc.name, ignoreCase = true))
+                                    }.sumOf { it.amountAr }
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .width(214.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(
+                                            if (isFilteredHere) cyanColor.copy(alpha = 0.14f)
+                                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                                         )
-                                    }
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = Color(0xFFF59E0B).copy(alpha = 0.2f)
-                                    ) {
+                                        .border(
+                                            width = if (isFilteredHere) 1.5.dp else 0.dp,
+                                            color = if (isFilteredHere) cyanColor else Color.Transparent,
+                                            shape = RoundedCornerShape(16.dp)
+                                        )
+                                        .clickable {
+                                            selectedAccountFilter = if (isFilteredHere) "Tous" else acc.name
+                                        }
+                                        .padding(12.dp)
+                                        .testTag("account_card_${acc.id}")
+                                ) {
+                                    Column {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                val badgeAccent = when {
+                                                    acc.name.contains("Alipay", ignoreCase = true) -> Color(0xFF0EA5E9)
+                                                    acc.name.contains("Wechat", ignoreCase = true) -> Color(0xFF10B981)
+                                                    isYuan -> colors.cyanAccent
+                                                    acc.shortCode.equals("MV", ignoreCase = true) -> Color(0xFFF59E0B)
+                                                    acc.shortCode.equals("OM", ignoreCase = true) -> orangeColor
+                                                    acc.shortCode.equals("BOA", ignoreCase = true) -> violetColor
+                                                    else -> emeraldColor
+                                                }
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(28.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(badgeAccent.copy(alpha = 0.18f)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    if (acc.shortCode.equals("CASH", ignoreCase = true)) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Payments,
+                                                            contentDescription = null,
+                                                            tint = badgeAccent,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    } else if (acc.shortCode.equals("BOA", ignoreCase = true)) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.AccountBalance,
+                                                            contentDescription = null,
+                                                            tint = badgeAccent,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    } else {
+                                                        Text(
+                                                            text = if (isYuan) "¥" else acc.shortCode.take(3),
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            fontSize = 11.sp,
+                                                            color = badgeAccent
+                                                        )
+                                                    }
+                                                }
+                                                Text(
+                                                    text = acc.subtitle.ifBlank { if (isYuan) "Chine (¥)" else "Compte" },
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isYuan) colors.cyanAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1
+                                                )
+                                            }
+
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                IconButton(
+                                                    onClick = { editingAccount = acc },
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .testTag("btn_edit_account_${acc.id}")
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Edit,
+                                                        contentDescription = "Modifier ${acc.name}",
+                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                                IconButton(
+                                                    onClick = { deletingAccount = acc },
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .testTag("btn_delete_account_${acc.id}")
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.DeleteOutline,
+                                                        contentDescription = "Supprimer ${acc.name}",
+                                                        tint = redColor,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(6.dp))
                                         Text(
-                                            text = "Principal",
-                                            fontSize = 9.sp,
+                                            text = acc.name,
+                                            fontFamily = PlusJakartaSans,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 13.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        val yuanRateForCard = if (uiState.cmupRate > 0L) uiState.cmupRate.toDouble() else 650.0
+                                        Text(
+                                            text = if (isYuan) {
+                                                val yVal = acc.balanceYuan
+                                                if (yVal % 1.0 == 0.0) "¥ ${yVal.toInt()}"
+                                                else "¥ ${String.format(java.util.Locale.US, "%.2f", yVal)}"
+                                            } else {
+                                                CurrencyFormatter.formatAriary(acc.balanceAr)
+                                            },
+                                            fontFamily = PlusJakartaSans,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFB45309),
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            fontSize = 15.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        if (isYuan) {
+                                            val estCardAr = kotlin.math.round(acc.balanceYuan * yuanRateForCard).toLong()
+                                            Text(
+                                                text = "≈ ${CurrencyFormatter.formatAriary(estCardAr)} (${uiState.cmupRate} Ar/¥)",
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        } else {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    text = "+${CurrencyFormatter.formatAriary(accInAr)}",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = emeraldColor
+                                                )
+                                                Text(
+                                                    text = "-${CurrencyFormatter.formatAriary(accOutAr)}",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = redColor
+                                                )
+                                            }
+                                        }
                                     }
                                 }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "MVola Telma",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "520 000 Ar",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(text = "+620k", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = emeraldColor)
-                                    Text(text = "-310k", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = redColor)
-                                }
-                            }
-                        }
-
-                        // Orange Money
-                        Box(
-                            modifier = Modifier
-                                .width(180.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(12.dp)
-                        ) {
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(28.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(orangeColor.copy(alpha = 0.15f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "OM",
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 11.sp,
-                                            color = orangeColor
-                                        )
-                                    }
-                                    Text(
-                                        text = "Mobile",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "Orange Money",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "215 000 Ar",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(text = "+280k", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = emeraldColor)
-                                    Text(text = "-120k", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = redColor)
-                                }
-                            }
-                        }
-
-                        // BOA
-                        Box(
-                            modifier = Modifier
-                                .width(180.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(12.dp)
-                        ) {
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(28.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(Color(0xFF005AC2).copy(alpha = 0.15f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.AccountBalance,
-                                            contentDescription = null,
-                                            tint = Color(0xFF005AC2),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                    Text(
-                                        text = "Virements pro",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "BOA Madagascar",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "200 000 Ar",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(text = "Transit import", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(text = "Opérationnel", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = cyanColor)
-                                }
-                            }
-                        }
-
-                        // Alipay Pro
-                        Box(
-                            modifier = Modifier
-                                .width(180.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(12.dp)
-                        ) {
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(28.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(Color(0xFF0284C7).copy(alpha = 0.15f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "支",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp,
-                                            color = Color(0xFF0284C7)
-                                        )
-                                    }
-                                    Text(
-                                        text = "Chine (¥)",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF005AC2)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "Alipay Pro",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "¥ 1 840",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "≈ 1 196 000 Ar (650 Ar/¥)",
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
                             }
                         }
                     }
 
-                    // Stacked breakdown bar
+                    // Dynamic Encaissements / Flux breakdown bar
+                    val positiveAccounts = remember(ariaryAccounts) {
+                        ariaryAccounts.filter { it.balanceAr > 0L }
+                    }
+                    val positiveTotalAr = remember(positiveAccounts) {
+                        positiveAccounts.sumOf { it.balanceAr }
+                    }
+                    val segmentColors = listOf(Color(0xFFF59E0B), emeraldColor, orangeColor, cyanColor, violetColor)
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -912,12 +896,12 @@ fun FinancesView(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Répartition des encaissements du mois",
+                                text = "Répartition des soldes Ariary",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "1 350 000 Ar",
+                                text = CurrencyFormatter.formatAriary(totalTreasuryAr),
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,
@@ -925,53 +909,56 @@ fun FinancesView(
                             )
                         }
 
-                        // Bar
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(8.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                        ) {
+                        if (positiveTotalAr > 0L) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                positiveAccounts.forEachIndexed { idx, acc ->
+                                    val weight = (acc.balanceAr.toFloat() / positiveTotalAr.toFloat()).coerceAtLeast(0.02f)
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(weight)
+                                            .height(8.dp)
+                                            .background(segmentColors[idx % segmentColors.size])
+                                    )
+                                }
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                positiveAccounts.forEachIndexed { idx, acc ->
+                                    val pct = ((acc.balanceAr.toDouble() / positiveTotalAr.toDouble()) * 100).toInt()
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(6.dp)
+                                                .clip(CircleShape)
+                                                .background(segmentColors[idx % segmentColors.size])
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "${acc.name} ($pct%)",
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
                             Box(
                                 modifier = Modifier
-                                    .weight(0.46f)
                                     .fillMaxWidth()
-                                    .background(Color(0xFFF59E0B))
+                                    .height(8.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
                             )
-                            Box(
-                                modifier = Modifier
-                                    .weight(0.33f)
-                                    .fillMaxWidth()
-                                    .background(emeraldColor)
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .weight(0.21f)
-                                    .fillMaxWidth()
-                                    .background(orangeColor)
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFFF59E0B)))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(text = "MVola (46%)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(emeraldColor))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(text = "Espèces (33%)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(orangeColor))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(text = "Orange (21%)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
                         }
                     }
                 }
@@ -1164,7 +1151,14 @@ fun FinancesView(
                         }
                     }
 
-                    // Mini history pills
+                    // Mini history pills (real BUY Yuan transactions from Room)
+                    val recentYuanBuys = remember(uiState.yuanTransactions) {
+                        uiState.yuanTransactions
+                            .filter { it.type == "BUY" }
+                            .sortedByDescending { it.date }
+                            .take(6)
+                    }
+                    val yuanDateFmt = remember { java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.FRANCE) }
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
                             text = "Derniers approvisionnements de yuans",
@@ -1173,32 +1167,54 @@ fun FinancesView(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            listOf(
-                                Triple("19 oct.", "¥ 1 200", "à 648 Ar"),
-                                Triple("02 oct.", "¥ 800", "à 652 Ar"),
-                                Triple("15 sept.", "¥ 600", "à 650 Ar")
-                            ).forEach { (date, yAmount, rate) ->
-                                Surface(
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                        if (recentYuanBuys.isEmpty()) {
+                            Text(
+                                text = "Aucun achat de yuans enregistré.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                recentYuanBuys.forEach { yuanTx ->
+                                    val amountFmt = if (yuanTx.amountYuan % 1.0 == 0.0) {
+                                        "¥ ${yuanTx.amountYuan.toInt()}"
+                                    } else {
+                                        "¥ ${String.format(java.util.Locale.US, "%.2f", yuanTx.amountYuan)}"
+                                    }
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                                     ) {
-                                        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(emeraldColor))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(text = date, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(text = yAmount, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(text = rate, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(emeraldColor))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = yuanDateFmt.format(java.util.Date(yuanTx.date)),
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = amountFmt,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "à ${yuanTx.exchangeRate.toInt()} Ar",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1888,240 +1904,24 @@ fun FinancesView(
             // -------------------------------------------------------------
             // 8. INVESTISSEMENT & CAPITAL DU BUSINESS
             // -------------------------------------------------------------
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 1.dp
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(orangeColor.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "💼",
-                                    fontSize = 16.sp
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text(
-                                    text = "Investissement & Capital",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Valeur financière engagée",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Surface(
-                            shape = CircleShape,
-                            color = emeraldColor.copy(alpha = 0.15f)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.TrendingUp,
-                                    contentDescription = null,
-                                    tint = emeraldColor,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Spacer(modifier = Modifier.width(2.dp))
-                                Text(
-                                    text = "Rendement +18%",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = emeraldColor
-                                )
-                            }
-                        }
-                    }
-
-                    // 3 Column metrics
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(10.dp)
-                        ) {
-                            Column {
-                                Text(text = "Capital investi", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(text = CurrencyFormatter.formatAriary(totalApportsCapital), fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
-                                Text(text = "Ariary", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(10.dp)
-                        ) {
-                            Column {
-                                Text(text = "Retraits perso", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(text = CurrencyFormatter.formatAriary(totalRetraitsPerso), fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = redColor)
-                                Text(text = "Ariary", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(orangeColor.copy(alpha = 0.1f))
-                                .padding(10.dp)
-                        ) {
-                            Column {
-                                Text(text = "Capital net", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = orangeColor)
-                                Text(text = CurrencyFormatter.formatAriary(netCapital), fontFamily = PlusJakartaSans, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = orangeColor)
-                                Text(text = "Ariary", fontSize = 9.sp, color = orangeColor)
-                            }
-                        }
-                    }
-
-                    // Sparkline card
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                            .padding(12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "Bénéfice cumulé réinvesti",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "+${CurrencyFormatter.formatAriary(uiState.netProfit.coerceAtLeast(0L))}",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = emeraldColor
-                                )
-                            }
-
-                            // Sparkline
-                            Canvas(modifier = Modifier.size(width = 80.dp, height = 28.dp)) {
-                                val w = size.width
-                                val h = size.height
-                                val path = Path().apply {
-                                    moveTo(0f, h * 0.8f)
-                                    lineTo(w * 0.25f, h * 0.7f)
-                                    lineTo(w * 0.5f, h * 0.55f)
-                                    lineTo(w * 0.75f, h * 0.35f)
-                                    lineTo(w, h * 0.1f)
-                                }
-                                drawPath(
-                                    path = path,
-                                    color = orangeColor,
-                                    style = Stroke(width = 2.5.dp.toPx())
-                                )
-                                drawCircle(
-                                    color = orangeColor,
-                                    radius = 3.dp.toPx(),
-                                    center = Offset(w, h * 0.1f)
-                                )
-                            }
-                        }
-                    }
-
-                    // Capital buttons
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(40.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                                .clickable { openAddTx("Apport de capital", "IN", "Capital") }
-                                .padding(horizontal = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.AddCircle,
-                                    contentDescription = null,
-                                    tint = cyanColor,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Apport capital",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(40.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                                .clickable { openAddTx("Retrait personnel", "OUT", "Perso") }
-                                .padding(horizontal = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.RemoveCircle,
-                                    contentDescription = null,
-                                    tint = redColor,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Retrait perso",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
+            InvestissementCapitalCard(
+                uiState = uiState,
+                ariaryAccounts = ariaryAccounts,
+                transactions = transactions,
+                investments = investments,
+                empruntsDueAr = totalEmpruntsDû,
+                associeDueAr = soldeAssocié,
+                onRecordCapitalMovement = onRecordCapitalMovement,
+                onAddInvestment = onAddInvestment,
+                onUpdateInvestment = onUpdateInvestment,
+                onDeleteInvestment = onDeleteInvestment,
+                onDeleteCapitalTransaction = onDeleteTransaction,
+                onCreateAccountClick = {
+                    defaultNewAccountIsYuan = false
+                    editingAccount = null
+                    showAddAccountDialog = true
                 }
-            }
+            )
 
             // -------------------------------------------------------------
             // 9. COMPTE ASSOCIÉ (Argent Perso ⟷ Argent Business)
@@ -2516,13 +2316,57 @@ fun FinancesView(
                         }
 
                         Text(
-                            text = "Voir tout (${transactions.size})",
+                            text = if (showAllTransactions) "Réduire" else "Voir tout (${cashTransactions.size})",
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 12.sp,
                             color = cyanColor,
-                            modifier = Modifier.clickable { }
+                            modifier = Modifier.clickable { showAllTransactions = !showAllTransactions }
                         )
+                    }
+
+                    if (showTxSearchBar) {
+                        OutlinedTextField(
+                            value = txSearchQuery,
+                            onValueChange = { txSearchQuery = it },
+                            placeholder = { Text("Rechercher libellé, compte, note...") },
+                            singleLine = true,
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    if (showTxAccountFilter && activeAccounts.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            (listOf("Tous") + activeAccounts.map { it.name }).forEach { accName ->
+                                val isAccSel = selectedAccountFilter.equals(accName, ignoreCase = true)
+                                Surface(
+                                    modifier = Modifier.clickable { selectedAccountFilter = accName },
+                                    shape = CircleShape,
+                                    color = if (isAccSel) colors.violetSolidBg else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                ) {
+                                    Text(
+                                        text = accName,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isAccSel) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     // Filter chips horizontal scroll
@@ -2537,27 +2381,66 @@ fun FinancesView(
                             Surface(
                                 modifier = Modifier.clickable { selectedTxFilter = chip },
                                 shape = CircleShape,
-                                color = if (isSel) cyanColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                color = if (isSel) CyanPrimary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                             ) {
                                 Text(
                                     text = chip,
                                     fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (isSel) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSel) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                                 )
                             }
                         }
                     }
 
-                    val filteredTxs = remember(transactions, selectedTxFilter) {
-                        when (selectedTxFilter) {
-                            "Entrées" -> transactions.filter { it.type == "IN" }
-                            "Sorties" -> transactions.filter { it.type == "OUT" }
-                            "Transferts" -> transactions.filter { it.type == "TRANSFER" }
-                            "Change ¥" -> transactions.filter { it.type == "YUAN" }
-                            else -> transactions
+                    if (selectedAccountFilter != "Tous") {
+                        Surface(
+                            modifier = Modifier.clickable { selectedAccountFilter = "Tous" },
+                            shape = CircleShape,
+                            color = colors.violetSoftBg
+                        ) {
+                            Text(
+                                text = "Compte : $selectedAccountFilter ✕",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.violetAccent,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                            )
                         }
+                    }
+
+                    val filteredTxs = remember(cashTransactions, selectedTxFilter, selectedAccountFilter, txSearchQuery) {
+                        val byType = when (selectedTxFilter) {
+                            "Entrées" -> cashTransactions.filter { it.type == "IN" || it.type == "INCOME" }
+                            "Sorties" -> cashTransactions.filter { it.type == "OUT" || it.type == "EXPENSE" }
+                            "Transferts" -> cashTransactions.filter { it.type == "TRANSFER" }
+                            "Change ¥" -> cashTransactions.filter { it.type == "YUAN" }
+                            else -> cashTransactions
+                        }
+                        val byAccount = if (selectedAccountFilter == "Tous") {
+                            byType
+                        } else {
+                            byType.filter {
+                                it.accountName.equals(selectedAccountFilter, ignoreCase = true) ||
+                                    it.destinationAccount.equals(selectedAccountFilter, ignoreCase = true)
+                            }
+                        }
+                        val q = txSearchQuery.trim()
+                        if (q.isBlank()) {
+                            byAccount
+                        } else {
+                            byAccount.filter {
+                                it.title.contains(q, ignoreCase = true) ||
+                                    it.accountName.contains(q, ignoreCase = true) ||
+                                    it.destinationAccount.contains(q, ignoreCase = true) ||
+                                    it.referenceTag.contains(q, ignoreCase = true)
+                            }
+                        }
+                    }
+
+                    val displayedTxs = remember(filteredTxs, showAllTransactions) {
+                        if (showAllTransactions) filteredTxs else filteredTxs.take(8)
                     }
 
                     if (filteredTxs.isEmpty()) {
@@ -2578,8 +2461,8 @@ fun FinancesView(
                     } else {
                         val dateFormat = remember { java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.FRANCE) }
                         val timeFormat = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.FRANCE) }
-                        val groupedTxs = remember(filteredTxs) {
-                            filteredTxs.groupBy { dateFormat.format(java.util.Date(it.dateMillis)) }
+                        val groupedTxs = remember(displayedTxs) {
+                            displayedTxs.groupBy { dateFormat.format(java.util.Date(it.dateMillis)) }
                         }
 
                         groupedTxs.forEach { (dateLabel, dayTxs) ->
@@ -2595,15 +2478,15 @@ fun FinancesView(
 
                                 dayTxs.forEach { tx ->
                                     val (badgeText, badgeColor, amountPrefix) = when (tx.type) {
-                                        "IN" -> Triple("IN", emeraldColor, "+")
-                                        "OUT" -> Triple("OUT", redColor, "-")
+                                        "IN", "INCOME" -> Triple("IN", emeraldColor, "+")
+                                        "OUT", "EXPENSE" -> Triple("OUT", redColor, "-")
                                         "TRANSFER" -> Triple("TRF", cyanColor, "")
-                                        "YUAN" -> Triple("¥", orangeColor, "")
+                                        "YUAN" -> Triple("¥", orangeColor, "-")
                                         else -> Triple("OP", violetColor, "")
                                     }
                                     val amountColor = when (tx.type) {
-                                        "IN" -> emeraldColor
-                                        "OUT" -> redColor
+                                        "IN", "INCOME" -> emeraldColor
+                                        "OUT", "EXPENSE", "YUAN" -> redColor
                                         else -> MaterialTheme.colorScheme.onSurface
                                     }
 
@@ -2612,6 +2495,7 @@ fun FinancesView(
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(16.dp))
                                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                            .clickable { selectedTxForDetail = tx }
                                             .padding(12.dp)
                                     ) {
                                         Row(
@@ -2646,8 +2530,13 @@ fun FinancesView(
                                                         fontSize = 13.sp,
                                                         color = MaterialTheme.colorScheme.onSurface
                                                     )
+                                                    val accountDisplay = if (tx.type == "TRANSFER" && tx.destinationAccount.isNotBlank()) {
+                                                        "${tx.accountName} ➔ ${tx.destinationAccount}"
+                                                    } else {
+                                                        tx.accountName
+                                                    }
                                                     val sub = listOfNotNull(
-                                                        tx.accountName.takeIf { it.isNotBlank() },
+                                                        accountDisplay.takeIf { it.isNotBlank() },
                                                         tx.referenceTag.takeIf { it.isNotBlank() }
                                                     ).joinToString(" • ")
                                                     if (sub.isNotBlank()) {
@@ -2678,6 +2567,26 @@ fun FinancesView(
                                 }
                             }
                         }
+
+                        if (!showAllTransactions && filteredTxs.size > 8) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showAllTransactions = true },
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                            ) {
+                                Text(
+                                    text = "Afficher tout (${filteredTxs.size} opérations)",
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp,
+                                    color = cyanColor,
+                                    modifier = Modifier.padding(vertical = 10.dp),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -2688,7 +2597,12 @@ fun FinancesView(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(bottom = 16.dp, end = 4.dp)
-                .clickable { showAddTxDialog = true }
+                .clickable {
+                    presetTxTitle = ""
+                    presetTxType = "IN"
+                    presetTxTag = ""
+                    showAddTxDialog = true
+                }
                 .testTag("btn_fab_new_operation"),
             shape = CircleShape,
             color = orangeColor,
@@ -2719,151 +2633,65 @@ fun FinancesView(
     if (showAddTxDialog) {
         AddBusinessTransactionDialog(
             accounts = accounts,
+            cmupRate = uiState.cmupRate,
             initialTitle = presetTxTitle,
             initialType = presetTxType,
             initialTag = presetTxTag,
             onDismiss = { showAddTxDialog = false },
-            onConfirm = { title, type, amountAr, accountName, referenceTag ->
-                onAddTransaction(title, type, amountAr, accountName, referenceTag)
+            onConfirm = { title, type, amountAr, accountName, referenceTag, destinationAccount ->
+                onAddTransaction(title, type, amountAr, accountName, referenceTag, destinationAccount)
                 showAddTxDialog = false
+            },
+            onConfirmBuyYuans = { amountYuan, rateAr, platform, sourceAccountName ->
+                onBuyYuansFromTx(amountYuan, rateAr, platform, sourceAccountName)
+                showAddTxDialog = false
+            }
+        )
+    }
+
+    if (showAddAccountDialog || editingAccount != null) {
+        AddOrEditBusinessAccountDialog(
+            existing = editingAccount,
+            existingAccounts = accounts,
+            defaultIsYuan = defaultNewAccountIsYuan,
+            onDismiss = {
+                showAddAccountDialog = false
+                editingAccount = null
+            },
+            onConfirmCreate = { name, subtitle, initialBalanceAr, isYuanAccount, initialBalanceYuan ->
+                onAddAccount(name, subtitle, initialBalanceAr, isYuanAccount, initialBalanceYuan)
+                showAddAccountDialog = false
+            },
+            onConfirmUpdate = { existing, newName, newSubtitle, newBalanceAr, newBalanceYuan ->
+                onUpdateAccount(existing, newName, newSubtitle, newBalanceAr, newBalanceYuan)
+                editingAccount = null
+            }
+        )
+    }
+
+    deletingAccount?.let { accToDelete ->
+        DeleteBusinessAccountConfirmDialog(
+            account = accToDelete,
+            onDismiss = { deletingAccount = null },
+            onConfirmDelete = {
+                if (selectedAccountFilter.equals(accToDelete.name, ignoreCase = true)) {
+                    selectedAccountFilter = "Tous"
+                }
+                onDeleteAccount(accToDelete)
+                deletingAccount = null
+            }
+        )
+    }
+
+    selectedTxForDetail?.let { txDetail ->
+        TransactionDetailDialog(
+            tx = txDetail,
+            onDismiss = { selectedTxForDetail = null },
+            onDelete = { tx ->
+                onDeleteTransaction(tx)
+                selectedTxForDetail = null
             }
         )
     }
 }
 
-@Composable
-private fun AddBusinessTransactionDialog(
-    accounts: List<com.example.data.local.entity.BusinessAccountEntity>,
-    initialTitle: String = "",
-    initialType: String = "IN",
-    initialTag: String = "",
-    onDismiss: () -> Unit,
-    onConfirm: (title: String, type: String, amountAr: Long, accountName: String, referenceTag: String) -> Unit
-) {
-    var title by remember { mutableStateOf(initialTitle) }
-    var selectedType by remember { mutableStateOf(initialType) }
-    var amountText by remember { mutableStateOf("") }
-    var accountName by remember { mutableStateOf(accounts.firstOrNull()?.name ?: "") }
-    var referenceTag by remember { mutableStateOf(initialTag) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    val types = listOf(
-        "IN" to "Entrée",
-        "OUT" to "Sortie",
-        "TRANSFER" to "Transfert",
-        "YUAN" to "Change ¥"
-    )
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = "Nouvelle opération",
-                fontFamily = PlusJakartaSans,
-                fontWeight = FontWeight.Bold
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    types.forEach { (code, label) ->
-                        val isSelected = selectedType == code
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { selectedType = code },
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (isSelected) CyanPrimary else MaterialTheme.colorScheme.surfaceVariant
-                        ) {
-                            Text(
-                                text = label,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                        }
-                    }
-                }
-
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = {
-                        title = it
-                        errorMessage = null
-                    },
-                    label = { Text("Libellé (ex: Vente #105)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = amountText,
-                    onValueChange = {
-                        amountText = it.filter { ch -> ch.isDigit() }
-                        errorMessage = null
-                    },
-                    label = { Text("Montant (Ar)") },
-                    singleLine = true,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = accountName,
-                    onValueChange = { accountName = it },
-                    label = { Text("Compte (ex: MVola, Espèces)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = referenceTag,
-                    onValueChange = { referenceTag = it },
-                    label = { Text("Référence / Note (optionnel)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                if (errorMessage != null) {
-                    Text(
-                        text = errorMessage!!,
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val parsedAmount = amountText.toLongOrNull() ?: 0L
-                    when {
-                        title.isBlank() -> errorMessage = "Veuillez saisir un libellé."
-                        parsedAmount <= 0L -> errorMessage = "Veuillez saisir un montant valide."
-                        else -> onConfirm(
-                            title.trim(),
-                            selectedType,
-                            parsedAmount,
-                            accountName.trim(),
-                            referenceTag.trim()
-                        )
-                    }
-                }
-            ) {
-                Text("Enregistrer")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Annuler")
-            }
-        }
-    )
-}

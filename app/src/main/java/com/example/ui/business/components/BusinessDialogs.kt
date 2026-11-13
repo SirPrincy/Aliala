@@ -53,8 +53,11 @@ import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Warning
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -100,16 +103,38 @@ import com.example.util.CurrencyFormatter
 
 @Composable
 fun BuyYuansDialog(
+    accounts: List<com.example.data.local.entity.BusinessAccountEntity> = emptyList(),
+    defaultRate: Long = 650L,
     onDismiss: () -> Unit,
-    onConfirm: (amountYuan: Double, rateAr: Double, platform: String) -> Unit
+    onConfirm: (amountYuan: Double, rateAr: Double, platform: String, sourceAccountName: String) -> Unit,
+    onCreateAccountClick: (() -> Unit)? = null
 ) {
+    val ariaryAccounts = remember(accounts) {
+        accounts.filter { !it.isYuanAccount && it.isActive }
+    }
+    val yuanAccounts = remember(accounts) {
+        accounts.filter { it.isYuanAccount && it.isActive }
+    }
     var amountText by remember { mutableStateOf("") }
-    var rateText by remember { mutableStateOf("") }
-    var selectedPlatform by remember { mutableStateOf("Alipay") }
+    var rateText by remember { mutableStateOf(if (defaultRate > 0L) defaultRate.toString() else "650") }
+    var selectedPlatform by remember(yuanAccounts) {
+        mutableStateOf(yuanAccounts.firstOrNull()?.name ?: "")
+    }
+    var selectedAccount by remember(ariaryAccounts) {
+        mutableStateOf(
+            (ariaryAccounts.maxByOrNull { it.balanceAr } ?: ariaryAccounts.firstOrNull())?.name
+                ?: "Externe"
+        )
+    }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val amountYuan = amountText.toDoubleOrNull() ?: 0.0
     val rateAr = rateText.toDoubleOrNull() ?: 0.0
-    val totalAr = (amountYuan * rateAr).toLong()
+    val totalAr = kotlin.math.round(amountYuan * rateAr).toLong()
+    val selectedAriaryBalance = ariaryAccounts.firstOrNull {
+        it.name.equals(selectedAccount, ignoreCase = true)
+    }?.balanceAr ?: 0L
+    val isAriaryInsufficient = selectedAccount != "Externe" && totalAr > 0L && totalAr > selectedAriaryBalance
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -123,47 +148,198 @@ fun BuyYuansDialog(
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedTextField(
                     value = amountText,
-                    onValueChange = { amountText = it },
+                    onValueChange = { input ->
+                        val filtered = input.filter { it.isDigit() || it == '.' }
+                        if (filtered.count { it == '.' } <= 1) {
+                            amountText = filtered
+                            errorMessage = null
+                        }
+                    },
                     label = { Text("Montant en Yuans (¥)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    placeholder = { Text("ex. 1000") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth().testTag("input_yuan_amount")
                 )
 
                 OutlinedTextField(
                     value = rateText,
-                    onValueChange = { rateText = it },
+                    onValueChange = { input ->
+                        val filtered = input.filter { it.isDigit() || it == '.' }
+                        if (filtered.count { it == '.' } <= 1) {
+                            rateText = filtered
+                            errorMessage = null
+                        }
+                    },
                     label = { Text("Taux de change (Ar / ¥)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth().testTag("input_yuan_rate")
                 )
 
-                // Platform selection
+                Text(
+                    text = "Portefeuille chinois crédité (Alipay / Wechat Pay)",
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (yuanAccounts.isEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.errorContainer
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "Achat bloqué : aucun compte Yuan (Alipay ou Wechat Pay) disponible. Veuillez d'abord créer un compte Alipay ou Wechat Pay.",
+                                    fontFamily = Inter,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                            if (onCreateAccountClick != null) {
+                                TextButton(
+                                    onClick = {
+                                        onDismiss()
+                                        onCreateAccountClick()
+                                    }
+                                ) {
+                                    Text(
+                                        text = "+ Créer un compte Alipay / Wechat Pay",
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        yuanAccounts.forEach { acc ->
+                            val isSelected = selectedPlatform.equals(acc.name, ignoreCase = true)
+                            val yBal = if (acc.balanceYuan % 1.0 == 0.0) "¥ ${acc.balanceYuan.toInt()}"
+                            else "¥ ${String.format(java.util.Locale.US, "%.2f", acc.balanceYuan)}"
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSelected) CyanPrimary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant)
+                                    .border(
+                                        width = if (isSelected) 1.dp else 0.dp,
+                                        color = if (isSelected) CyanPrimary else Color.Transparent,
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable {
+                                        selectedPlatform = acc.name
+                                        errorMessage = null
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = acc.name,
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) CyanPrimary else MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 12.sp
+                                    )
+                                    Text(
+                                        text = yBal,
+                                        fontFamily = Inter,
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text(
+                    text = "Compte payeur (Ariary)",
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf("Alipay", "WeChat Pay").forEach { platform ->
-                        val isSelected = selectedPlatform == platform
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (isSelected) CyanPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant)
-                                .clickable { selectedPlatform = platform }
-                                .padding(vertical = 10.dp),
-                            contentAlignment = Alignment.Center
+                    ariaryAccounts.forEach { acc ->
+                        val isSelected = selectedAccount == acc.name
+                        Surface(
+                            modifier = Modifier.clickable { selectedAccount = acc.name },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) CyanPrimary else MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = acc.name,
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = if (isSelected) Color.Black else MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = CurrencyFormatter.formatAriary(acc.balanceAr),
+                                    fontFamily = PlusJakartaSans,
+                                    fontSize = 10.sp,
+                                    color = if (isSelected) Color.Black.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    val isExternal = selectedAccount == "Externe"
+                    Surface(
+                        modifier = Modifier.clickable { selectedAccount = "Externe" },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isExternal) CyanPrimary else MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
                             Text(
-                                text = platform,
+                                text = "Externe",
                                 fontFamily = PlusJakartaSans,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) CyanPrimary else MaterialTheme.colorScheme.onSurface,
-                                fontSize = 12.sp
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = if (isExternal) Color.Black else MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Hors comptes",
+                                fontFamily = PlusJakartaSans,
+                                fontSize = 10.sp,
+                                color = if (isExternal) Color.Black.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -177,37 +353,78 @@ fun BuyYuansDialog(
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         .padding(10.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Coût total en Ariary :",
+                                fontFamily = PlusJakartaSans,
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = CurrencyFormatter.formatAriary(totalAr),
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Bold,
+                                color = CyanPrimary,
+                                fontSize = 13.sp
+                            )
+                        }
                         Text(
-                            text = "Coût total en Ariary :",
-                            fontFamily = PlusJakartaSans,
-                            fontSize = 12.sp
+                            text = if (selectedAccount == "Externe") {
+                                "Enregistré dans Finances sans débit de compte local."
+                            } else {
+                                "Débitera « $selectedAccount » et enregistrera la transaction Change ¥."
+                            },
+                            fontFamily = Inter,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
-                            text = CurrencyFormatter.formatAriary(totalAr),
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.Bold,
-                            color = CyanPrimary,
-                            fontSize = 13.sp
-                        )
+                        if (isAriaryInsufficient) {
+                            Text(
+                                text = "Attention : solde insuffisant sur $selectedAccount (${CurrencyFormatter.formatAriary(selectedAriaryBalance)} dispo).",
+                                fontFamily = Inter,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
+                }
+
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage!!,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp
+                    )
                 }
             }
         },
         confirmButton = {
             Button(
+                enabled = yuanAccounts.isNotEmpty(),
                 onClick = {
-                    if (amountYuan > 0 && rateAr > 0) {
-                        onConfirm(amountYuan, rateAr, selectedPlatform)
-                        onDismiss()
+                    when {
+                        yuanAccounts.isEmpty() -> errorMessage = "Créez d'abord un compte Alipay ou Wechat Pay."
+                        selectedPlatform.isBlank() -> errorMessage = "Veuillez sélectionner un compte Yuan."
+                        amountYuan <= 0.0 -> errorMessage = "Veuillez saisir un montant en yuans valide."
+                        rateAr <= 0.0 -> errorMessage = "Veuillez saisir un taux de change valide."
+                        else -> {
+                            onConfirm(amountYuan, rateAr, selectedPlatform, selectedAccount)
+                            onDismiss()
+                        }
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
             ) {
-                Text("Valider l'achat", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "Valider l'achat",
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
+                )
             }
         },
         dismissButton = {
@@ -344,1587 +561,7 @@ fun PayPlatformDialog(
     )
 }
 
-data class VariantItemState(
-    val id: Int,
-    val name: String,
-    val colorHex: Long,
-    val quantity: Int
-)
 
-@Composable
-fun AddOrderDialog(
-    cmupRate: Long,
-    availableYuans: Double = 0.0,
-    availableArticles: List<com.example.data.local.entity.BusinessOrderEntity> = emptyList(),
-    initialArticle: com.example.data.local.entity.BusinessOrderEntity? = null,
-    transitaires: List<String> = emptyList(),
-    onDismiss: () -> Unit,
-    onConfirm: (
-        product: String,
-        supplier: String,
-        quantity: Int,
-        priceYuan: Double,
-        resaleAr: Long,
-        category: String,
-        carrier: String,
-        variants: String,
-        freightAr: Long
-    ) -> Unit
-) {
-    val context = LocalContext.current
-    val targetItem = initialArticle ?: availableArticles.firstOrNull()
-    var selectedArticleId by remember { mutableStateOf<Long?>(targetItem?.id) }
-    var product by remember { mutableStateOf(targetItem?.product ?: "") }
-    var supplierRef by remember { mutableStateOf(targetItem?.referenceCode ?: "") }
-    var familyCategory by remember { mutableStateOf(targetItem?.family ?: "Électronique") }
-    var selectedSupplier by remember { mutableStateOf(targetItem?.platform?.ifBlank { "1688" } ?: "1688.com") }
-    var priceYuanText by remember { mutableStateOf(if ((targetItem?.priceYuan ?: 0.0) > 0) targetItem!!.priceYuan.toInt().toString() else "") }
-    var isShippingPaid by remember { mutableStateOf(false) }
-    var shippingCostYuanText by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("BUSINESS") }
-    var carrier by remember { mutableStateOf(if (targetItem?.carrier?.isNotBlank() == true) targetItem.carrier else "SinoExpress") }
-    var resaleArText by remember { mutableStateOf(if ((targetItem?.resalePriceAr ?: 0L) > 0) targetItem!!.resalePriceAr.toString() else "") }
-
-    var variantsList by remember {
-        mutableStateOf(
-            if (targetItem?.variants?.isNotBlank() == true) {
-                targetItem.variants.split(",").mapIndexed { idx, name ->
-                    VariantItemState(idx + 1, name.trim(), 0xFF0F172A, 10)
-                }
-            } else {
-                listOf(
-                    VariantItemState(1, "Noir", 0xFF0F172A, 10),
-                    VariantItemState(2, "Blanc", 0xFFFFFFFF, 5)
-                )
-            }
-        )
-    }
-
-    val totalUnits = variantsList.sumOf { it.quantity }.coerceAtLeast(1)
-    val priceYuan = priceYuanText.toDoubleOrNull() ?: 0.0
-    val effectiveCmupRate = if (cmupRate > 0) cmupRate else 650L
-    val unitPriceAr = (priceYuan * effectiveCmupRate).toLong()
-    val goodsTotalYuan = totalUnits * priceYuan
-    val shippingCostYuan = if (isShippingPaid) (shippingCostYuanText.toDoubleOrNull() ?: 0.0) else 0.0
-    val orderTotalYuan = goodsTotalYuan + shippingCostYuan
-    val orderTotalAr = (orderTotalYuan * effectiveCmupRate).toLong()
-    val shippingCostAr = (shippingCostYuan * effectiveCmupRate).toLong()
-    val effectiveAvailableYuans = availableYuans
-    val isSoldeSuffisant = effectiveAvailableYuans >= orderTotalYuan
-
-    val scrollState = rememberScrollState()
-
-    val saveAction = {
-        if (product.isBlank()) {
-            Toast.makeText(context, "Veuillez saisir le nom de l'article", Toast.LENGTH_SHORT).show()
-        } else if (priceYuan <= 0.0) {
-            Toast.makeText(context, "Veuillez indiquer le prix unitaire en Yuans (¥)", Toast.LENGTH_SHORT).show()
-        } else {
-            val variantsStr = variantsList.filter { it.name.isNotBlank() }.joinToString(", ") { "${it.name} ×${it.quantity}" }
-            val resaleAr = resaleArText.toLongOrNull() ?: (priceYuan * effectiveCmupRate * 1.5).toLong()
-            onConfirm(
-                product.trim(),
-                selectedSupplier.trim(),
-                totalUnits,
-                priceYuan,
-                resaleAr,
-                category,
-                carrier.trim().ifBlank { "SinoExpress" },
-                variantsStr.ifBlank { "Standard ×$totalUnits" },
-                shippingCostAr
-            )
-            onDismiss()
-        }
-    }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
-        )
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 76.dp)
-                ) {
-                    // TOP FIXED HEADER
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = MaterialTheme.colorScheme.surface,
-                        shadowElevation = 2.dp
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp)
-                                .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .clickable { onDismiss() }
-                                        .testTag("btn_close_new_order"),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Fermer",
-                                        tint = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                                Text(
-                                    text = "Nouvel Achat",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 18.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                TextButton(
-                                    onClick = saveAction,
-                                    modifier = Modifier.testTag("top_save_action")
-                                ) {
-                                    Text(
-                                        text = "Enregistrer",
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(MaterialTheme.colorScheme.primary),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Person,
-                                        contentDescription = "Profil",
-                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // SCROLLABLE BODY
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(scrollState)
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        // SUB-HEADER & STEPPER PROGRESS BAR
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "MODULE BUSINESS",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    letterSpacing = 0.5.sp
-                                )
-                                Text(
-                                    text = "Étape 2 sur 4",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Medium,
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            Text(
-                                text = "Quantités & Prix",
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 22.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-
-                            // 4-Stage Progress Bar Grid
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // Step 1: Article (Validated)
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(6.dp)
-                                            .clip(RoundedCornerShape(3.dp))
-                                            .background(Color(0xFF06B6D4))
-                                    )
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.CheckCircle,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(12.dp)
-                                        )
-                                        Text(
-                                            text = "Article",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-
-                                // Step 2: Quantités (Active Focus)
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(6.dp)
-                                            .clip(RoundedCornerShape(3.dp))
-                                            .background(MaterialTheme.colorScheme.primary)
-                                    )
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.RadioButtonChecked,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(12.dp)
-                                        )
-                                        Text(
-                                            text = "Quantités",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-
-                                // Step 3: Livraison
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(6.dp)
-                                            .clip(RoundedCornerShape(3.dp))
-                                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    )
-                                    Text(
-                                        text = "Livraison",
-                                        fontFamily = PlusJakartaSans,
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(start = 2.dp)
-                                    )
-                                }
-
-                                // Step 4: Paiement
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(6.dp)
-                                            .clip(RoundedCornerShape(3.dp))
-                                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    )
-                                    Text(
-                                        text = "Paiement",
-                                        fontFamily = PlusJakartaSans,
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(start = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        // 1. ARTICLE & IDENTIFICATION CARD
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            shadowElevation = 1.dp
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Inventory2,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Text(
-                                            text = "Article & Identification",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 15.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-
-                                    if (availableArticles.isNotEmpty()) {
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                                        ) {
-                                            Text(
-                                                text = "${availableArticles.distinctBy { it.product }.size} en catalogue",
-                                                fontFamily = PlusJakartaSans,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                // PROMINENT CATALOGUE SELECTION SECTION (ALWAYS SHOWN IF AVAILABLE)
-                                if (availableArticles.isNotEmpty()) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                                            .padding(10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(
-                                            text = "Sélectionner un article du catalogue :",
-                                            fontFamily = PlusJakartaSans,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .horizontalScroll(rememberScrollState()),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            availableArticles.distinctBy { it.product }.forEach { art ->
-                                                val isThis = product.equals(art.product, ignoreCase = true)
-                                                Surface(
-                                                    shape = RoundedCornerShape(20.dp),
-                                                    color = if (isThis) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-                                                    shadowElevation = 1.dp,
-                                                    modifier = Modifier.clickable {
-                                                        product = art.product
-                                                        if (art.referenceCode.isNotBlank()) supplierRef = art.referenceCode
-                                                        if (art.family.isNotBlank()) familyCategory = art.family
-                                                        if (art.priceYuan > 0) priceYuanText = String.format(java.util.Locale.US, "%.2f", art.priceYuan)
-                                                        if (art.resalePriceAr > 0) resaleArText = art.resalePriceAr.toString()
-                                                        if (art.platform.isNotBlank()) selectedSupplier = art.platform
-                                                        if (art.carrier.isNotBlank()) carrier = art.carrier
-                                                    }
-                                                ) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                                    ) {
-                                                        if (isThis) {
-                                                            Icon(
-                                                                imageVector = Icons.Default.Check,
-                                                                contentDescription = null,
-                                                                tint = MaterialTheme.colorScheme.onPrimary,
-                                                                modifier = Modifier.size(14.dp)
-                                                            )
-                                                        }
-                                                        Text(
-                                                            text = art.product,
-                                                            fontSize = 12.sp,
-                                                            fontFamily = PlusJakartaSans,
-                                                            fontWeight = if (isThis) FontWeight.Bold else FontWeight.Medium,
-                                                            color = if (isThis) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                                                        )
-                                                    }
-                                                }
-                                            }
-
-                                            // Clear / Free input chip
-                                            if (product.isNotBlank()) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(20.dp),
-                                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                                    modifier = Modifier.clickable {
-                                                        product = ""
-                                                        supplierRef = ""
-                                                        priceYuanText = ""
-                                                        resaleArText = ""
-                                                    }
-                                                ) {
-                                                    Text(
-                                                        text = "+ Autre article",
-                                                        fontSize = 12.sp,
-                                                        fontFamily = PlusJakartaSans,
-                                                        fontWeight = FontWeight.Medium,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                OutlinedTextField(
-                                    value = product,
-                                    onValueChange = { product = it },
-                                    label = { Text("Nom du produit / Article *") },
-                                    placeholder = { Text("Ex: Montre connectée, Coque, Sac...") },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("input_order_product_name"),
-                                    singleLine = true,
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                                        focusedLabelColor = MaterialTheme.colorScheme.primary,
-                                        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                )
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    OutlinedTextField(
-                                        value = supplierRef,
-                                        onValueChange = { supplierRef = it },
-                                        label = { Text("Réf / SKU Fournisseur") },
-                                        placeholder = { Text("Ex: SKU-2026-01") },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .testTag("input_order_sku"),
-                                        singleLine = true,
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                                        )
-                                    )
-                                    OutlinedTextField(
-                                        value = familyCategory,
-                                        onValueChange = { familyCategory = it },
-                                        label = { Text("Famille / Catégorie") },
-                                        placeholder = { Text("Ex: Électronique") },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .testTag("input_order_family"),
-                                        singleLine = true,
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                                        )
-                                    )
-                                }
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    listOf("Électronique", "Audio", "Mode & Beauté", "Maison", "Accessoires").forEach { fam ->
-                                        val isFam = familyCategory.equals(fam, ignoreCase = true)
-                                        Surface(
-                                            shape = RoundedCornerShape(9999.dp),
-                                            color = if (isFam) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                            modifier = Modifier.clickable { familyCategory = fam }
-                                        ) {
-                                            Text(
-                                                text = fam,
-                                                fontFamily = PlusJakartaSans,
-                                                fontSize = 11.sp,
-                                                fontWeight = if (isFam) FontWeight.Bold else FontWeight.Medium,
-                                                color = if (isFam) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // 2. SUPPLIER PLATFORM & CARRIER SELECTION
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            shadowElevation = 1.dp
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                // Plateforme Fournisseur
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Storefront,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Text(
-                                            text = "Plateforme Fournisseur Chine",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 14.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    listOf("1688.com", "Taobao", "Pinduoduo", "Fournisseur direct").forEach { platform ->
-                                        val isSelected = selectedSupplier == platform
-                                        Surface(
-                                            shape = RoundedCornerShape(9999.dp),
-                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                            shadowElevation = if (isSelected) 1.dp else 0.dp,
-                                            modifier = Modifier
-                                                .clickable { selectedSupplier = platform }
-                                                .testTag("platform_chip_$platform")
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-                                            ) {
-                                                if (isSelected) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Verified,
-                                                        contentDescription = null,
-                                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
-                                                }
-                                                Text(
-                                                    text = platform,
-                                                    fontFamily = PlusJakartaSans,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                    fontSize = 12.sp,
-                                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                // Transitaire vers Madagascar
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.LocalShipping,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Text(
-                                            text = "Transitaire (Fret international)",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 14.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    val carrierOptions = if (transitaires.isNotEmpty()) transitaires + "Autre" else listOf("SinoExpress", "MadaCargo", "Autre")
-                                    carrierOptions.distinct().forEach { c ->
-                                        val isSelected = carrier == c
-                                        Surface(
-                                            shape = RoundedCornerShape(9999.dp),
-                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                            shadowElevation = if (isSelected) 1.dp else 0.dp,
-                                            modifier = Modifier
-                                                .clickable { carrier = c }
-                                                .testTag("carrier_chip_$c")
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-                                            ) {
-                                                if (isSelected) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Check,
-                                                        contentDescription = null,
-                                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
-                                                }
-                                                Text(
-                                                    text = c,
-                                                    fontFamily = PlusJakartaSans,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                    fontSize = 12.sp,
-                                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // 3. UNIT PRICE & YUAN CONVERSION
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            shadowElevation = 1.dp
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.CurrencyYuan,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Text(
-                                            text = "Prix d'achat unitaire",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 15.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(9999.dp))
-                                            .background(MaterialTheme.colorScheme.primaryContainer)
-                                            .padding(horizontal = 8.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = "Devise ¥ (CNY)",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            fontFamily = PlusJakartaSans
-                                        )
-                                    }
-                                }
-
-                                // Large Currency Input Box
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Text(
-                                                text = "¥",
-                                                fontFamily = PlusJakartaSans,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                fontSize = 24.sp,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                            OutlinedTextField(
-                                                value = priceYuanText,
-                                                onValueChange = { priceYuanText = it },
-                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .testTag("input_order_price_yuan"),
-                                                singleLine = true,
-                                                colors = OutlinedTextFieldDefaults.colors(
-                                                    focusedBorderColor = Color.Transparent,
-                                                    unfocusedBorderColor = Color.Transparent,
-                                                    focusedContainerColor = Color.Transparent,
-                                                    unfocusedContainerColor = Color.Transparent
-                                                ),
-                                                textStyle = androidx.compose.ui.text.TextStyle(
-                                                    fontFamily = PlusJakartaSans,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    fontSize = 24.sp,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                ),
-                                                placeholder = { Text("0.00", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) }
-                                            )
-                                        }
-
-                                        Text(
-                                            text = "par unité",
-                                            fontFamily = PlusJakartaSans,
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(end = 4.dp)
-                                        )
-                                    }
-                                }
-
-                                // Live Exchange Rate Hint
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                                        .padding(horizontal = 8.dp, vertical = 6.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.CurrencyExchange,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "≈ ${CurrencyFormatter.formatAriary(unitPriceAr)} / unité au taux moyen CMUP (${effectiveCmupRate} Ar/¥)",
-                                            fontFamily = Inter,
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // 4. VARIANTS & QUANTITIES (Quantités par couleur)
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            shadowElevation = 1.dp
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Palette,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Text(
-                                            text = "Quantités par couleur",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 15.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer,
-                                        modifier = Modifier.clickable {
-                                            val newId = (variantsList.maxOfOrNull { it.id } ?: 0) + 1
-                                            variantsList = variantsList + VariantItemState(newId, "Nouvelle couleur", 0xFF6366F1, 1)
-                                        }
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Add,
-                                                contentDescription = "Ajouter",
-                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Text(
-                                                text = "Ajouter",
-                                                fontFamily = PlusJakartaSans,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                                            )
-                                        }
-                                    }
-                                }
-
-                                // Variant Rows
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    variantsList.forEachIndexed { index, variant ->
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                                    modifier = Modifier.weight(1f)
-                                                ) {
-                                                    // Color Dot Indicator
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(16.dp)
-                                                            .clip(RoundedCornerShape(8.dp))
-                                                            .background(Color(variant.colorHex))
-                                                    )
-
-                                                    Column {
-                                                        Text(
-                                                            text = variant.name,
-                                                            fontFamily = PlusJakartaSans,
-                                                            fontWeight = FontWeight.SemiBold,
-                                                            fontSize = 13.sp,
-                                                            color = MaterialTheme.colorScheme.onSurface
-                                                        )
-                                                        Text(
-                                                            text = "Stock transit : 0",
-                                                            fontFamily = Inter,
-                                                            fontSize = 11.sp,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                        )
-                                                    }
-                                                }
-
-                                                // Stepper Container
-                                                Surface(
-                                                    shape = RoundedCornerShape(12.dp),
-                                                    color = MaterialTheme.colorScheme.surface,
-                                                    shadowElevation = 1.dp
-                                                ) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        modifier = Modifier.padding(2.dp)
-                                                    ) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(32.dp)
-                                                                .clip(RoundedCornerShape(8.dp))
-                                                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                                                .clickable {
-                                                                    if (variant.quantity > 0) {
-                                                                        variantsList = variantsList.toMutableList().also {
-                                                                            it[index] = variant.copy(quantity = variant.quantity - 1)
-                                                                        }
-                                                                    }
-                                                                },
-                                                            contentAlignment = Alignment.Center
-                                                        ) {
-                                                            Icon(
-                                                                imageVector = Icons.Default.Remove,
-                                                                contentDescription = "Diminuer",
-                                                                modifier = Modifier.size(14.dp),
-                                                                tint = MaterialTheme.colorScheme.onSurface
-                                                            )
-                                                        }
-
-                                                        Text(
-                                                            text = "${variant.quantity}",
-                                                            fontFamily = PlusJakartaSans,
-                                                            fontWeight = FontWeight.Bold,
-                                                            fontSize = 15.sp,
-                                                            color = MaterialTheme.colorScheme.onSurface,
-                                                            modifier = Modifier.width(32.dp),
-                                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                                        )
-
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(32.dp)
-                                                                .clip(RoundedCornerShape(8.dp))
-                                                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                                                .clickable {
-                                                                    variantsList = variantsList.toMutableList().also {
-                                                                        it[index] = variant.copy(quantity = variant.quantity + 1)
-                                                                    }
-                                                                },
-                                                            contentAlignment = Alignment.Center
-                                                        ) {
-                                                            Icon(
-                                                                imageVector = Icons.Default.Add,
-                                                                contentDescription = "Augmenter",
-                                                                modifier = Modifier.size(14.dp),
-                                                                tint = MaterialTheme.colorScheme.onSurface
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Total Calculated Badge
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 2.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Volume sélectionné",
-                                        fontFamily = Inter,
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(9999.dp))
-                                            .background(MaterialTheme.colorScheme.primaryContainer)
-                                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Inventory2,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Text(
-                                                text = "Total : $totalUnits unités",
-                                                fontFamily = PlusJakartaSans,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // 5. DOMESTIC SHIPPING IN CHINA (Frais de port intérieurs Chine)
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            shadowElevation = 1.dp
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.LocalShipping,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Text(
-                                            text = "Frais de port intérieurs (Chine)",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 15.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                    Text(
-                                        text = "Vers transitaire",
-                                        fontFamily = PlusJakartaSans,
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-
-                                Text(
-                                    text = "Expédition de l'usine jusqu'au hub de Guangzhou / Yiwu.",
-                                    fontFamily = Inter,
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-
-                                // Gratuit vs Payant Toggle Bar
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                                        .padding(4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (!isShippingPaid) MaterialTheme.colorScheme.surface else Color.Transparent,
-                                        shadowElevation = if (!isShippingPaid) 1.dp else 0.dp,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(40.dp)
-                                            .clickable { isShippingPaid = false }
-                                    ) {
-                                        Box(
-                                            contentAlignment = Alignment.Center,
-                                            modifier = Modifier.fillMaxSize()
-                                        ) {
-                                            Text(
-                                                text = "Gratuit (包邮)",
-                                                fontFamily = PlusJakartaSans,
-                                                fontWeight = if (!isShippingPaid) FontWeight.Bold else FontWeight.Medium,
-                                                fontSize = 12.sp,
-                                                color = if (!isShippingPaid) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (isShippingPaid) MaterialTheme.colorScheme.surface else Color.Transparent,
-                                        shadowElevation = if (isShippingPaid) 1.dp else 0.dp,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(40.dp)
-                                            .clickable { isShippingPaid = true }
-                                    ) {
-                                        Row(
-                                            horizontalArrangement = Arrangement.Center,
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.fillMaxSize()
-                                        ) {
-                                            if (isShippingPaid) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Check,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                            }
-                                            Text(
-                                                text = "Payant",
-                                                fontFamily = PlusJakartaSans,
-                                                fontWeight = if (isShippingPaid) FontWeight.Bold else FontWeight.Medium,
-                                                fontSize = 12.sp,
-                                                color = if (isShippingPaid) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-                                }
-
-                                // Shipping Amount Input Row
-                                if (isShippingPaid) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                                            .padding(horizontal = 14.dp, vertical = 6.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Text(
-                                                text = "Montant Fret Chine",
-                                                fontFamily = Inter,
-                                                fontSize = 13.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(
-                                                    text = "¥",
-                                                    fontFamily = PlusJakartaSans,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 18.sp,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                OutlinedTextField(
-                                                    value = shippingCostYuanText,
-                                                    onValueChange = { shippingCostYuanText = it },
-                                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                                    modifier = Modifier.width(80.dp),
-                                                    singleLine = true,
-                                                    colors = OutlinedTextFieldDefaults.colors(
-                                                        focusedBorderColor = Color.Transparent,
-                                                        unfocusedBorderColor = Color.Transparent,
-                                                        focusedContainerColor = Color.Transparent,
-                                                        unfocusedContainerColor = Color.Transparent
-                                                    ),
-                                                    textStyle = androidx.compose.ui.text.TextStyle(
-                                                        fontFamily = PlusJakartaSans,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 16.sp,
-                                                        color = MaterialTheme.colorScheme.onSurface,
-                                                        textAlign = androidx.compose.ui.text.style.TextAlign.End
-                                                    ),
-                                                    placeholder = { Text("0.00") }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // 6. REAL-TIME FINANCIAL SUMMARY WIDGET (Synthèse de commande)
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                            shadowElevation = 1.dp
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "SYNTHÈSE DE COMMANDE",
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        letterSpacing = 0.5.sp
-                                    )
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(9999.dp))
-                                            .background(MaterialTheme.colorScheme.surface)
-                                            .padding(horizontal = 8.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = "Étape 2 active",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = "Total marchandises ($totalUnits × ¥ ${String.format(java.util.Locale.US, "%.0f", priceYuan)})",
-                                        fontFamily = Inter,
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = "¥ ${String.format(java.util.Locale.US, "%.2f", goodsTotalYuan)}",
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = "Fret Chine (Entrepôt)",
-                                        fontFamily = Inter,
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = "¥ ${String.format(java.util.Locale.US, "%.2f", shippingCostYuan)}",
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(1.dp)
-                                        .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-                                )
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.Bottom
-                                ) {
-                                    Text(
-                                        text = "Total commande",
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text(
-                                            text = "¥ ${String.format(java.util.Locale.US, "%.2f", orderTotalYuan)}",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 20.sp,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Text(
-                                            text = "≈ ${CurrencyFormatter.formatAriary(orderTotalAr)}",
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-
-                                // Alipay Balance Indicator Box
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surface,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 4.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(28.dp)
-                                                    .clip(RoundedCornerShape(14.dp))
-                                                    .background(MaterialTheme.colorScheme.primaryContainer),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.AccountBalanceWallet,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
-                                            Column {
-                                                Text(
-                                                    text = "Solde Alipay dispo",
-                                                    fontFamily = PlusJakartaSans,
-                                                    fontSize = 10.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                                Text(
-                                                    text = "¥ ${String.format(java.util.Locale.US, "%.2f", effectiveAvailableYuans)}",
-                                                    fontFamily = PlusJakartaSans,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 13.sp,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                )
-                                            }
-                                        }
-
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(9999.dp))
-                                                .background(
-                                                    if (isSoldeSuffisant) MaterialTheme.colorScheme.primaryContainer
-                                                    else MaterialTheme.colorScheme.errorContainer
-                                                )
-                                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.CheckCircle,
-                                                    contentDescription = null,
-                                                    tint = if (isSoldeSuffisant) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                                    modifier = Modifier.size(13.dp)
-                                                )
-                                                Text(
-                                                    text = if (isSoldeSuffisant) "Solde suffisant" else "Solde insuffisant",
-                                                    fontFamily = PlusJakartaSans,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 10.sp,
-                                                    color = if (isSoldeSuffisant) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // 7. ACTIONS BAR / BOTTOM CONTROLS
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 2.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(52.dp)
-                                    .clickable { onDismiss() }
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxSize(),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "Précédent",
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                                shadowElevation = 3.dp,
-                                modifier = Modifier
-                                    .weight(2f)
-                                    .height(52.dp)
-                                    .clickable { saveAction() }
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxSize(),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Continuer vers Livraison",
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-                }
-
-                // FIXED BOTTOM PRIMARY ACTION (Enregistrer l'achat)
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter),
-                    color = MaterialTheme.colorScheme.surface,
-                    shadowElevation = 8.dp
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 10.dp)
-                    ) {
-                        Button(
-                            onClick = saveAction,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp)
-                                .testTag("btn_save_purchase_final")
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = "Enregistrer l'achat",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 @Composable
 fun WhatsAppRelanceDialog(
@@ -2705,61 +1342,120 @@ fun AddSaleDialog(
     )
 }
 
+
+
 // ---------------------------------------------------------------------------
-// ADD CATALOGUE ARTICLE DIALOG
+// EDIT CATALOGUE ARTICLE DIALOG (REFONTE COMPLÈTE)
 // ---------------------------------------------------------------------------
 @Composable
-fun AddCatalogueArticleDialog(
-    availableFamilies: List<String> = listOf("Électronique & Audio", "Mode", "Maison", "Beauté"),
+fun EditCatalogueArticleDialog(
+    article: com.example.ui.business.CatalogueArticleSummaryUi,
+    availableFamilies: List<com.example.ui.business.CatalogueFamilySummaryUi> = emptyList(),
+    availablePlatforms: List<String> = listOf("1688.com", "Taobao", "Pinduoduo", "Fournisseur Direct WeChat"),
+    transitaires: List<com.example.ui.business.CatalogueTransitaireSummaryUi> = emptyList(),
+    cmupRate: Long = 650L,
     onDismiss: () -> Unit,
     onConfirm: (
-        product: String,
-        family: String,
-        referenceCode: String,
-        variants: String,
-        priceYuan: Double,
-        resaleAr: Long,
-        stockCount: Int,
-        weightKg: Double,
-        platform: String
+        newProduct: String,
+        newReferenceCode: String,
+        newFamily: String,
+        newPlatform: String,
+        newPriceYuan: Double,
+        newResaleAr: Long,
+        newWeightKg: Double?,
+        newFreightMode: String,
+        newVariants: String,
+        newImageUrl: String,
+        newNotes: String,
+        isHidden: Boolean
     ) -> Unit
 ) {
     val context = LocalContext.current
-    val families = availableFamilies.ifEmpty { listOf("Électronique & Audio", "Mode", "Maison", "Beauté", "Accessoires") }
+    val colors = rememberTransitaireColors()
+    val order = article.primaryOrder
 
-    var product by remember { mutableStateOf("") }
-    var family by remember { mutableStateOf(families.first()) }
-    var referenceCode by remember { mutableStateOf("") }
-    var variantsList by remember { mutableStateOf(listOf("Noir", "Blanc")) }
-    var priceYuanText by remember { mutableStateOf("") }
-    var resaleArText by remember { mutableStateOf("") }
-    var stockCountText by remember { mutableStateOf("") }
-    var weightText by remember { mutableStateOf("") }
-    var selectedPlatform by remember { mutableStateOf("1688") }
-    var selectedPhotoUri by remember { mutableStateOf("") }
-    var showAddVariantModal by remember { mutableStateOf(false) }
-    var creationMode by remember { mutableStateOf("REFERENTIEL") } // "REFERENTIEL" (catalogue pur) ou "STOCK" (avec stock initial)
+    val familyNames = remember(availableFamilies, order.family) {
+        val base = availableFamilies.map { it.name }.ifEmpty {
+            listOf("Électronique & Audio", "Mode & Maroquinerie", "Maison & Rangement", "Accessoires Mobiles")
+        }
+        if (order.family.isNotBlank() && base.none { it.equals(order.family, ignoreCase = true) }) {
+            listOf(order.family) + base
+        } else base
+    }
+    val platformOptions = remember(availablePlatforms, order.platform) {
+        val base = availablePlatforms.ifEmpty { listOf("1688.com", "Taobao", "Pinduoduo", "Fournisseur Direct WeChat") }
+        if (order.platform.isNotBlank() && base.none { it.equals(order.platform, ignoreCase = true) }) {
+            listOf(order.platform) + base
+        } else base
+    }
+
+    var productName by remember { mutableStateOf(order.product) }
+    var referenceCode by remember { mutableStateOf(order.referenceCode) }
+    var selectedFamily by remember { mutableStateOf(order.family.ifBlank { familyNames.first() }) }
+    var selectedPlatform by remember { mutableStateOf(order.platform.ifBlank { platformOptions.first() }) }
+    var priceYuanText by remember {
+        mutableStateOf(
+            if (article.latestPriceYuan > 0.0) {
+                if (article.latestPriceYuan % 1.0 == 0.0) article.latestPriceYuan.toInt().toString()
+                else article.latestPriceYuan.toString()
+            } else ""
+        )
+    }
+    var resaleArText by remember {
+        mutableStateOf(if (article.resalePriceAr > 0L) article.resalePriceAr.toString() else "")
+    }
+    var weightText by remember {
+        mutableStateOf(
+            if ((order.weightKg ?: 0.0) > 0.0) order.weightKg.toString() else ""
+        )
+    }
+    var selectedFreightMode by remember {
+        mutableStateOf(if (order.freightMode.equals("MARITIME", ignoreCase = true)) "MARITIME" else "AÉRIEN")
+    }
+    var variantsList by remember {
+        mutableStateOf(article.allVariants.ifEmpty { VariantColorUtils.parseVariants(order.variants) })
+    }
+    var visualValue by remember { mutableStateOf(order.imageUrl) }
+    var notes by remember { mutableStateOf(order.receptionNotes) }
+    var isHidden by remember { mutableStateOf(article.isHidden) }
+
+    var showAddVariantDialog by remember { mutableStateOf(false) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         uri?.let {
-            selectedPhotoUri = it.toString()
+            visualValue = it.toString()
             Toast.makeText(context, "Photo sélectionnée", Toast.LENGTH_SHORT).show()
         }
     }
 
-    val priceYuan = priceYuanText.toDoubleOrNull() ?: 0.0
-    val estimatedCostAr = (priceYuan * 650.0).toLong()
-    val resaleAr = resaleArText.toLongOrNull() ?: 0L
-    val marginAr = if (resaleAr > 0 && estimatedCostAr > 0) resaleAr - estimatedCostAr else 0L
-    val marginPercent = if (resaleAr > 0 && marginAr != 0L) ((marginAr.toDouble() / resaleAr.toDouble()) * 100).toInt() else 0
-    val weightKgVal = weightText.toDoubleOrNull() ?: 0.0
-    val weightGrams = (weightKgVal * 1000).toInt()
-    val volumeM3 = if (weightGrams > 0) String.format(java.util.Locale.US, "%.4f", weightGrams * 0.0000067) else "—"
-    val airFreightEstAr = (weightGrams * 38).toLong()
+    val effectiveCmupRate = if (cmupRate > 0L) cmupRate.toDouble() else 650.0
+    val activeTransitaires = remember(transitaires) { transitaires.filter { !it.isArchived && it.isActive } }
+    val airRate = remember(activeTransitaires) {
+        val rates = activeTransitaires.mapNotNull { it.airRateAr.takeIf { r -> r > 0L } }
+        if (rates.isNotEmpty()) rates.average().toLong() else 45000L
+    }
+    val seaRate = remember(activeTransitaires) {
+        val rates = activeTransitaires.mapNotNull { it.seaRateAr.takeIf { r -> r > 0L } }
+        if (rates.isNotEmpty()) rates.average().toLong() else 18000L
+    }
 
-    val platformOptions = listOf("1688", "Taobao", "Xianyu (闲鱼)", "Pinduoduo", "Alibaba", "Usine Directe")
+    val priceYuan = priceYuanText.replace(',', '.').toDoubleOrNull() ?: 0.0
+    val resaleAr = resaleArText.toLongOrNull() ?: 0L
+    val weightKg = weightText.replace(',', '.').toDoubleOrNull()
+    val purchaseAr = kotlin.math.round(priceYuan * effectiveCmupRate).toLong()
+    val realUnitFreight = if (order.freightCostAr > 0L && order.quantityBought > 0) order.freightCostAr / order.quantityBought else 0L
+    val estUnitFreight = if (realUnitFreight > 0L) realUnitFreight else if ((weightKg ?: 0.0) > 0.0) {
+        kotlin.math.round((weightKg ?: 0.0) * (if (selectedFreightMode == "MARITIME") seaRate else airRate)).toLong()
+    } else 0L
+    val landedCostAr = purchaseAr + estUnitFreight
+    val marginAr = if (resaleAr > 0L && landedCostAr > 0L) resaleAr - landedCostAr else 0L
+    val marginPct = if (resaleAr > 0L && landedCostAr > 0L) ((marginAr.toDouble() / resaleAr.toDouble()) * 100.0).toInt() else 0
+
+    val famEmoji = availableFamilies.firstOrNull { it.name.equals(selectedFamily, ignoreCase = true) }?.emoji ?: article.familyEmoji
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -2770,958 +1466,562 @@ fun AddCatalogueArticleDialog(
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
+            color = colors.pageBg
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Top Header (Matching ArticleDetailScreen style)
+                // Header
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface,
+                    color = colors.cardBg,
                     shadowElevation = 2.dp
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(56.dp)
-                            .padding(horizontal = 12.dp),
+                            .height(60.dp)
+                            .padding(horizontal = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
-                            IconButton(onClick = onDismiss) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Retour",
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
+                            IconButton(
+                                onClick = onDismiss,
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Fermer", tint = colors.textPrimary)
                             }
                             Column {
                                 Text(
-                                    text = "Nouveau Produit",
+                                    text = "Modifier l'article",
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 17.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = colors.textPrimary
                                 )
                                 Text(
-                                    text = "Fiche référence & rentabilité",
-                                    fontFamily = PlusJakartaSans,
+                                    text = order.referenceCode.ifBlank { "REF-${order.id}" },
+                                    fontFamily = Inter,
                                     fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = colors.textSecondary
                                 )
                             }
                         }
 
                         Button(
                             onClick = {
-                                val pYuan = priceYuanText.toDoubleOrNull() ?: 0.0
-                                val rAr = resaleArText.toLongOrNull() ?: 0L
-                                val sCount = if (creationMode == "STOCK") (stockCountText.toIntOrNull() ?: 0) else 0
-                                val wKg = weightText.toDoubleOrNull() ?: 0.0
-                                val varStr = variantsList.joinToString(", ")
-                                if (product.isNotBlank()) {
+                                if (productName.isBlank()) {
+                                    errorMessage = "Le nom de l'article est obligatoire."
+                                } else {
                                     onConfirm(
-                                        product.trim(),
-                                        family.trim().ifBlank { "Électronique" },
+                                        productName.trim(),
                                         referenceCode.trim(),
-                                        varStr,
-                                        pYuan,
-                                        rAr,
-                                        sCount,
-                                        wKg,
-                                        selectedPlatform.trim().ifBlank { "1688" }
+                                        selectedFamily,
+                                        selectedPlatform,
+                                        priceYuan,
+                                        resaleAr,
+                                        weightKg?.takeIf { it > 0.0 },
+                                        selectedFreightMode,
+                                        variantsList.joinToString(", "),
+                                        visualValue.trim(),
+                                        notes.trim(),
+                                        isHidden
                                     )
                                     onDismiss()
-                                } else {
-                                    Toast.makeText(context, "Veuillez indiquer le nom de l'article", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            enabled = product.isNotBlank(),
-                            colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary),
-                            shape = RoundedCornerShape(10.dp)
+                            colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary, contentColor = Color.Black),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.height(42.dp)
                         ) {
-                            Text(
-                                text = if (creationMode == "REFERENTIEL") "Créer la fiche" else "Créer avec stock",
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.Black
-                            )
+                            Text("Enregistrer", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
 
-                // Main Scrollable Body
-                Column(
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                        .verticalScroll(rememberScrollState()),
+                    contentAlignment = Alignment.TopCenter
                 ) {
-                    // CARD 0: TYPE D'ENREGISTREMENT (Référentiel Catalogue vs Stock Initial)
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        shadowElevation = 1.dp
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text(
-                                text = "Mode d'enregistrement de l'article",
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
-                                color = CyanPrimary
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { creationMode = "REFERENTIEL" },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (creationMode == "REFERENTIEL") CyanPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
-                                    border = if (creationMode == "REFERENTIEL") BorderStroke(1.5.dp, CyanPrimary) else null
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Inventory2,
-                                                contentDescription = null,
-                                                tint = if (creationMode == "REFERENTIEL") CyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Text(
-                                                text = "Fiche Article Seule",
-                                                fontFamily = PlusJakartaSans,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                        }
-                                        Text(
-                                            text = "Référentiel catalogue (sans achat)",
-                                            fontFamily = Inter,
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { creationMode = "STOCK" },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (creationMode == "STOCK") CyanPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
-                                    border = if (creationMode == "STOCK") BorderStroke(1.5.dp, CyanPrimary) else null
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.ShoppingCart,
-                                                contentDescription = null,
-                                                tint = if (creationMode == "STOCK") CyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Text(
-                                                text = "Avec stock initial",
-                                                fontFamily = PlusJakartaSans,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                        }
-                                        Text(
-                                            text = "Enregistre un lot disponible",
-                                            fontFamily = Inter,
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    // HERO CAROUSEL BANNER (Directly imported from ArticleDetailScreen style)
-                    Box(
+                    val contentMaxWidth = if (maxWidth >= 680.dp) 680.dp else maxWidth
+                    Column(
                         modifier = Modifier
+                            .widthIn(max = contentMaxWidth)
                             .fillMaxWidth()
-                            .height(200.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        if (selectedPhotoUri.isNotBlank()) {
-                            AsyncImage(
-                                model = selectedPhotoUri,
-                                contentDescription = product,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        text = when {
-                                            family.contains("MODE", ignoreCase = true) -> "🎒"
-                                            family.contains("MAISON", ignoreCase = true) -> "🏠"
-                                            family.contains("BEAUTÉ", ignoreCase = true) -> "💄"
-                                            family.contains("ACCESSOIRE", ignoreCase = true) -> "⌚"
-                                            else -> "🎧"
-                                        },
-                                        fontSize = 64.sp
-                                    )
-                                    Text(
-                                        text = product.ifBlank { "Nouveau Produit" },
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-                        }
-
-                        // Top Badges Overlay
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        if (errorMessage != null) {
                             Surface(
-                                shape = RoundedCornerShape(9999.dp),
-                                color = CyanPrimary
+                                shape = RoundedCornerShape(12.dp),
+                                color = colors.dangerSoftBg
                             ) {
                                 Text(
-                                    text = "Nouveau produit",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    color = Color.Black,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
-                            }
-                            if (referenceCode.isNotBlank()) {
-                                Surface(
-                                    shape = RoundedCornerShape(9999.dp),
-                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-                                ) {
-                                    Text(
-                                        text = referenceCode,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        // Bottom Overlay Bar: Photo Picker
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(12.dp)
-                                .clickable {
-                                    photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                                },
-                            shape = RoundedCornerShape(9999.dp),
-                            color = Color.Black.copy(alpha = 0.7f)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PhotoCamera,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = if (selectedPhotoUri.isNotBlank()) "Changer la photo" else "Ajouter une photo",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
+                                    text = errorMessage!!,
+                                    fontFamily = Inter,
                                     fontSize = 12.sp,
-                                    color = Color.White
+                                    color = colors.dangerAccent,
+                                    modifier = Modifier.padding(12.dp)
                                 )
                             }
                         }
-                    }
 
-                    // CARD 1: IDENTIFICATION & CLASSIFICATION
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        shadowElevation = 1.dp
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        // Visual Picker Card
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = colors.cardBg,
+                            border = BorderStroke(1.dp, colors.border)
                         ) {
-                            Text(
-                                text = "1. Identité du Produit",
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
-                                color = CyanPrimary
-                            )
-
-                            OutlinedTextField(
-                                value = product,
-                                onValueChange = { product = it },
-                                label = { Text("Nom de l'article *") },
-                                placeholder = { Text("ex. Écouteurs Sans-Fil TWS Pro 5") },
-                                modifier = Modifier.fillMaxWidth().testTag("input_cat_product"),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true
-                            )
-
-                            OutlinedTextField(
-                                value = referenceCode,
-                                onValueChange = { referenceCode = it },
-                                label = { Text("SKU / Code Référence") },
-                                placeholder = { Text("ex. TWS-P5-PRO") },
-                                modifier = Modifier.fillMaxWidth().testTag("input_cat_sku"),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true
-                            )
-
-                            Text(
-                                text = "Famille de produits :",
-                                fontFamily = PlusJakartaSans,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                families.forEach { fam ->
-                                    val isSelected = family.equals(fam, ignoreCase = true)
-                                    Surface(
-                                        modifier = Modifier.clickable { family = fam },
-                                        shape = RoundedCornerShape(20.dp),
-                                        color = if (isSelected) CyanPrimary else MaterialTheme.colorScheme.surfaceVariant,
-                                        border = if (isSelected) BorderStroke(1.dp, CyanPrimary) else null
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            if (isSelected) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Check,
-                                                    contentDescription = null,
-                                                    tint = Color.Black,
-                                                    modifier = Modifier.size(14.dp)
-                                                )
-                                            }
-                                            Text(
-                                                text = fam,
-                                                fontFamily = PlusJakartaSans,
-                                                fontSize = 12.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                color = if (isSelected) Color.Black else MaterialTheme.colorScheme.onSurface
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // CARD 2: COÛTS, PRIX & MARGE COMMERCIALE
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        shadowElevation = 1.dp
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text(
-                                text = "2. Prix, Coûts & Rentabilité",
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
-                                color = CyanPrimary
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = priceYuanText,
-                                    onValueChange = { priceYuanText = it.filter { ch -> ch.isDigit() || ch == '.' } },
-                                    label = { Text("Prix Achat (¥)") },
-                                    placeholder = { Text("ex. 28") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f).testTag("input_cat_price_yuan"),
-                                    shape = RoundedCornerShape(12.dp),
-                                    singleLine = true
-                                )
-
-                                OutlinedTextField(
-                                    value = resaleArText,
-                                    onValueChange = { resaleArText = it.filter { ch -> ch.isDigit() } },
-                                    label = { Text("Prix Revente (Ar)") },
-                                    placeholder = { Text("ex. 35000") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1.2f).testTag("input_cat_resale_ar"),
-                                    shape = RoundedCornerShape(12.dp),
-                                    singleLine = true
-                                )
-                            }
-
-                            // Dynamic Profit & Margin Card (matching ArticleDetailScreen style)
-                            if (priceYuan > 0 || resaleAr > 0) {
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = when {
-                                        marginPercent >= 30 -> Color(0xFF10B981).copy(alpha = 0.15f)
-                                        marginPercent > 0 -> Color(0xFFF59E0B).copy(alpha = 0.15f)
-                                        else -> Color(0xFFEF4444).copy(alpha = 0.15f)
-                                    }
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(12.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text(
-                                                text = "Coût estimé : ${CurrencyFormatter.formatAriary(estimatedCostAr)}",
-                                                fontFamily = PlusJakartaSans,
-                                                fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Text(
-                                                text = "Marge brute : ${CurrencyFormatter.formatAriary(marginAr)} / pc",
-                                                fontFamily = PlusJakartaSans,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                        }
-
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = when {
-                                                marginPercent >= 30 -> Color(0xFF10B981)
-                                                marginPercent > 0 -> Color(0xFFF59E0B)
-                                                else -> Color(0xFFEF4444)
-                                            }
-                                        ) {
-                                            Text(
-                                                text = "$marginPercent %",
-                                                fontFamily = PlusJakartaSans,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp,
-                                                color = Color.White,
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // CARD 3: DÉCLINAISONS & COULEURS
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        shadowElevation = 1.dp
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                                    .padding(14.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "3. Déclinaisons & Couleurs",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = CyanPrimary
-                                )
+                                val isPhoto = visualValue.startsWith("content://") ||
+                                    visualValue.startsWith("file://") ||
+                                    visualValue.startsWith("http")
+                                Box(
+                                    modifier = Modifier
+                                        .size(72.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(colors.innerCardBg)
+                                        .border(1.dp, colors.border, RoundedCornerShape(16.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isPhoto) {
+                                        AsyncImage(
+                                            model = visualValue,
+                                            contentDescription = productName,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        Text(text = visualValue.ifBlank { famEmoji }, fontSize = 34.sp)
+                                    }
+                                }
 
-                                Text(
-                                    text = "${variantsList.size} variante(s)",
-                                    fontFamily = PlusJakartaSans,
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            if (variantsList.isNotEmpty()) {
-                                variantsList.forEachIndexed { idx, varText ->
-                                    val dotColor = VariantColorUtils.getVariantColor(varText, idx)
-                                    val isLight = VariantColorUtils.isLightColor(dotColor)
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Visuel de l'article",
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = colors.textPrimary
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = colors.cyanSoftBg,
+                                            modifier = Modifier.clickable {
+                                                photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                            }
                                         ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(16.dp)
-                                                    .clip(CircleShape)
-                                                    .background(dotColor)
-                                                    .then(
-                                                        if (isLight) Modifier.border(1.dp, Color(0xFFCCCCCC), CircleShape)
-                                                        else Modifier
-                                                    )
-                                            )
-                                            Text(
-                                                text = varText,
-                                                fontFamily = PlusJakartaSans,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(Icons.Default.PhotoCamera, null, tint = colors.cyanAccent, modifier = Modifier.size(14.dp))
+                                                Text("Photo", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.cyanAccent)
+                                            }
                                         }
-
-                                        IconButton(
-                                            onClick = {
-                                                variantsList = variantsList.filterIndexed { index, _ -> index != idx }
-                                            },
-                                            modifier = Modifier.size(24.dp)
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = colors.violetSoftBg,
+                                            modifier = Modifier.clickable { showEmojiPicker = true }
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Close,
-                                                contentDescription = "Supprimer variante",
-                                                tint = Color(0xFFBA1A1A),
-                                                modifier = Modifier.size(16.dp)
-                                            )
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(Icons.Default.EmojiEmotions, null, tint = colors.violetAccent, modifier = Modifier.size(14.dp))
+                                                Text("Émoji", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.violetAccent)
+                                            }
+                                        }
+                                        if (visualValue.isNotBlank()) {
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = colors.dangerSoftBg,
+                                                modifier = Modifier.clickable { visualValue = "" }
+                                            ) {
+                                                Box(modifier = Modifier.padding(7.dp)) {
+                                                    Icon(Icons.Default.DeleteOutline, "Retirer", tint = colors.dangerAccent, modifier = Modifier.size(15.dp))
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
+                        }
 
-                            // Bouton Ajouter une couleur
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = CyanPrimary.copy(alpha = 0.15f),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { showAddVariantModal = true }
+                        // Identity & Family & Platform
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = colors.cardBg,
+                            border = BorderStroke(1.dp, colors.border)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
+                                Text("Identité & Classement", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.cyanAccent)
+
+                                OutlinedTextField(
+                                    value = productName,
+                                    onValueChange = {
+                                        productName = it
+                                        errorMessage = null
+                                    },
+                                    label = { Text("Nom du produit *") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    singleLine = true
+                                )
+
+                                OutlinedTextField(
+                                    value = referenceCode,
+                                    onValueChange = { referenceCode = it },
+                                    label = { Text("Code SKU / Référence") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    singleLine = true
+                                )
+
+                                Text("Famille", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = colors.textSecondary)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 10.dp),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.AddCircle,
-                                        contentDescription = null,
-                                        tint = CyanPrimary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "+ Ajouter une couleur / variante",
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
-                                        color = CyanPrimary
-                                    )
+                                    familyNames.forEach { fam ->
+                                        val isSelected = selectedFamily.equals(fam, ignoreCase = true)
+                                        val e = availableFamilies.firstOrNull { it.name.equals(fam, ignoreCase = true) }?.emoji ?: ""
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isSelected) colors.cyanSoftBg else colors.innerCardBg,
+                                            border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, if (isSelected) colors.cyanAccent else colors.border),
+                                            modifier = Modifier.clickable { selectedFamily = fam }
+                                        ) {
+                                            Text(
+                                                text = if (e.isNotBlank()) "$e $fam" else fam,
+                                                fontFamily = PlusJakartaSans,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                fontSize = 12.sp,
+                                                color = if (isSelected) colors.cyanAccent else colors.textPrimary,
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Text("Plateforme sourcing", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = colors.textSecondary)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    platformOptions.forEach { plat ->
+                                        val isSelected = selectedPlatform.equals(plat, ignoreCase = true)
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isSelected) colors.violetSoftBg else colors.innerCardBg,
+                                            border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, if (isSelected) colors.violetAccent else colors.border),
+                                            modifier = Modifier.clickable { selectedPlatform = plat }
+                                        ) {
+                                            Text(
+                                                text = plat,
+                                                fontFamily = PlusJakartaSans,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                fontSize = 12.sp,
+                                                color = if (isSelected) colors.violetAccent else colors.textPrimary,
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    // CARD 4: SPÉCIFICATIONS LOGISTIQUES & FRET
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        shadowElevation = 1.dp
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        // Prices & Weight
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = colors.cardBg,
+                            border = BorderStroke(1.dp, colors.border)
                         ) {
-                            Text(
-                                text = "4. Logistique & Fret Transitaire",
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
-                                color = CyanPrimary
-                            )
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text("Tarifs & Logistique", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.cyanAccent)
 
-                            if (creationMode == "STOCK") {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     OutlinedTextField(
-                                        value = stockCountText,
-                                        onValueChange = { stockCountText = it.filter { ch -> ch.isDigit() } },
-                                        label = { Text("Stock Initial (pcs)") },
-                                        placeholder = { Text("15") },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        value = priceYuanText,
+                                        onValueChange = { raw ->
+                                            val cleaned = raw.replace(',', '.').filter { it.isDigit() || it == '.' }
+                                            if (cleaned.count { it == '.' } <= 1) priceYuanText = cleaned
+                                        },
+                                        label = { Text("Achat (¥)") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                         modifier = Modifier.weight(1f),
                                         shape = RoundedCornerShape(12.dp),
                                         singleLine = true
                                     )
 
                                     OutlinedTextField(
-                                        value = weightText,
-                                        onValueChange = { weightText = it.filter { ch -> ch.isDigit() || ch == '.' } },
-                                        label = { Text("Poids unit. (kg)") },
-                                        placeholder = { Text("0.20") },
+                                        value = resaleArText,
+                                        onValueChange = { resaleArText = it.filter { ch -> ch.isDigit() } },
+                                        label = { Text("Revente (Ar)") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier.weight(1.2f),
                                         shape = RoundedCornerShape(12.dp),
                                         singleLine = true
                                     )
                                 }
-                            } else {
-                                Surface(
+
+                                Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = CyanPrimary.copy(alpha = 0.1f)
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
+                                    OutlinedTextField(
+                                        value = weightText,
+                                        onValueChange = { raw ->
+                                            val cleaned = raw.replace(',', '.').filter { it.isDigit() || it == '.' }
+                                            if (cleaned.count { it == '.' } <= 1) weightText = cleaned
+                                        },
+                                        label = { Text("Poids unit. (kg)") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        singleLine = true
+                                    )
+                                    Row(
+                                        modifier = Modifier.weight(1.2f).padding(top = 8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        listOf("AÉRIEN", "MARITIME").forEach { mode ->
+                                            val sel = selectedFreightMode == mode
+                                            Surface(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(48.dp)
+                                                    .clickable { selectedFreightMode = mode },
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = if (sel) colors.expressSoftBg else colors.innerCardBg,
+                                                border = BorderStroke(1.dp, if (sel) colors.expressAccent else colors.border)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text(
+                                                        text = if (mode == "AÉRIEN") "Aérien" else "Maritime",
+                                                        fontFamily = PlusJakartaSans,
+                                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
+                                                        fontSize = 12.sp,
+                                                        color = if (sel) colors.expressAccent else colors.textPrimary
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (landedCostAr > 0L || resaleAr > 0L) {
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = colors.innerCardBg
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(12.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text("Coût de revient est.", fontFamily = Inter, fontSize = 11.sp, color = colors.textSecondary)
+                                                Text(CurrencyFormatter.formatAriary(landedCostAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = colors.textPrimary)
+                                            }
+                                            if (resaleAr > 0L && landedCostAr > 0L) {
+                                                Column(horizontalAlignment = Alignment.End) {
+                                                    Text("Marge estimée", fontFamily = Inter, fontSize = 11.sp, color = colors.textSecondary)
+                                                    Text(
+                                                        text = "${CurrencyFormatter.formatAriary(marginAr)} ($marginPct%)",
+                                                        fontFamily = PlusJakartaSans,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 14.sp,
+                                                        color = if (marginPct >= 20) colors.successAccent else if (marginPct > 0) colors.cyanAccent else colors.dangerAccent
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Variants & Notes & Hide
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = colors.cardBg,
+                            border = BorderStroke(1.dp, colors.border)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Déclinaisons & Notes", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.violetAccent)
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = colors.cyanSoftBg,
+                                        modifier = Modifier.clickable { showAddVariantDialog = true }
+                                    ) {
+                                        Text(
+                                            text = "+ Variante",
+                                            fontFamily = PlusJakartaSans,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            color = colors.cyanAccent,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                }
+
+                                if (variantsList.isNotEmpty()) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(12.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Inventory2,
-                                            contentDescription = null,
-                                            tint = CyanPrimary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Text(
-                                            text = "Mode Fiche Référence : Aucun achat ni transaction d'achat ne sera généré. Vous pourrez passer des commandes d'achat ultérieurement.",
-                                            fontFamily = Inter,
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
+                                        variantsList.forEachIndexed { idx, v ->
+                                            val dotColor = VariantColorUtils.getVariantColor(v, idx)
+                                            Surface(
+                                                shape = RoundedCornerShape(9999.dp),
+                                                color = colors.innerCardBg,
+                                                border = BorderStroke(1.dp, colors.border)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(10.dp)
+                                                            .clip(CircleShape)
+                                                            .background(dotColor)
+                                                    )
+                                                    Text(v, fontFamily = PlusJakartaSans, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = colors.textPrimary)
+                                                    Icon(
+                                                        imageVector = Icons.Default.Close,
+                                                        contentDescription = "Supprimer $v",
+                                                        tint = colors.textSecondary,
+                                                        modifier = Modifier
+                                                            .size(14.dp)
+                                                            .clickable { variantsList = variantsList - v }
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
+                                } else {
+                                    Text(
+                                        text = "Aucune déclinaison configurée.",
+                                        fontFamily = Inter,
+                                        fontSize = 12.sp,
+                                        color = colors.textSecondary
+                                    )
                                 }
 
                                 OutlinedTextField(
-                                    value = weightText,
-                                    onValueChange = { weightText = it.filter { ch -> ch.isDigit() || ch == '.' } },
-                                    label = { Text("Poids estimé unit. (kg)") },
-                                    placeholder = { Text("0.20") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    value = notes,
+                                    onValueChange = { notes = it },
+                                    label = { Text("Notes / remarques") },
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(12.dp),
-                                    singleLine = true
+                                    maxLines = 3
                                 )
-                            }
 
-                            if (weightKgVal > 0) {
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = CyanPrimary.copy(alpha = 0.1f)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(colors.innerCardBg)
+                                        .clickable { isHidden = !isHidden }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(12.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text(
-                                                text = "Poids : ${weightGrams}g • Vol. est. : $volumeM3 m³",
-                                                fontFamily = PlusJakartaSans,
-                                                fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Text(
-                                                text = "Fret aérien est. : ${CurrencyFormatter.formatAriary(airFreightEstAr)} / unit",
-                                                fontFamily = PlusJakartaSans,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp,
-                                                color = CyanPrimary
-                                            )
-                                        }
-                                        Icon(
-                                            imageVector = Icons.Default.LocalShipping,
-                                            contentDescription = null,
-                                            tint = CyanPrimary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // CARD 5: FOURNISSEUR & PLATEFORME
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        shadowElevation = 1.dp
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text(
-                                text = "5. Plateforme Fournisseur",
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
-                                color = CyanPrimary
-                            )
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                platformOptions.forEach { plat ->
-                                    val isSelected = selectedPlatform.equals(plat, ignoreCase = true)
-                                    Surface(
-                                        modifier = Modifier.clickable { selectedPlatform = plat },
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = if (isSelected) CyanPrimary.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant,
-                                        border = if (isSelected) BorderStroke(1.5.dp, CyanPrimary) else null
-                                    ) {
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = plat,
+                                            text = "Masquer du catalogue",
                                             fontFamily = PlusJakartaSans,
-                                            fontSize = 12.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) CyanPrimary else MaterialTheme.colorScheme.onSurface,
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 13.sp,
+                                            color = colors.textPrimary
+                                        )
+                                        Text(
+                                            text = "Retire l'article des vues actives (tous les lots liés)",
+                                            fontFamily = Inter,
+                                            fontSize = 11.sp,
+                                            color = colors.textSecondary
                                         )
                                     }
+                                    androidx.compose.material3.Switch(
+                                        checked = isHidden,
+                                        onCheckedChange = { isHidden = it }
+                                    )
                                 }
                             }
                         }
-                    }
 
-                    Spacer(modifier = Modifier.height(30.dp))
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
                 }
             }
 
-            if (showAddVariantModal) {
+            if (showAddVariantDialog) {
                 AddVariantDialog(
-                    onDismiss = { showAddVariantModal = false },
+                    onDismiss = { showAddVariantDialog = false },
                     onConfirm = { newVar ->
                         variantsList = (variantsList + newVar).distinct()
-                        showAddVariantModal = false
+                        showAddVariantDialog = false
+                    }
+                )
+            }
+
+            if (showEmojiPicker) {
+                ArticleEmojiPickerDialog(
+                    currentEmoji = if (!visualValue.contains("/")) visualValue else "",
+                    onDismiss = { showEmojiPicker = false },
+                    onSelect = { emoji ->
+                        visualValue = emoji
+                        showEmojiPicker = false
                     }
                 )
             }
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// EDIT CATALOGUE ARTICLE DIALOG
-// ---------------------------------------------------------------------------
-@Composable
-fun EditCatalogueArticleDialog(
-    order: com.example.data.local.entity.BusinessOrderEntity,
-    onDismiss: () -> Unit,
-    onConfirm: (newPriceYuan: Double, newResaleAr: Long, newVariants: String, isHidden: Boolean) -> Unit
-) {
-    var priceYuanText by remember { mutableStateOf(if (order.priceYuan > 0) order.priceYuan.toInt().toString() else "") }
-    var resaleArText by remember { mutableStateOf(if (order.resalePriceAr > 0) order.resalePriceAr.toString() else "") }
-    var variants by remember { mutableStateOf(order.variants) }
-    var isHidden by remember { mutableStateOf(order.isHidden) }
-
-    val priceYuan = priceYuanText.toDoubleOrNull() ?: order.priceYuan
-    val resaleAr = resaleArText.toLongOrNull() ?: order.resalePriceAr
-    val estimatedCostAr = (priceYuan * 650.0).toLong()
-    val marginAr = if (resaleAr > 0 && estimatedCostAr > 0) resaleAr - estimatedCostAr else 0L
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Column {
-                Text(
-                    text = "Modifier la référence",
-                    fontFamily = PlusJakartaSans,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "${order.product} • ${order.referenceCode.ifBlank { "SKU" }}",
-                    fontFamily = PlusJakartaSans,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = priceYuanText,
-                        onValueChange = { priceYuanText = it.filter { ch -> ch.isDigit() || ch == '.' } },
-                        label = { Text("Coût achat (¥)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
-
-                    OutlinedTextField(
-                        value = resaleArText,
-                        onValueChange = { resaleArText = it.filter { ch -> ch.isDigit() } },
-                        label = { Text("Prix revente (Ar)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1.2f),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
-                }
-
-                if (marginAr != 0L) {
-                    Text(
-                        text = "Marge estimée : ${CurrencyFormatter.formatAriary(marginAr)}",
-                        fontFamily = PlusJakartaSans,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.sp,
-                        color = CyanPrimary
-                    )
-                }
-
-                OutlinedTextField(
-                    value = variants,
-                    onValueChange = { variants = it },
-                    label = { Text("Déclinaisons / Couleurs") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true
-                )
-
-                // Toggle Masquer du catalogue
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                        .clickable { isHidden = !isHidden }
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Masquer du catalogue",
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "L'article n'apparaîtra plus dans les suggestions",
-                            fontFamily = PlusJakartaSans,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    androidx.compose.material3.Switch(
-                        checked = isHidden,
-                        onCheckedChange = { isHidden = it }
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val pY = priceYuanText.toDoubleOrNull() ?: order.priceYuan
-                    val rAr = resaleArText.toLongOrNull() ?: order.resalePriceAr
-                    onConfirm(pY, rAr, variants.trim(), isHidden)
-                    onDismiss()
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text("Enregistrer", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, color = Color.Black)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Annuler", fontFamily = PlusJakartaSans)
-            }
-        }
-    )
 }
 
 // ---------------------------------------------------------------------------
@@ -3833,7 +2133,7 @@ fun AddFamilyDialog(
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp,
-                                color = if (familyName.isNotBlank()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
+                                color = if (familyName.isNotBlank()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
                                 text = "Aperçu de la famille • 0 article",
@@ -3952,7 +2252,7 @@ fun AddFamilyDialog(
                     text = "Créer la famille",
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold,
-                    color = Color.Black
+                    color = Color.White
                 )
             }
         },
@@ -3971,6 +2271,7 @@ fun NewActionMenuSheet(
     onNewPurchaseClick: () -> Unit,
     onNewSaleClick: () -> Unit
 ) {
+    val colors = rememberTransitaireColors()
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -3981,7 +2282,7 @@ fun NewActionMenuSheet(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f))
+                .background(Color.Black.copy(alpha = 0.55f))
                 .clickable { onDismiss() },
             contentAlignment = Alignment.BottomCenter
         ) {
@@ -3990,7 +2291,7 @@ fun NewActionMenuSheet(
                     .fillMaxWidth()
                     .clickable(enabled = false) {}, // prevent click-through
                 shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                color = Color.White,
+                color = colors.cardBg,
                 shadowElevation = 12.dp
             ) {
                 Column(
@@ -4011,7 +2312,7 @@ fun NewActionMenuSheet(
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp,
-                                color = Color(0xFF712AE2),
+                                color = colors.violetAccent,
                                 letterSpacing = 0.5.sp
                             )
                             Text(
@@ -4019,14 +2320,14 @@ fun NewActionMenuSheet(
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
-                                color = Color(0xFF131B2E)
+                                color = colors.textPrimary
                             )
                         }
                         IconButton(
                             onClick = onDismiss,
                             modifier = Modifier.testTag("btn_close_action_menu")
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Fermer", tint = Color(0xFF131B2E))
+                            Icon(Icons.Default.Close, contentDescription = "Fermer", tint = colors.textPrimary)
                         }
                     }
 
@@ -4040,7 +2341,7 @@ fun NewActionMenuSheet(
                             }
                             .testTag("btn_menu_new_article"),
                         shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFFF2F3FF)
+                        color = colors.innerCardBg
                     ) {
                         Row(
                             modifier = Modifier.padding(14.dp),
@@ -4051,7 +2352,7 @@ fun NewActionMenuSheet(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF00687A)),
+                                    .background(colors.cyanSolidBg),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -4067,13 +2368,13 @@ fun NewActionMenuSheet(
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 15.sp,
-                                    color = Color(0xFF131B2E)
+                                    color = colors.textPrimary
                                 )
                                 Text(
                                     text = "Ajouter une référence au catalogue produit",
                                     fontFamily = com.example.ui.theme.Inter,
                                     fontSize = 12.sp,
-                                    color = Color(0xFF6D797D)
+                                    color = colors.textSecondary
                                 )
                             }
                         }
@@ -4089,7 +2390,7 @@ fun NewActionMenuSheet(
                             }
                             .testTag("btn_menu_new_purchase"),
                         shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFFFFF7ED)
+                        color = if (colors.isDark) Color(0xFF431407).copy(alpha = 0.45f) else Color(0xFFFFF7ED)
                     ) {
                         Row(
                             modifier = Modifier.padding(14.dp),
@@ -4116,13 +2417,13 @@ fun NewActionMenuSheet(
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 15.sp,
-                                    color = Color(0xFF131B2E)
+                                    color = colors.textPrimary
                                 )
                                 Text(
                                     text = "Lancer une commande d'importation 1688",
                                     fontFamily = com.example.ui.theme.Inter,
                                     fontSize = 12.sp,
-                                    color = Color(0xFF6D797D)
+                                    color = colors.textSecondary
                                 )
                             }
                         }
@@ -4138,7 +2439,7 @@ fun NewActionMenuSheet(
                             }
                             .testTag("btn_menu_new_sale"),
                         shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFFF0FDF4)
+                        color = colors.successSoftBg
                     ) {
                         Row(
                             modifier = Modifier.padding(14.dp),
@@ -4149,7 +2450,7 @@ fun NewActionMenuSheet(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF16A34A)),
+                                    .background(colors.successAccent),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -4165,13 +2466,13 @@ fun NewActionMenuSheet(
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 15.sp,
-                                    color = Color(0xFF131B2E)
+                                    color = colors.textPrimary
                                 )
                                 Text(
                                     text = "Enregistrer une vente directe à un client",
                                     fontFamily = com.example.ui.theme.Inter,
                                     fontSize = 12.sp,
-                                    color = Color(0xFF6D797D)
+                                    color = colors.textSecondary
                                 )
                             }
                         }

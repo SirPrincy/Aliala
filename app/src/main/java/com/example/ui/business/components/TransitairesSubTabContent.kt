@@ -112,6 +112,7 @@ fun TransitairesSubTabContent(
     val activeCount = transitaires.count { !it.isArchived }
     val archivedCount = transitaires.count { it.isArchived }
     val totalPendingFreightAr = transitaires.filter { !it.isArchived }.sumOf { it.balanceDueAr }
+    val unpaidInvoicesCount = transitaires.count { !it.isArchived && it.balanceDueAr > 0L }
     val activeShipmentsTotal = transitaires.filter { !it.isArchived }.sumOf { it.activeShipmentsCount }
 
     Column(
@@ -314,19 +315,29 @@ fun TransitairesSubTabContent(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 2.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0xFFFFDAD6).copy(alpha = 0.6f))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                        ) {
+                        if (unpaidInvoicesCount > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 2.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0xFFFFDAD6).copy(alpha = 0.6f))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = "$unpaidInvoicesCount facture${if (unpaidInvoicesCount > 1) "s" else ""}",
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 9.sp,
+                                    color = Color(0xFFBA1A1A)
+                                )
+                            }
+                        } else {
                             Text(
-                                text = "1 facture",
+                                text = "Tout réglé",
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 9.sp,
-                                color = Color(0xFFBA1A1A)
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
@@ -439,7 +450,7 @@ fun TransitairesSubTabContent(
                         )
                     }
                     Text(
-                        text = "Mis à jour hier",
+                        text = "Comparatif actif",
                         fontFamily = Inter,
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -507,7 +518,7 @@ fun TransitairesSubTabContent(
                                                     fontFamily = PlusJakartaSans,
                                                     fontWeight = if (idx == 0) FontWeight.Bold else FontWeight.Normal,
                                                     fontSize = 11.sp,
-                                                    color = if (idx == 0) Color(0xFF00687A) else Color(0xFF131B2E)
+                                                    color = if (idx == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                                 )
                                                 if (idx == 0) {
                                                     Box(
@@ -583,7 +594,7 @@ fun TransitairesSubTabContent(
                                                     fontFamily = PlusJakartaSans,
                                                     fontWeight = if (idx == 0) FontWeight.Bold else FontWeight.Normal,
                                                     fontSize = 11.sp,
-                                                    color = if (idx == 0) Color(0xFF00687A) else Color(0xFF131B2E)
+                                                    color = if (idx == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                                 )
                                                 if (idx == 0) {
                                                     Box(
@@ -642,37 +653,6 @@ fun TransitairesSubTabContent(
                     selectedTransitaireForDetail = trans
                 }
             )
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        Button(
-            onClick = onAddClick,
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF97316)),
-            shape = RoundedCornerShape(9999.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
-                .testTag("btn_nouveau_transitaire_list")
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
-                Text(
-                    text = "Nouveau transitaire",
-                    fontFamily = PlusJakartaSans,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = Color.White
-                )
-            }
         }
     }
 

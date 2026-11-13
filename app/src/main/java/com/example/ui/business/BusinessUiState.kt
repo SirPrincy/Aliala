@@ -36,6 +36,32 @@ data class FamilyFilterUi(
     val count: Int
 )
 
+data class CatalogueArticleSummaryUi(
+    val articleKey: String,
+    val primaryOrder: BusinessOrderEntity,
+    val lots: List<BusinessOrderEntity> = emptyList(),
+    val lotsCount: Int = 1,
+    val totalStockCount: Int = 0,
+    val totalInTransitCount: Int = 0,
+    val totalReservedCount: Int = 0,
+    val totalDefectiveCount: Int = 0,
+    val totalBoughtCount: Int = 0,
+    val totalSoldCount: Int = 0,
+    val totalRevenueAr: Long = 0L,
+    val realProfitAr: Long = 0L,
+    val latestPriceYuan: Double = 0.0,
+    val latestUnitCostAr: Long = 0L,
+    val resalePriceAr: Long = 0L,
+    val marginPercent: Int = 0,
+    val familyEmoji: String = "📦",
+    val familyColorHex: String = "#06B6D4",
+    val statusTag: String = "En stock",
+    val isHidden: Boolean = false,
+    val isReferenceOnly: Boolean = false,
+    val allVariants: List<String> = emptyList(),
+    val salesHistory: List<BusinessSaleEntity> = emptyList()
+)
+
 data class CatalogueFamilySummaryUi(
     val id: Long = 0,
     val name: String,
@@ -71,6 +97,19 @@ data class CataloguePlatformSummaryUi(
     val hasTransitDetails: Boolean = false
 )
 
+data class TransitaireShipmentSummaryUi(
+    val id: Long,
+    val code: String,
+    val title: String,
+    val transportMode: String, // "AIR" or "SEA"
+    val weightKg: Double,
+    val volumeCbm: Double,
+    val freightCostAr: Long,
+    val statusLabel: String,
+    val isDelivered: Boolean,
+    val dateLabel: String
+)
+
 data class CatalogueTransitaireSummaryUi(
     val id: Long = 0L,
     val name: String,
@@ -91,18 +130,19 @@ data class CatalogueTransitaireSummaryUi(
     val isArchived: Boolean = false,
     val contact: String = "",
     val chinaWarehouseAddress: String = "",
-    val rateApplicationDate: String = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.FRANCE).format(java.util.Date()),
+    val rateApplicationDate: String = "",
     val airLeadDays: String = "7 à 10 jours",
     val airFastLeadDays: String = "3 à 5 jours",
     val seaLeadDays: String = "30 à 45 jours",
-    val goodsCategoryDelays: String = "Générale: Normal | Batterie: +2j | Poudre/Liquide: +3j | Téléphone: +2j",
+    val goodsCategoryDelays: String = "",
     val internalNotes: String = "",
     val wechat: String = "",
     val whatsapp: String = "",
     val paidAmountAr: Long = 0L,
     val totalInvoicedAr: Long = 0L,
     val effectiveRateAr: Long = 0L,
-    val lastShipmentCode: String = ""
+    val lastShipmentCode: String = "",
+    val recentShipments: List<TransitaireShipmentSummaryUi> = emptyList()
 )
 
 data class BusinessUiState(
@@ -120,19 +160,23 @@ data class BusinessUiState(
     val catalogueSubTab: String = "Articles", // "Articles", "Familles", "Plateformes"
     val catalogueSearchQuery: String = "",
     val catalogueFamilyFilter: String = "Toutes",
+    val catalogueStockFilter: String = "Tous", // "Tous", "En stock", "En transit", "Rupture", "Référentiel"
     val catalogueShowHidden: Boolean = false,
-    val catalogueSort: String = "Plus vendus", // "Plus vendus", "Dernier coût", "Nom"
+    val catalogueSort: String = "Plus vendus", // "Plus vendus", "Marge élevée", "Stock bas", "Dernier coût", "Nom", "Plus récents"
     val catalogueViewMode: String = "LIST", // "LIST", "GRID"
     val activeCatalogueCount: Int = 0,
     val hiddenCatalogueCount: Int = 0,
     val catalogueFamilyPills: List<FamilyFilterUi> = emptyList(),
     val visibleCatalogueOrders: List<BusinessOrderEntity> = emptyList(),
+    val allCatalogueArticles: List<CatalogueArticleSummaryUi> = emptyList(),
+    val visibleCatalogueArticles: List<CatalogueArticleSummaryUi> = emptyList(),
     val catalogueFamilies: List<CatalogueFamilySummaryUi> = emptyList(),
     val cataloguePlatforms: List<CataloguePlatformSummaryUi> = emptyList(),
     val catalogueTransitaires: List<CatalogueTransitaireSummaryUi> = emptyList(),
 
     // Hero metrics
     val netProfit: Long = 0L,
+    val cumulativeBusinessProfitAr: Long = 0L,
     val vsPrevMonthPercent: Int = 0,
     val salesTotal: Long = 0L,
     val salesCost: Long = 0L,

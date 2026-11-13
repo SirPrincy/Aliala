@@ -53,5 +53,7 @@ data class BusinessOrderEntity(
     val lostCount: Int = 0, // Nombre de pièces perdues / manquantes
     val unitCostAr: Long = 0L, // Coût unitaire réel FIFO calculé à la clôture/réception
     val domesticShippingYuan: Double = 0.0, // Frais de port interne Chine en Yuans
-    val familyId: Long = 0L // ID unique de la famille dans CatalogueFamilyEntity
+    val familyId: Long = 0L, // ID unique de la famille dans CatalogueFamilyEntity
+    val supplierDispatchDelay: String = "", // Délai d'expédition usine choisi
+    val parcelDetailsJson: String = "" // Métadonnées JSON des colis (transporteur, contenu, étapes, horodatage)
 )

@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Update
 import com.example.data.local.entity.BudgetEntity
 import com.example.data.local.entity.BusinessAccountEntity
+import com.example.data.local.entity.BusinessInvestmentEntity
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.data.local.entity.BusinessSaleEntity
 import com.example.data.local.entity.BusinessTransactionEntity
@@ -326,6 +327,9 @@ interface YuanTransactionDao {
     @Query("DELETE FROM yuan_transactions WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    @Query("UPDATE yuan_transactions SET platform = :newName WHERE LOWER(platform) = LOWER(:oldName)")
+    suspend fun renamePlatformInYuanTransactions(oldName: String, newName: String)
+
     @Query("DELETE FROM yuan_transactions WHERE isDemo = 1")
     suspend fun deleteDemoTransactions()
 
@@ -503,6 +507,9 @@ interface BusinessAccountDao {
     @Query("SELECT * FROM business_accounts WHERE isActive = 1 ORDER BY id ASC")
     fun getAllAccounts(): Flow<List<BusinessAccountEntity>>
 
+    @Query("SELECT * FROM business_accounts WHERE isActive = 1 ORDER BY id ASC")
+    suspend fun getAllAccountsSnapshot(): List<BusinessAccountEntity>
+
     @Query("SELECT COUNT(*) FROM business_accounts")
     suspend fun getAccountCount(): Int
 
@@ -515,6 +522,12 @@ interface BusinessAccountDao {
     @Query("UPDATE business_accounts SET balanceAr = balanceAr + :deltaAr WHERE LOWER(name) = LOWER(:accountName)")
     suspend fun adjustBalanceByName(accountName: String, deltaAr: Long)
 
+    @Query("UPDATE business_accounts SET balanceYuan = balanceYuan + :deltaYuan WHERE isYuanAccount = 1")
+    suspend fun adjustYuanBalance(deltaYuan: Double)
+
+    @Query("UPDATE business_accounts SET balanceYuan = balanceYuan + :deltaYuan WHERE LOWER(name) = LOWER(:accountName) AND isYuanAccount = 1")
+    suspend fun adjustYuanBalanceByName(accountName: String, deltaYuan: Double)
+
     @Query("DELETE FROM business_accounts WHERE id = :id")
     suspend fun deleteAccountById(id: Long)
 }
@@ -524,12 +537,40 @@ interface BusinessTransactionDao {
     @Query("SELECT * FROM business_transactions ORDER BY dateMillis DESC")
     fun getAllTransactions(): Flow<List<BusinessTransactionEntity>>
 
+    @Query("SELECT * FROM business_transactions WHERE id = :id LIMIT 1")
+    suspend fun getTransactionById(id: Long): BusinessTransactionEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTransaction(tx: BusinessTransactionEntity): Long
 
+    @Query("UPDATE business_transactions SET accountName = :newName WHERE LOWER(accountName) = LOWER(:oldName)")
+    suspend fun renameAccountInTransactions(oldName: String, newName: String)
+
+    @Query("UPDATE business_transactions SET destinationAccount = :newName WHERE LOWER(destinationAccount) = LOWER(:oldName)")
+    suspend fun renameDestinationInTransactions(oldName: String, newName: String)
+
     @Query("DELETE FROM business_transactions WHERE id = :id")
     suspend fun deleteTransactionById(id: Long)
+
+    @Query("DELETE FROM business_transactions WHERE yuanTransactionId = :yuanTxId")
+    suspend fun deleteByYuanTransactionId(yuanTxId: Long)
 }
+
+@Dao
+interface BusinessInvestmentDao {
+    @Query("SELECT * FROM business_investments ORDER BY dateMillis DESC")
+    fun getAllInvestments(): Flow<List<BusinessInvestmentEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInvestment(investment: BusinessInvestmentEntity): Long
+
+    @Update
+    suspend fun updateInvestment(investment: BusinessInvestmentEntity)
+
+    @Query("DELETE FROM business_investments WHERE id = :id")
+    suspend fun deleteInvestmentById(id: Long)
+}
+
 
 
 
