@@ -8,6 +8,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.local.dao.BudgetDao
 import com.example.data.local.dao.BusinessAccountDao
+import com.example.data.local.dao.BusinessDebtDao
 import com.example.data.local.dao.BusinessInvestmentDao
 import com.example.data.local.dao.BusinessOrderDao
 import com.example.data.local.dao.BusinessSaleDao
@@ -27,6 +28,8 @@ import com.example.data.local.dao.WalletDao
 import com.example.data.local.dao.YuanTransactionDao
 import com.example.data.local.entity.BudgetEntity
 import com.example.data.local.entity.BusinessAccountEntity
+import com.example.data.local.entity.BusinessDebtEntity
+import com.example.data.local.entity.BusinessDebtPaymentEntity
 import com.example.data.local.entity.BusinessInvestmentEntity
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.data.local.entity.BusinessSaleEntity
@@ -72,9 +75,11 @@ import kotlinx.coroutines.launch
         SalePaymentEntity::class,
         BusinessAccountEntity::class,
         BusinessTransactionEntity::class,
-        BusinessInvestmentEntity::class
+        BusinessInvestmentEntity::class,
+        BusinessDebtEntity::class,
+        BusinessDebtPaymentEntity::class
     ],
-    version = 24,
+    version = 25,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -97,6 +102,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun businessAccountDao(): BusinessAccountDao
     abstract fun businessTransactionDao(): BusinessTransactionDao
     abstract fun businessInvestmentDao(): BusinessInvestmentDao
+    abstract fun businessDebtDao(): BusinessDebtDao
 
     companion object {
         @Volatile
@@ -198,13 +204,50 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_24_25 = object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `business_debts` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `direction` TEXT NOT NULL,
+                        `counterparty` TEXT NOT NULL,
+                        `principalAr` INTEGER NOT NULL,
+                        `paidAr` INTEGER NOT NULL,
+                        `interestPercent` REAL NOT NULL,
+                        `dueDateMillis` INTEGER DEFAULT NULL,
+                        `createdAtMillis` INTEGER NOT NULL,
+                        `repaymentFrequency` TEXT NOT NULL,
+                        `accountName` TEXT NOT NULL,
+                        `linkedTransactionId` INTEGER DEFAULT NULL,
+                        `notes` TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `business_debt_payments` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `debtId` INTEGER NOT NULL,
+                        `amountAr` INTEGER NOT NULL,
+                        `accountName` TEXT NOT NULL,
+                        `linkedTransactionId` INTEGER DEFAULT NULL,
+                        `dateMillis` INTEGER NOT NULL,
+                        `note` TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "ma_vie_database.db"
-                ).addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24)
+                ).addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)

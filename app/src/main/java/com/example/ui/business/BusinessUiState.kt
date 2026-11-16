@@ -187,7 +187,7 @@ data class BusinessUiState(
 
     // Portefeuille Yuans
     val availableYuans: Double = 0.0,
-    val cmupRate: Long = 650L,
+    val cmupRate: Long = 0L,
     val estimatedYuanValueAr: Long = 0L,
     val insufficientYuanShortage: Double? = null, // null si pas de manque
 
@@ -230,6 +230,7 @@ data class BusinessUiState(
     val purchasesStatusFilter: String = "Tous",
     val purchasesCategoryFilter: String = "Toutes catégories",
     val purchasesSortFilter: String = "Date récent",
+    val purchasesSearchQuery: String = "",
     val activeLotsCount: Int = 0,
     val draftActionsCount: Int = 0,
     val inRouteAmountAr: Long = 0L,
@@ -257,6 +258,8 @@ data class BusinessUiState(
     val salesDomain: String = "BUSINESS", // "BUSINESS" ("Business Pro") ou "FAMILY_FRIENDS" ("Famille & Amis")
     val salesStatusFilter: String = "Toutes", // "Toutes", "Impayées", "Partielles", "Réglées", "Sur commande", "Sur stock"
     val salesSearchQuery: String = "",
+    val salesSortFilter: String = "Date récent",
+    val prevMonthShortLabel: String = "",
     val salesTotalCollectedAr: Long = 0L,
     val salesNetProfitAr: Long = 0L,
     val salesGrowthVsPrevMonthPercent: Int = 0,
@@ -279,11 +282,22 @@ data class BusinessUiState(
     val topClientTotalAr: Long = 0L,
     val clientsList: List<BusinessClientUi> = emptyList(),
 
-    // Listes brutes
+    // Listes brutes & notifications
     val orders: List<BusinessOrderEntity> = emptyList(),
     val yuanTransactions: List<YuanTransactionEntity> = emptyList(),
     val sales: List<BusinessSaleEntity> = emptyList(),
+    val businessNotifications: List<BusinessNotificationUi> = emptyList(),
     val snackbarMessage: String? = null
+)
+
+data class BusinessNotificationUi(
+    val id: String,
+    val title: String,
+    val message: String,
+    val targetSubTab: String,
+    val orderId: Long? = null,
+    val clientName: String? = null,
+    val isUrgent: Boolean = false
 )
 
 data class BusinessClientUi(

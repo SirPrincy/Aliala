@@ -2,18 +2,24 @@ package com.example.data.demo
 
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.BudgetEntity
+import com.example.data.local.entity.BusinessAccountEntity
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.data.local.entity.BusinessSaleEntity
+import com.example.data.local.entity.BusinessTransactionEntity
+import com.example.data.local.entity.CatalogueTransitaireEntity
+import com.example.data.local.entity.ClientEntity
 import com.example.data.local.entity.GoalEntity
 import com.example.data.local.entity.HabitEntity
 import com.example.data.local.entity.HabitLogEntity
 import com.example.data.local.entity.HealthEntryEntity
 import com.example.data.local.entity.LoanEntity
 import com.example.data.local.entity.LoanPaymentEntity
+import com.example.data.local.entity.SalePaymentEntity
 import com.example.data.local.entity.TaskEntity
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.entity.WalletEntity
 import com.example.data.local.entity.YuanTransactionEntity
+import com.example.ui.business.model.TariffGridParser
 import com.example.util.DateUtils
 import java.time.LocalDate
 
@@ -567,12 +573,23 @@ object DemoDataProvider {
         )
         db.businessOrderDao().insertOrders(orders)
 
-        // 7b. Yuan Transactions (Solde dispo = ¥ 1 840, CMUP = 650 Ar, Gain de change = 12 500 Ar)
+        // 7b. Business Accounts & Demo Cash Movements
+        if (db.businessAccountDao().getAccountCount() == 0) {
+            listOf(
+                BusinessAccountEntity(name = "Espèces", subtitle = "Caisse", shortCode = "CASH", balanceAr = 0L, isYuanAccount = false),
+                BusinessAccountEntity(name = "Mvola", subtitle = "Mobile Money", shortCode = "MV", balanceAr = 0L, isYuanAccount = false),
+                BusinessAccountEntity(name = "Alipay", subtitle = "Chine (¥)", shortCode = "ALI", balanceAr = 0L, isYuanAccount = true, balanceYuan = 0.0),
+                BusinessAccountEntity(name = "Wechat Pay", subtitle = "Chine (¥)", shortCode = "WXP", balanceAr = 0L, isYuanAccount = true, balanceYuan = 0.0)
+            ).forEach { db.businessAccountDao().insertAccount(it) }
+        }
+
+        // 7b-bis. Yuan Transactions (Solde dispo = ¥ 1 840, CMUP = 650 Ar)
+        val hadDemoYuanTxs = db.yuanTransactionDao().getAllTransactionsSnapshot().any { it.isDemo }
         val yuanTxs = listOf(
             YuanTransactionEntity(
                 type = "BUY",
                 amountYuan = 2000.0,
-                exchangeRate = 640.0, // Achat anticipé à 640 Ar/¥ créant le gain de change
+                exchangeRate = 640.0,
                 amountAr = 1_280_000L,
                 platform = "Alipay",
                 date = now - 15 * 86400_000L,
@@ -594,24 +611,123 @@ object DemoDataProvider {
                 amountYuan = 1160.0,
                 exchangeRate = 650.0,
                 amountAr = 754_000L,
-                platform = "1688",
+                platform = "Alipay",
                 date = now - 5 * 86400_000L,
                 note = "Paiement commandes fournisseurs",
                 isDemo = true
             )
         )
         db.yuanTransactionDao().insertTransactions(yuanTxs)
+        if (!hadDemoYuanTxs) {
+            db.businessAccountDao().adjustYuanBalanceByName("Alipay", 840.0)
+            db.businessAccountDao().adjustYuanBalanceByName("Wechat Pay", 1000.0)
+        }
 
-        // 7c. Business Sales & Factures Ventes (Chiffre encaissé = 1 350 000 Ar, Reste = 240 000 Ar, Factures ouvertes = 6, 9 factures au total)
+        // 7b-ter. Demo Transitaires
+        val existingTransitaires = db.catalogueTransitaireDao().getAllTransitairesSnapshot()
+        if (existingTransitaires.none { it.notes.contains("[DEMO]") }) {
+            val demoTransitaires = listOf(
+                CatalogueTransitaireEntity(
+                    name = "SinoExpress",
+                    contact = "+86 138 0013 8000",
+                    address = "Guangzhou Baiyun Warehouse B12",
+                    defaultTariffPerKg = 45_000L,
+                    notes = "[DEMO] Hub principal Guangzhou → Ivato",
+                    airNormalRateAr = 45_000L,
+                    airFastRateAr = 58_000L,
+                    seaRateAr = 1_150_000L,
+                    airNormalLeadDays = "7 à 10 jours",
+                    airFastLeadDays = "3 à 5 jours",
+                    seaNormalLeadDays = "35 à 45 jours",
+                    goodsCategoryDelays = TariffGridParser.encode(
+                        TariffGridParser.defaultTariffs(45_000L, 58_000L, 1_150_000L)
+                    ),
+                    rateApplicationDate = "01/10/2026"
+                ),
+                CatalogueTransitaireEntity(
+                    name = "MadaAir Logistics",
+                    contact = "034 00 112 23",
+                    address = "Yiwu Futian District Zone C",
+                    defaultTariffPerKg = 48_000L,
+                    notes = "[DEMO] Spécialiste Express & Batteries",
+                    airNormalRateAr = 48_000L,
+                    airFastRateAr = 62_000L,
+                    seaRateAr = 1_220_000L,
+                    airNormalLeadDays = "6 à 9 jours",
+                    airFastLeadDays = "3 à 4 jours",
+                    seaNormalLeadDays = "30 à 40 jours",
+                    goodsCategoryDelays = TariffGridParser.encode(
+                        TariffGridParser.defaultTariffs(48_000L, 62_000L, 1_220_000L)
+                    ),
+                    rateApplicationDate = "05/10/2026"
+                )
+            )
+            db.catalogueTransitaireDao().insertTransitaires(demoTransitaires)
+        }
+
+        // 7b-quater. Demo Business Cashflow Transactions
+        val existingBizTxs = db.businessTransactionDao().getAllTransactionsSnapshot()
+        if (existingBizTxs.none { it.referenceTag.startsWith("[DEMO]") }) {
+            val demoBizTxs = listOf(
+                BusinessTransactionEntity(
+                    title = "Encaissement ventes Boutique Tana",
+                    type = "IN",
+                    amountAr = 1_045_000L,
+                    accountName = "Mvola",
+                    referenceTag = "[DEMO] Vente • Client",
+                    dateMillis = now - 5 * 86400_000L
+                ),
+                BusinessTransactionEntity(
+                    title = "Encaissements acomptes clients",
+                    type = "IN",
+                    amountAr = 305_000L,
+                    accountName = "Espèces",
+                    referenceTag = "[DEMO] Vente • Client",
+                    dateMillis = now - 10 * 86400_000L
+                ),
+                BusinessTransactionEntity(
+                    title = "Règlement fret aérien SinoExpress",
+                    type = "OUT",
+                    amountAr = 180_000L,
+                    accountName = "Mvola",
+                    referenceTag = "[DEMO] Fret • Transitaire",
+                    dateMillis = now - 6 * 86400_000L
+                )
+            )
+            db.businessTransactionDao().insertTransactions(demoBizTxs)
+            db.businessAccountDao().adjustBalanceByName("Mvola", 1_045_000L - 180_000L)
+            db.businessAccountDao().adjustBalanceByName("Espèces", 305_000L)
+        }
+
+        // 7c. Demo Clients linked to Business Sales
+        val demoClientSpecs = listOf(
+            ClientEntity(name = "Rina Razafy", phone = "034 55 666 77", category = "Business", avatarType = "CYAN", notes = "Client régulier TWS", isDemo = true),
+            ClientEntity(name = "Tahina K.", phone = "032 88 999 00", category = "Business", avatarType = "CYAN", notes = "", isDemo = true),
+            ClientEntity(name = "Miora H.", phone = "034 11 222 33", category = "Business", avatarType = "CYAN", notes = "", isDemo = true),
+            ClientEntity(name = "Faly Rasolofo", phone = "033 44 555 66", category = "Business", avatarType = "CYAN", notes = "", isDemo = true),
+            ClientEntity(name = "Sarah Andry", phone = "033 77 888 99", category = "Business", avatarType = "CYAN", notes = "", isDemo = true),
+            ClientEntity(name = "Bako Nirina", phone = "038 99 000 11", category = "Business", avatarType = "CYAN", notes = "", isDemo = true),
+            ClientEntity(name = "Jean Rakoto", phone = "034 22 333 44", category = "Business", avatarType = "CYAN", notes = "", isDemo = true),
+            ClientEntity(name = "Solofo M.", phone = "032 11 444 77", category = "Business", avatarType = "CYAN", notes = "", isDemo = true),
+            ClientEntity(name = "Boutique Tana Cash", phone = "", category = "Business", avatarType = "CYAN", notes = "Grossiste Analakely", isDemo = true),
+            ClientEntity(name = "Cousin Hery", phone = "034 99 888 77", category = "Famille & amis", avatarType = "VIOLET", notes = "", isDemo = true)
+        )
+        val clientIdByName = mutableMapOf<String, Long>()
+        demoClientSpecs.forEach { c ->
+            val existing = db.clientDao().findClientByName(c.name)
+            val id = existing?.id ?: db.clientDao().insertClient(c)
+            clientIdByName[c.name] = id
+        }
+
+        // 7d. Business Sales & Factures Ventes + Sale Payments
         val sales = listOf(
-            // 1. Rina Razafy (#088) · 22 oct. 2026 · Écouteurs TWS Pro 5 ×2 (110 000 Ar, réglé 60 000 Ar, reste 50 000 Ar, Marge +48k, Partielle, Sur commande, retard 18j)
             BusinessSaleEntity(
                 productName = "Écouteurs TWS Pro 5 ×2",
                 clientName = "Rina Razafy",
                 clientPhone = "034 55 666 77",
                 quantity = 2,
                 unitResalePriceAr = 55_000L,
-                unitCostAr = 31_000L, // Marge 110k - 62k = 48k (+48k)
+                unitCostAr = 31_000L,
                 totalPriceAr = 110_000L,
                 paidAmountAr = 60_000L,
                 isFullyPaid = false,
@@ -620,17 +736,16 @@ object DemoDataProvider {
                 invoiceNumber = "#088",
                 saleSource = "ORDER",
                 domain = "BUSINESS",
+                clientId = clientIdByName["Rina Razafy"],
                 isDemo = true
             ),
-
-            // 2. Tahina K. (#087) · 20 oct. 2026 · Montres Connectées X7 ×1 (65 000 Ar, 100% réglé, Marge +22,7k, Réglée, Sur stock)
             BusinessSaleEntity(
                 productName = "Montres Connectées X7 ×1",
                 clientName = "Tahina K.",
                 clientPhone = "032 88 999 00",
                 quantity = 1,
                 unitResalePriceAr = 65_000L,
-                unitCostAr = 42_250L, // Marge +22,7k
+                unitCostAr = 42_250L,
                 totalPriceAr = 65_000L,
                 paidAmountAr = 65_000L,
                 isFullyPaid = true,
@@ -639,17 +754,16 @@ object DemoDataProvider {
                 invoiceNumber = "#087",
                 saleSource = "STOCK",
                 domain = "BUSINESS",
+                clientId = clientIdByName["Tahina K."],
                 isDemo = true
             ),
-
-            // 3. Miora H. (#086) · 18 oct. 2026 · Coque MagSafe & Verre (45 000 Ar, réglé 0 Ar, reste 45 000 Ar, Marge +14,2k, Impayée, Sur stock)
             BusinessSaleEntity(
                 productName = "Coque MagSafe & Verre",
                 clientName = "Miora H.",
                 clientPhone = "034 11 222 33",
                 quantity = 1,
                 unitResalePriceAr = 45_000L,
-                unitCostAr = 30_800L, // Marge +14,2k
+                unitCostAr = 30_800L,
                 totalPriceAr = 45_000L,
                 paidAmountAr = 0L,
                 isFullyPaid = false,
@@ -658,10 +772,9 @@ object DemoDataProvider {
                 invoiceNumber = "#086",
                 saleSource = "STOCK",
                 domain = "BUSINESS",
+                clientId = clientIdByName["Miora H."],
                 isDemo = true
             ),
-
-            // 4. Faly Rasolofo (#085) · Partielle (80 000 Ar, réglé 40 000 Ar, reste 40 000 Ar)
             BusinessSaleEntity(
                 productName = "Sacoche Chest Bag",
                 clientName = "Faly Rasolofo",
@@ -677,10 +790,9 @@ object DemoDataProvider {
                 invoiceNumber = "#085",
                 saleSource = "ORDER",
                 domain = "BUSINESS",
+                clientId = clientIdByName["Faly Rasolofo"],
                 isDemo = true
             ),
-
-            // 5. Sarah Andry (#084) · Partielle (80 000 Ar, réglé 50 000 Ar, reste 30 000 Ar)
             BusinessSaleEntity(
                 productName = "Supports Tél. Aluminium ×2",
                 clientName = "Sarah Andry",
@@ -696,10 +808,9 @@ object DemoDataProvider {
                 invoiceNumber = "#084",
                 saleSource = "STOCK",
                 domain = "BUSINESS",
+                clientId = clientIdByName["Sarah Andry"],
                 isDemo = true
             ),
-
-            // 6. Bako Nirina (#083) · Partielle (75 000 Ar, réglé 40 000 Ar, reste 35 000 Ar)
             BusinessSaleEntity(
                 productName = "Câbles Charge Rapide ×3",
                 clientName = "Bako Nirina",
@@ -715,10 +826,9 @@ object DemoDataProvider {
                 invoiceNumber = "#083",
                 saleSource = "STOCK",
                 domain = "BUSINESS",
+                clientId = clientIdByName["Bako Nirina"],
                 isDemo = true
             ),
-
-            // 7. Jean Rakoto (#082) · Réglée (50 000 Ar, 100% réglé)
             BusinessSaleEntity(
                 productName = "Écouteurs Bluetooth Simple",
                 clientName = "Jean Rakoto",
@@ -734,10 +844,9 @@ object DemoDataProvider {
                 invoiceNumber = "#082",
                 saleSource = "STOCK",
                 domain = "BUSINESS",
+                clientId = clientIdByName["Jean Rakoto"],
                 isDemo = true
             ),
-
-            // 8. Solofo M. (#080) · Impayée (40 000 Ar, réglé 0 Ar, reste 40 000 Ar)
             BusinessSaleEntity(
                 productName = "Coque Silicone Antichoc ×2",
                 clientName = "Solofo M.",
@@ -753,10 +862,9 @@ object DemoDataProvider {
                 invoiceNumber = "#080",
                 saleSource = "STOCK",
                 domain = "BUSINESS",
+                clientId = clientIdByName["Solofo M."],
                 isDemo = true
             ),
-
-            // 9. Ventes Comptant Boutique (#081) · Réglée (1 045 000 Ar encaissés comptant)
             BusinessSaleEntity(
                 productName = "Lots Accessoires & Coques",
                 clientName = "Boutique Tana Cash",
@@ -772,10 +880,9 @@ object DemoDataProvider {
                 invoiceNumber = "#081",
                 saleSource = "STOCK",
                 domain = "BUSINESS",
+                clientId = clientIdByName["Boutique Tana Cash"],
                 isDemo = true
             ),
-
-            // 10. Famille & Amis (Isolée du CA fiscal)
             BusinessSaleEntity(
                 productName = "Montre Sport Pro",
                 clientName = "Cousin Hery",
@@ -791,10 +898,28 @@ object DemoDataProvider {
                 invoiceNumber = "#F01",
                 saleSource = "ORDER",
                 domain = "FAMILY_FRIENDS",
+                clientId = clientIdByName["Cousin Hery"],
                 isDemo = true
             )
         )
-        db.businessSaleDao().insertSales(sales)
+        val demoSalePayments = mutableListOf<SalePaymentEntity>()
+        sales.forEach { sale ->
+            val insertedSaleId = db.businessSaleDao().insertSale(sale)
+            if (sale.paidAmountAr > 0L) {
+                demoSalePayments.add(
+                    SalePaymentEntity(
+                        saleId = insertedSaleId,
+                        amountAr = sale.paidAmountAr,
+                        paymentDate = sale.saleDate,
+                        paymentMethod = if (sale.invoiceNumber == "#081") "MVOLA" else "ESPECES",
+                        note = "Règlement ${sale.invoiceNumber}"
+                    )
+                )
+            }
+        }
+        if (demoSalePayments.isNotEmpty()) {
+            db.salePaymentDao().insertPayments(demoSalePayments)
+        }
 
         // 8. Health Entries
         val healthEntries = mutableListOf<HealthEntryEntity>()
@@ -879,6 +1004,40 @@ object DemoDataProvider {
     }
 
     suspend fun clearDemoData(db: AppDatabase) {
+        // Revert Business account balances caused by [DEMO] transactions & demo yuan transactions
+        val demoBizTxs = db.businessTransactionDao().getAllTransactionsSnapshot()
+            .filter { it.referenceTag.startsWith("[DEMO]") }
+        demoBizTxs.forEach { tx ->
+            when (tx.type) {
+                "IN", "INCOME" -> if (tx.accountName.isNotBlank()) {
+                    db.businessAccountDao().adjustBalanceByName(tx.accountName, -tx.amountAr)
+                }
+                "OUT", "EXPENSE", "YUAN" -> if (tx.accountName.isNotBlank()) {
+                    db.businessAccountDao().adjustBalanceByName(tx.accountName, tx.amountAr)
+                }
+                "TRANSFER" -> {
+                    if (tx.accountName.isNotBlank()) {
+                        db.businessAccountDao().adjustBalanceByName(tx.accountName, tx.amountAr)
+                    }
+                    if (tx.destinationAccount.isNotBlank()) {
+                        db.businessAccountDao().adjustBalanceByName(tx.destinationAccount, -tx.amountAr)
+                    }
+                }
+            }
+        }
+        val demoYuanTxs = db.yuanTransactionDao().getAllTransactionsSnapshot().filter { it.isDemo }
+        demoYuanTxs.forEach { y ->
+            val targetAcc = when {
+                y.platform.contains("WeChat", ignoreCase = true) -> "Wechat Pay"
+                y.platform.contains("Alipay", ignoreCase = true) -> "Alipay"
+                else -> "Alipay"
+            }
+            when (y.type) {
+                "BUY", "REFUND" -> db.businessAccountDao().adjustYuanBalanceByName(targetAcc, -y.amountYuan)
+                "SPEND" -> db.businessAccountDao().adjustYuanBalanceByName(targetAcc, y.amountYuan)
+            }
+        }
+
         db.walletDao().deleteDemoWallets()
         db.transactionDao().deleteDemoTransactions()
         db.budgetDao().deleteDemoBudgets()
@@ -889,9 +1048,15 @@ object DemoDataProvider {
         db.loanDao().deleteDemoPayments()
         db.businessOrderDao().deleteDemoOrders()
         db.yuanTransactionDao().deleteDemoTransactions()
-        db.businessSaleDao().deleteDemoSales()
+        db.businessSaleDao().deleteDemoSales() // Cascades to demo sale_payments
+        db.clientDao().deleteDemoClients()
         db.catalogueFamilyDao().deleteDemoFamilies()
         db.cataloguePlatformDao().deleteDemoPlatforms()
+        db.catalogueTransitaireDao().deleteDemoTransitaires()
+        db.businessTransactionDao().deleteDemoTransactions()
+        db.businessInvestmentDao().deleteDemoInvestments()
+        db.businessDebtDao().deleteDemoDebtPayments()
+        db.businessDebtDao().deleteDemoDebts()
         db.healthDao().deleteDemoHealthEntries()
         db.goalDao().deleteDemoGoals()
     }

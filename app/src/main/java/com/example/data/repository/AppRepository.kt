@@ -1,12 +1,15 @@
 package com.example.data.repository
 
 import android.content.Context
+import androidx.room.withTransaction
 import com.example.data.backup.BackupManager
 import com.example.data.datastore.SettingsDataStore
 import com.example.data.demo.DemoDataProvider
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.BudgetEntity
 import com.example.data.local.entity.BusinessAccountEntity
+import com.example.data.local.entity.BusinessDebtEntity
+import com.example.data.local.entity.BusinessDebtPaymentEntity
 import com.example.data.local.entity.BusinessInvestmentEntity
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.data.local.entity.BusinessSaleEntity
@@ -37,6 +40,8 @@ class AppRepository(
     private val db: AppDatabase,
     private val settingsDataStore: SettingsDataStore
 ) {
+    suspend fun <T> runInTransaction(block: suspend () -> T): T = db.withTransaction { block() }
+
     val wallets: Flow<List<WalletEntity>> = db.walletDao().getAllWallets()
     val transactions: Flow<List<TransactionEntity>> = db.transactionDao().getAllTransactions()
     val tasks: Flow<List<TaskEntity>> = db.taskDao().getAllTasks()
@@ -218,7 +223,7 @@ class AppRepository(
         }
     }
 
-    suspend fun deleteHabit(habitId: Long) {
+    suspend fun deleteHabit(habitId: Long) = db.withTransaction {
         db.habitDao().deleteLogsByHabitId(habitId)
         db.habitDao().deleteHabitById(habitId)
     }
@@ -377,15 +382,19 @@ class AppRepository(
     }
 
     suspend fun wipeAllData() = withContext(Dispatchers.IO) {
-        db.clearAllTables()
-        db.walletDao().insertWallets(
-            listOf(
-                WalletEntity(id = 1, name = "Espèces", iconName = "cash", initialBalance = 0L, isDemo = false),
-                WalletEntity(id = 2, name = "MVola", iconName = "mvola", initialBalance = 0L, isDemo = false),
-                WalletEntity(id = 3, name = "Orange Money", iconName = "orange", initialBalance = 0L, isDemo = false),
-                WalletEntity(id = 4, name = "Banque", iconName = "bank", initialBalance = 0L, isDemo = false)
+        db.withTransaction {
+            db.clearAllTables()
+            db.walletDao().insertWallets(
+                listOf(
+                    WalletEntity(id = 1, name = "Espèces", iconName = "cash", initialBalance = 0L, isDemo = false),
+                    WalletEntity(id = 2, name = "MVola", iconName = "mvola", initialBalance = 0L, isDemo = false),
+                    WalletEntity(id = 3, name = "Orange Money", iconName = "orange", initialBalance = 0L, isDemo = false),
+                    WalletEntity(id = 4, name = "Banque", iconName = "bank", initialBalance = 0L, isDemo = false)
+                )
             )
-        )
+            seedDefaultCatalogueTablesInternal()
+            seedDefaultBusinessAccountsIfEmpty()
+        }
         settingsDataStore.resetAllSettings()
     }
 
@@ -400,6 +409,10 @@ class AppRepository(
     }
 
     suspend fun seedDefaultCatalogueTablesIfEmpty() = withContext(Dispatchers.IO) {
+        seedDefaultCatalogueTablesInternal()
+    }
+
+    private suspend fun seedDefaultCatalogueTablesInternal() {
         if (db.catalogueFamilyDao().getAllFamiliesSnapshot().isEmpty()) {
             val defaultFamilies = listOf(
                 CatalogueFamilyEntity(name = "Électronique & High-Tech", emoji = "🎧", colorHex = "#06B6D4", displayOrder = 1),
@@ -453,7 +466,7 @@ class AppRepository(
         return db.businessAccountDao().insertAccount(account)
     }
 
-    suspend fun updateBusinessAccount(account: BusinessAccountEntity, oldName: String? = null) {
+    suspend fun updateBusinessAccount(account: BusinessAccountEntity, oldName: String? = null) = db.withTransaction {
         db.businessAccountDao().updateAccount(account)
         if (!oldName.isNullOrBlank() && !oldName.equals(account.name, ignoreCase = true)) {
             db.businessTransactionDao().renameAccountInTransactions(oldName, account.name)
@@ -490,7 +503,7 @@ class AppRepository(
 
     val allBusinessTransactions: Flow<List<BusinessTransactionEntity>> = db.businessTransactionDao().getAllTransactions()
 
-    suspend fun insertBusinessTransaction(tx: BusinessTransactionEntity): Long {
+    suspend fun insertBusinessTransaction(tx: BusinessTransactionEntity): Long = db.withTransaction {
         val id = db.businessTransactionDao().insertTransaction(tx)
         when (tx.type) {
             "IN", "INCOME" -> {
@@ -512,10 +525,10 @@ class AppRepository(
                 }
             }
         }
-        return id
+        id
     }
 
-    suspend fun deleteBusinessTransaction(tx: BusinessTransactionEntity) {
+    suspend fun deleteBusinessTransaction(tx: BusinessTransactionEntity) = db.withTransaction {
         when (tx.type) {
             "IN", "INCOME" -> {
                 if (tx.accountName.isNotBlank()) {
@@ -563,11 +576,44 @@ class AppRepository(
         db.businessInvestmentDao().updateInvestment(investment)
     }
 
-    suspend fun deleteBusinessInvestment(investment: BusinessInvestmentEntity) {
+    suspend fun deleteBusinessInvestment(investment: BusinessInvestmentEntity) = db.withTransaction {
         db.businessInvestmentDao().deleteInvestmentById(investment.id)
         investment.linkedTransactionId?.let { txId ->
             val linkedTx = db.businessTransactionDao().getTransactionById(txId)
             if (linkedTx != null) {
+                deleteBusinessTransaction(linkedTx)
+            }
+        }
+    }
+
+    val allBusinessDebts: Flow<List<BusinessDebtEntity>> = db.businessDebtDao().getAllDebts()
+    val allBusinessDebtPayments: Flow<List<BusinessDebtPaymentEntity>> = db.businessDebtDao().getAllDebtPayments()
+
+    suspend fun insertBusinessDebt(debt: BusinessDebtEntity): Long {
+        return db.businessDebtDao().insertDebt(debt)
+    }
+
+    suspend fun updateBusinessDebt(debt: BusinessDebtEntity) {
+        db.businessDebtDao().updateDebt(debt)
+    }
+
+    suspend fun insertBusinessDebtPayment(payment: BusinessDebtPaymentEntity): Long {
+        return db.businessDebtDao().insertDebtPayment(payment)
+    }
+
+    suspend fun deleteBusinessDebt(debt: BusinessDebtEntity) = db.withTransaction {
+        val payments = db.businessDebtDao().getPaymentsForDebtSnapshot(debt.id)
+        payments.forEach { payment ->
+            payment.linkedTransactionId?.let { txId ->
+                db.businessTransactionDao().getTransactionById(txId)?.let { linkedTx ->
+                    deleteBusinessTransaction(linkedTx)
+                }
+            }
+        }
+        db.businessDebtDao().deleteDebtPaymentsForDebt(debt.id)
+        db.businessDebtDao().deleteDebtById(debt.id)
+        debt.linkedTransactionId?.let { txId ->
+            db.businessTransactionDao().getTransactionById(txId)?.let { linkedTx ->
                 deleteBusinessTransaction(linkedTx)
             }
         }

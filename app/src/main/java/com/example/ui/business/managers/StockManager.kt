@@ -36,8 +36,10 @@ class StockManager(private val repository: AppRepository) {
     suspend fun toggleHideCatalogueArticle(article: CatalogueArticleSummaryUi): String {
         val targetHidden = !article.isHidden
         val lotsToUpdate = article.lots.ifEmpty { listOf(article.primaryOrder) }
-        lotsToUpdate.forEach { lot ->
-            repository.updateBusinessOrder(lot.copy(isHidden = targetHidden))
+        repository.runInTransaction {
+            lotsToUpdate.forEach { lot ->
+                repository.updateBusinessOrder(lot.copy(isHidden = targetHidden))
+            }
         }
         return if (targetHidden) "${article.primaryOrder.product} masqué du catalogue" else "${article.primaryOrder.product} réaffiché"
     }
@@ -49,8 +51,10 @@ class StockManager(private val repository: AppRepository) {
 
     suspend fun deleteCatalogueArticle(article: CatalogueArticleSummaryUi): String {
         val lotsToDelete = article.lots.ifEmpty { listOf(article.primaryOrder) }
-        lotsToDelete.forEach { lot ->
-            repository.deleteBusinessOrder(lot.id)
+        repository.runInTransaction {
+            lotsToDelete.forEach { lot ->
+                repository.deleteBusinessOrder(lot.id)
+            }
         }
         return "${article.primaryOrder.product} supprimé (${lotsToDelete.size} lot${if (lotsToDelete.size > 1) "s" else ""})"
     }
@@ -176,39 +180,40 @@ class StockManager(private val repository: AppRepository) {
         } else primary.marginPercent
 
         val lotsToUpdate = article.lots.ifEmpty { listOf(primary) }
-        lotsToUpdate.forEach { lot ->
-            val updated = if (lot.id == primary.id) {
-                lot.copy(
-                    product = trimmedName,
-                    referenceCode = trimmedSku,
-                    family = trimmedFamily,
-                    familyId = matchedFamily?.id ?: lot.familyId,
-                    platform = trimmedPlatform,
-                    supplier = if (lot.supplier.isBlank() || lot.supplier == lot.platform) trimmedPlatform else lot.supplier,
-                    priceYuan = newPriceYuan,
-                    resalePriceAr = newResaleAr,
-                    weightKg = newWeightKg,
-                    freightMode = newFreightMode,
-                    variants = newVariants.trim(),
-                    imageUrl = newImageUrl.trim(),
-                    receptionNotes = newNotes.trim(),
-                    isHidden = isHidden,
-                    marginPercent = computedMargin
-                )
-            } else {
-                // Propagate shared catalog identity across sibling lots while keeping lot-specific history intact
-                lot.copy(
-                    product = trimmedName,
-                    referenceCode = trimmedSku,
-                    family = trimmedFamily,
-                    familyId = matchedFamily?.id ?: lot.familyId,
-                    resalePriceAr = newResaleAr,
-                    weightKg = newWeightKg ?: lot.weightKg,
-                    imageUrl = newImageUrl.trim(),
-                    isHidden = isHidden
-                )
+        repository.runInTransaction {
+            lotsToUpdate.forEach { lot ->
+                val updated = if (lot.id == primary.id) {
+                    lot.copy(
+                        product = trimmedName,
+                        referenceCode = trimmedSku,
+                        family = trimmedFamily,
+                        familyId = matchedFamily?.id ?: lot.familyId,
+                        platform = trimmedPlatform,
+                        supplier = if (lot.supplier.isBlank() || lot.supplier == lot.platform) trimmedPlatform else lot.supplier,
+                        priceYuan = newPriceYuan,
+                        resalePriceAr = newResaleAr,
+                        weightKg = newWeightKg,
+                        freightMode = newFreightMode,
+                        variants = newVariants.trim(),
+                        imageUrl = newImageUrl.trim(),
+                        receptionNotes = newNotes.trim(),
+                        isHidden = isHidden,
+                        marginPercent = computedMargin
+                    )
+                } else {
+                    lot.copy(
+                        product = trimmedName,
+                        referenceCode = trimmedSku,
+                        family = trimmedFamily,
+                        familyId = matchedFamily?.id ?: lot.familyId,
+                        resalePriceAr = newResaleAr,
+                        weightKg = newWeightKg ?: lot.weightKg,
+                        imageUrl = newImageUrl.trim(),
+                        isHidden = isHidden
+                    )
+                }
+                repository.updateBusinessOrder(updated)
             }
-            repository.updateBusinessOrder(updated)
         }
         return "$trimmedName mis à jour"
     }
@@ -230,13 +235,14 @@ class StockManager(private val repository: AppRepository) {
     }
 
     suspend fun deleteCatalogueFamily(family: CatalogueFamilySummaryUi, targetFamilyName: String = "Divers"): String {
-        val allOrders = repository.businessOrders.firstOrNull() ?: emptyList()
-        val toMigrate = allOrders.filter { it.family.equals(family.name, ignoreCase = true) }
-        toMigrate.forEach { order ->
-            repository.updateBusinessOrder(order.copy(family = targetFamilyName))
-        }
-        if (family.id > 0) {
-            repository.deleteCatalogueFamily(family.id)
+        repository.runInTransaction {
+            val allOrders = repository.businessOrders.firstOrNull() ?: emptyList()
+            allOrders.filter { it.family.equals(family.name, ignoreCase = true) }.forEach { order ->
+                repository.updateBusinessOrder(order.copy(family = targetFamilyName))
+            }
+            if (family.id > 0) {
+                repository.deleteCatalogueFamily(family.id)
+            }
         }
         return "Famille '${family.name}' supprimée (articles transférés vers $targetFamilyName)"
     }
@@ -254,24 +260,35 @@ class StockManager(private val repository: AppRepository) {
         platform: String = "1688",
         referenceCode: String = "",
         family: String = "Électronique",
-        cmupRate: Double = 650.0
+        cmupRate: Double = 650.0,
+        domesticShippingYuan: Double = 0.0
     ): String {
+        val cleanPlatform = platform.trim().ifBlank { "1688" }
+        val cleanFamily = family.trim().ifBlank { "Électronique" }
+        val matchedFamily = repository.getAllCatalogueFamiliesSnapshot().firstOrNull {
+            it.name.equals(cleanFamily, ignoreCase = true) ||
+                it.name.contains(cleanFamily, ignoreCase = true)
+        }
+        val cleanRef = referenceCode.trim().ifBlank { "LOT-${System.currentTimeMillis() % 10000}" }
+
         repository.insertBusinessOrder(
             BusinessOrderEntity(
-                product = product,
-                supplier = supplier,
-                platform = platform,
-                referenceCode = referenceCode.ifBlank { "LOT-${System.currentTimeMillis() % 10000}" },
-                quantityBought = quantity,
-                priceYuan = priceYuan,
-                exchangeRate = cmupRate,
-                resalePriceAr = resaleAr,
+                product = product.trim(),
+                supplier = supplier.trim().ifBlank { cleanPlatform },
+                platform = cleanPlatform,
+                referenceCode = cleanRef,
+                quantityBought = quantity.coerceAtLeast(1),
+                priceYuan = priceYuan.coerceAtLeast(0.0),
+                exchangeRate = if (cmupRate > 0.0) cmupRate else 650.0,
+                resalePriceAr = resaleAr.coerceAtLeast(0L),
+                domesticShippingYuan = domesticShippingYuan.coerceAtLeast(0.0),
                 status = "ORDERED",
                 category = category,
-                family = family,
-                carrier = carrier,
-                variants = variants,
-                freightCostAr = freightAr,
+                family = cleanFamily,
+                familyId = matchedFamily?.id ?: 0L,
+                carrier = carrier.trim(),
+                variants = variants.trim(),
+                freightCostAr = freightAr.coerceAtLeast(0L),
                 isFreightPaid = false
             )
         )

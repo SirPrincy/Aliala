@@ -7,6 +7,8 @@ import androidx.room.Query
 import androidx.room.Update
 import com.example.data.local.entity.BudgetEntity
 import com.example.data.local.entity.BusinessAccountEntity
+import com.example.data.local.entity.BusinessDebtEntity
+import com.example.data.local.entity.BusinessDebtPaymentEntity
 import com.example.data.local.entity.BusinessInvestmentEntity
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.data.local.entity.BusinessSaleEntity
@@ -474,6 +476,9 @@ interface CatalogueTransitaireDao {
     @Query("DELETE FROM catalogue_transitaires WHERE id = :id")
     suspend fun deleteTransitaireById(id: Long)
 
+    @Query("DELETE FROM catalogue_transitaires WHERE notes LIKE '%[DEMO]%'")
+    suspend fun deleteDemoTransitaires()
+
     @Query("DELETE FROM catalogue_transitaires")
     suspend fun clearAll()
 }
@@ -483,6 +488,9 @@ interface SalePaymentDao {
     @Query("SELECT * FROM sale_payments ORDER BY paymentDate DESC")
     fun getAllPayments(): Flow<List<SalePaymentEntity>>
 
+    @Query("SELECT * FROM sale_payments ORDER BY paymentDate DESC")
+    suspend fun getAllPaymentsSnapshot(): List<SalePaymentEntity>
+
     @Query("SELECT * FROM sale_payments WHERE saleId = :saleId ORDER BY paymentDate DESC")
     fun getPaymentsForSale(saleId: Long): Flow<List<SalePaymentEntity>>
 
@@ -491,6 +499,9 @@ interface SalePaymentDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPayment(payment: SalePaymentEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPayments(payments: List<SalePaymentEntity>)
 
     @Query("DELETE FROM sale_payments WHERE id = :id")
     suspend fun deletePaymentById(id: Long)
@@ -510,11 +521,17 @@ interface BusinessAccountDao {
     @Query("SELECT * FROM business_accounts WHERE isActive = 1 ORDER BY id ASC")
     suspend fun getAllAccountsSnapshot(): List<BusinessAccountEntity>
 
+    @Query("SELECT * FROM business_accounts ORDER BY id ASC")
+    suspend fun getAllAccountsIncludeInactiveSnapshot(): List<BusinessAccountEntity>
+
     @Query("SELECT COUNT(*) FROM business_accounts")
     suspend fun getAccountCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAccount(account: BusinessAccountEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAccounts(accounts: List<BusinessAccountEntity>)
 
     @Update
     suspend fun updateAccount(account: BusinessAccountEntity)
@@ -530,6 +547,9 @@ interface BusinessAccountDao {
 
     @Query("DELETE FROM business_accounts WHERE id = :id")
     suspend fun deleteAccountById(id: Long)
+
+    @Query("DELETE FROM business_accounts")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -537,11 +557,17 @@ interface BusinessTransactionDao {
     @Query("SELECT * FROM business_transactions ORDER BY dateMillis DESC")
     fun getAllTransactions(): Flow<List<BusinessTransactionEntity>>
 
+    @Query("SELECT * FROM business_transactions ORDER BY dateMillis DESC")
+    suspend fun getAllTransactionsSnapshot(): List<BusinessTransactionEntity>
+
     @Query("SELECT * FROM business_transactions WHERE id = :id LIMIT 1")
     suspend fun getTransactionById(id: Long): BusinessTransactionEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTransaction(tx: BusinessTransactionEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTransactions(txs: List<BusinessTransactionEntity>)
 
     @Query("UPDATE business_transactions SET accountName = :newName WHERE LOWER(accountName) = LOWER(:oldName)")
     suspend fun renameAccountInTransactions(oldName: String, newName: String)
@@ -554,6 +580,12 @@ interface BusinessTransactionDao {
 
     @Query("DELETE FROM business_transactions WHERE yuanTransactionId = :yuanTxId")
     suspend fun deleteByYuanTransactionId(yuanTxId: Long)
+
+    @Query("DELETE FROM business_transactions WHERE referenceTag LIKE '[DEMO]%'")
+    suspend fun deleteDemoTransactions()
+
+    @Query("DELETE FROM business_transactions")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -561,14 +593,83 @@ interface BusinessInvestmentDao {
     @Query("SELECT * FROM business_investments ORDER BY dateMillis DESC")
     fun getAllInvestments(): Flow<List<BusinessInvestmentEntity>>
 
+    @Query("SELECT * FROM business_investments ORDER BY dateMillis DESC")
+    suspend fun getAllInvestmentsSnapshot(): List<BusinessInvestmentEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertInvestment(investment: BusinessInvestmentEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInvestments(investments: List<BusinessInvestmentEntity>)
 
     @Update
     suspend fun updateInvestment(investment: BusinessInvestmentEntity)
 
     @Query("DELETE FROM business_investments WHERE id = :id")
     suspend fun deleteInvestmentById(id: Long)
+
+    @Query("DELETE FROM business_investments WHERE notes LIKE '%[DEMO]%'")
+    suspend fun deleteDemoInvestments()
+
+    @Query("DELETE FROM business_investments")
+    suspend fun clearAll()
+}
+
+@Dao
+interface BusinessDebtDao {
+    @Query("SELECT * FROM business_debts ORDER BY createdAtMillis DESC")
+    fun getAllDebts(): Flow<List<BusinessDebtEntity>>
+
+    @Query("SELECT * FROM business_debts ORDER BY createdAtMillis DESC")
+    suspend fun getAllDebtsSnapshot(): List<BusinessDebtEntity>
+
+    @Query("SELECT * FROM business_debts WHERE id = :id LIMIT 1")
+    suspend fun getDebtById(id: Long): BusinessDebtEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDebt(debt: BusinessDebtEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDebts(debts: List<BusinessDebtEntity>)
+
+    @Update
+    suspend fun updateDebt(debt: BusinessDebtEntity)
+
+    @Query("DELETE FROM business_debts WHERE id = :id")
+    suspend fun deleteDebtById(id: Long)
+
+    @Query("DELETE FROM business_debts WHERE notes LIKE '%[DEMO]%'")
+    suspend fun deleteDemoDebts()
+
+    @Query("DELETE FROM business_debts")
+    suspend fun clearDebts()
+
+    @Query("SELECT * FROM business_debt_payments ORDER BY dateMillis DESC")
+    fun getAllDebtPayments(): Flow<List<BusinessDebtPaymentEntity>>
+
+    @Query("SELECT * FROM business_debt_payments ORDER BY dateMillis DESC")
+    suspend fun getAllDebtPaymentsSnapshot(): List<BusinessDebtPaymentEntity>
+
+    @Query("SELECT * FROM business_debt_payments WHERE debtId = :debtId ORDER BY dateMillis DESC")
+    suspend fun getPaymentsForDebtSnapshot(debtId: Long): List<BusinessDebtPaymentEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDebtPayment(payment: BusinessDebtPaymentEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDebtPayments(payments: List<BusinessDebtPaymentEntity>)
+
+    @Query("DELETE FROM business_debt_payments WHERE debtId = :debtId")
+    suspend fun deleteDebtPaymentsForDebt(debtId: Long)
+
+    @Query("DELETE FROM business_debt_payments WHERE id = :id")
+    suspend fun deleteDebtPaymentById(id: Long)
+
+    @Query("DELETE FROM business_debt_payments WHERE note LIKE '[DEMO]%'")
+    suspend fun deleteDemoDebtPayments()
+
+    @Query("DELETE FROM business_debt_payments")
+    suspend fun clearDebtPayments()
 }
 
 
