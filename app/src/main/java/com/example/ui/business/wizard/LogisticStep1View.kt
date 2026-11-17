@@ -54,7 +54,7 @@ fun LogisticStep1View(
     onConfirmOrder: (updatedOrder: BusinessOrderEntity) -> Unit,
     onSaveAsDraft: () -> Unit,
     onSpendYuans: (amountYuan: Double, rateAr: Double, yuanAccountName: String, note: String, onResult: (Boolean, String) -> Unit) -> Unit = { _, _, _, _, _ -> },
-    onBuyYuans: (amountYuan: Double, rateAr: Double, platform: String, sourceAccountName: String) -> Unit = { _, _, _, _ -> }
+    onBuyYuans: (amountYuan: Double, rateAr: Double, platform: String, sourceAccountName: String, purchaseDateMillis: Long) -> Unit = { _, _, _, _, _ -> }
 ) {
     val context = LocalContext.current
     val colors = rememberTransitaireColors()
@@ -70,7 +70,7 @@ fun LogisticStep1View(
     var showAddTrackingDialog by remember { mutableStateOf(false) }
     var editingOldTracking by remember { mutableStateOf<String?>(null) }
     var newTrackingInput by remember { mutableStateOf("") }
-    var newTrackingCarrierInput by remember { mutableStateOf("SF Express") }
+    var newTrackingCarrierInput by remember { mutableStateOf("") }
 
     val isAlreadyDebited = order.yuanDebited
 
@@ -339,7 +339,7 @@ fun LogisticStep1View(
                             onAddTracking = {
                                 editingOldTracking = null
                                 newTrackingInput = ""
-                                newTrackingCarrierInput = "SF Express"
+                                newTrackingCarrierInput = ""
                                 showAddTrackingDialog = true
                             }
                         )
@@ -443,7 +443,7 @@ fun LogisticStep1View(
                     onAddTracking = {
                         editingOldTracking = null
                         newTrackingInput = ""
-                        newTrackingCarrierInput = "SF Express"
+                        newTrackingCarrierInput = ""
                         showAddTrackingDialog = true
                     }
                 )
@@ -468,8 +468,8 @@ fun LogisticStep1View(
             accounts = accounts,
             defaultRate = cmupRate,
             onDismiss = { showBuyYuansDialog = false },
-            onConfirm = { amountYuan, rateAr, platform, sourceAccountName ->
-                onBuyYuans(amountYuan, rateAr, platform, sourceAccountName)
+            onConfirm = { amountYuan, rateAr, platform, sourceAccountName, purchaseDateMillis ->
+                onBuyYuans(amountYuan, rateAr, platform, sourceAccountName, purchaseDateMillis)
                 if (appliedRateText.isBlank() || appliedRateText == "0") {
                     appliedRateText = rateAr.toInt().toString()
                 }

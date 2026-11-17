@@ -28,7 +28,9 @@ data class IncomingParcelUi(
     val carrier: String,
     val delayBadge: String,
     val isCustoms: Boolean,
-    val iconCategory: String
+    val iconCategory: String,
+    val bordereauCode: String? = null,
+    val isMaritime: Boolean = false
 )
 
 data class FamilyFilterUi(
@@ -107,7 +109,9 @@ data class TransitaireShipmentSummaryUi(
     val freightCostAr: Long,
     val statusLabel: String,
     val isDelivered: Boolean,
-    val dateLabel: String
+    val dateLabel: String,
+    val fretTransitDays: Long? = null,
+    val totalTransitDays: Long? = null
 )
 
 data class CatalogueTransitaireSummaryUi(
@@ -115,9 +119,9 @@ data class CatalogueTransitaireSummaryUi(
     val name: String,
     val initials: String,
     val routeHub: String,
-    val airRateAr: Long,
-    val airFastRateAr: Long = 60000L,
-    val seaRateAr: Long,
+    val airRateAr: Long = 0L,
+    val airFastRateAr: Long = 0L,
+    val seaRateAr: Long = 0L,
     val airRateTrend: String = "",
     val seaRateTrend: String = "",
     val isAirCheapest: Boolean = false,
@@ -131,9 +135,9 @@ data class CatalogueTransitaireSummaryUi(
     val contact: String = "",
     val chinaWarehouseAddress: String = "",
     val rateApplicationDate: String = "",
-    val airLeadDays: String = "7 à 10 jours",
-    val airFastLeadDays: String = "3 à 5 jours",
-    val seaLeadDays: String = "30 à 45 jours",
+    val airLeadDays: String = "",
+    val airFastLeadDays: String = "",
+    val seaLeadDays: String = "",
     val goodsCategoryDelays: String = "",
     val internalNotes: String = "",
     val wechat: String = "",
@@ -142,7 +146,16 @@ data class CatalogueTransitaireSummaryUi(
     val totalInvoicedAr: Long = 0L,
     val effectiveRateAr: Long = 0L,
     val lastShipmentCode: String = "",
-    val recentShipments: List<TransitaireShipmentSummaryUi> = emptyList()
+    val recentShipments: List<TransitaireShipmentSummaryUi> = emptyList(),
+    val rateHistory: List<com.example.data.local.entity.TransitaireRateHistoryEntity> = emptyList(),
+    val avgChinaDays: Double? = null,
+    val avgHubWaitDays: Double? = null,
+    val avgAirTransitDays: Double? = null,
+    val avgSeaTransitDays: Double? = null,
+    val avgTotalDays: Double? = null,
+    val measuredShipmentsCount: Int = 0,
+    val measuredAirCount: Int = 0,
+    val measuredSeaCount: Int = 0
 )
 
 data class BusinessUiState(
@@ -173,6 +186,7 @@ data class BusinessUiState(
     val catalogueFamilies: List<CatalogueFamilySummaryUi> = emptyList(),
     val cataloguePlatforms: List<CataloguePlatformSummaryUi> = emptyList(),
     val catalogueTransitaires: List<CatalogueTransitaireSummaryUi> = emptyList(),
+    val transitaireRateHistory: List<com.example.data.local.entity.TransitaireRateHistoryEntity> = emptyList(),
 
     // Hero metrics
     val netProfit: Long = 0L,
@@ -281,6 +295,7 @@ data class BusinessUiState(
     val topClientName: String = "-",
     val topClientTotalAr: Long = 0L,
     val clientsList: List<BusinessClientUi> = emptyList(),
+    val allClients: List<BusinessClientUi> = emptyList(),
 
     // Listes brutes & notifications
     val orders: List<BusinessOrderEntity> = emptyList(),

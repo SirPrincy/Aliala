@@ -57,7 +57,7 @@ internal fun AddTransitaireSimulatorCard(
     val totalSeaComputed = (testCbm * tarifMaritimeSim).toLong()
 
     val formattedTestKg = String.format(Locale.FRENCH, "%.1f", testKg).replace('.', ',')
-    val formattedTestCbm = String.format(Locale.FRENCH, "%.2f", testCbm).replace('.', ',')
+    val formattedTestCbm = String.format(Locale.FRENCH, "%.5f", testCbm).replace('.', ',')
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -290,7 +290,7 @@ internal fun AddTransitaireSimulatorCard(
                                     textAlign = TextAlign.End,
                                     color = colors.textPrimary
                                 ),
-                                modifier = Modifier.width(44.dp)
+                                modifier = Modifier.width(72.dp)
                             )
                             Text(
                                 text = "m³",

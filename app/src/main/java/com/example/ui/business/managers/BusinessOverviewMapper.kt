@@ -7,6 +7,7 @@ import com.example.data.local.entity.YuanTransactionEntity
 import com.example.ui.business.BusinessPipelineStep
 import com.example.ui.business.IncomingParcelUi
 import com.example.ui.business.TopProductUi
+import com.example.util.BordereauUtils
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -200,7 +201,9 @@ internal fun mapBusinessOverviewMetrics(
                 }
             },
             isCustoms = o.status in listOf("CUSTOMS", "QUALITY_CONTROL"),
-            iconCategory = o.imageUrl.ifBlank { "earbuds" }
+            iconCategory = o.imageUrl.ifBlank { "earbuds" },
+            bordereauCode = BordereauUtils.resolveCodeOrNull(o),
+            isMaritime = BordereauUtils.isMaritime(o.freightMode)
         )
     }
 

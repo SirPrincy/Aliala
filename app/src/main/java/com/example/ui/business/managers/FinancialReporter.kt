@@ -28,7 +28,8 @@ class FinancialReporter(private val repository: AppRepository) {
         amountYuan: Double,
         rateAr: Double,
         platform: String,
-        sourceAccountName: String = ""
+        sourceAccountName: String = "",
+        purchaseDateMillis: Long = System.currentTimeMillis()
     ): String {
         if (amountYuan <= 0.0 || rateAr <= 0.0) return "Montant ou taux invalide"
         val accounts = repository.getBusinessAccountsSnapshot()
@@ -80,6 +81,7 @@ class FinancialReporter(private val repository: AppRepository) {
                     exchangeRate = rateAr,
                     amountAr = amountAr,
                     platform = targetYuanAccount.name,
+                    date = purchaseDateMillis,
                     note = note
                 )
             )
@@ -92,7 +94,8 @@ class FinancialReporter(private val repository: AppRepository) {
                     amountAr = amountAr,
                     accountName = accountLabel,
                     yuanTransactionId = yuanTxId,
-                    referenceTag = "Change ¥ • ${rateAr.toInt()} Ar/¥"
+                    referenceTag = "Change ¥ • ${rateAr.toInt()} Ar/¥",
+                    dateMillis = purchaseDateMillis
                 )
             )
         }

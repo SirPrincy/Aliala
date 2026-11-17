@@ -164,7 +164,7 @@ fun AddCatalogueArticleDialog(
     val purchaseAr = round(priceYuan * effectiveCmupRate).toLong()
     val weightKgVal = weightText.replace(',', '.').toDoubleOrNull() ?: 0.0
     val weightGrams = round(weightKgVal * 1000.0).toInt()
-    val volumeM3 = if (weightGrams > 0) String.format(Locale.US, "%.4f", weightGrams * 0.0000067) else "—"
+    val volumeM3 = if (weightGrams > 0) String.format(Locale.FRENCH, "%.5f", weightGrams * 0.0000067) else "—"
     val ratePerKg = if (selectedFreightMode == "MARITIME") defaultSeaRate else defaultAirRate
     val estUnitFreightAr = if (weightKgVal > 0.0) round(weightKgVal * ratePerKg).toLong() else 0L
     val landedUnitCostAr = purchaseAr + estUnitFreightAr

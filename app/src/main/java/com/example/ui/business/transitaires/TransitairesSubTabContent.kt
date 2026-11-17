@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -46,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.BusinessAccountEntity
 import com.example.data.local.entity.BusinessOrderEntity
+import com.example.data.local.entity.TransitaireRateHistoryEntity
 import com.example.ui.business.CatalogueTransitaireSummaryUi
 import com.example.ui.theme.Inter
 import com.example.ui.theme.PlusJakartaSans
@@ -78,6 +82,7 @@ fun TransitairesSubTabContent(
     onRecordPayment: (id: Long, amountAr: Long, accountName: String) -> Unit = { _, _, _ -> },
     accounts: List<BusinessAccountEntity> = emptyList(),
     orders: List<BusinessOrderEntity> = emptyList(),
+    rateHistory: List<TransitaireRateHistoryEntity> = emptyList(),
     onAddClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -97,17 +102,19 @@ fun TransitairesSubTabContent(
     val unpaidInvoicesCount = transitaires.count { !it.isArchived && it.balanceDueAr > 0L }
     val activeShipmentsTotal = transitaires.filter { !it.isArchived }.sumOf { it.activeShipmentsCount }
 
-    Column(
+    LazyColumn(
         modifier = modifier
-            .fillMaxWidth()
-            .padding(bottom = 80.dp),
+            .fillMaxSize()
+            .testTag("transitaires_lazy_list"),
+        contentPadding = PaddingValues(bottom = 88.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        item(key = "search_header") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
             Surface(
                 modifier = Modifier
                     .weight(1f)
@@ -184,11 +191,13 @@ fun TransitairesSubTabContent(
                 }
             }
         }
+        }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        item(key = "kpi_row") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
             Surface(
                 modifier = Modifier
                     .weight(1f)
@@ -373,15 +382,17 @@ fun TransitairesSubTabContent(
                 }
             }
         }
+        }
 
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { showComparisonDialog = true },
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surface,
-            shadowElevation = 1.dp
-        ) {
+        item(key = "tarifs_moment_card") {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showComparisonDialog = true },
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 1.dp
+            ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -583,37 +594,65 @@ fun TransitairesSubTabContent(
                 }
             }
         }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 2.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Tous les transitaires",
-                fontFamily = PlusJakartaSans,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = "$activeCount actifs · $archivedCount archivé",
-                fontFamily = PlusJakartaSans,
-                fontWeight = FontWeight.Medium,
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
 
-        filteredList.forEach { trans ->
-            TransitaireCard(
-                trans = trans,
-                onClick = {
-                    selectedTransitaireForDetail = trans
+        item(key = "section_header") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Tous les transitaires",
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                val actifsLabel = "$activeCount ${if (activeCount > 1) "actifs" else "actif"}"
+                val archivesLabel = "$archivedCount ${if (archivedCount > 1) "archivés" else "archivé"}"
+                Text(
+                    text = "$actifsLabel · $archivesLabel",
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        if (filteredList.isEmpty()) {
+            item(key = "empty_transitaires") {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 1.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = if (searchQuery.isNotBlank()) "Aucun transitaire trouvé pour « $searchQuery »."
+                        else "Aucun transitaire enregistré. Appuyez sur « Nouveau transitaire » pour en ajouter un.",
+                        fontFamily = Inter,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(16.dp)
+                    )
                 }
-            )
+            }
+        } else {
+            items(
+                items = filteredList,
+                key = { it.id }
+            ) { trans ->
+                TransitaireCard(
+                    trans = trans,
+                    onClick = {
+                        selectedTransitaireForDetail = trans
+                    }
+                )
+            }
         }
     }
 
@@ -640,6 +679,7 @@ fun TransitairesSubTabContent(
         TransitairePriceComparisonDialog(
             transitaires = transitaires,
             orders = orders,
+            rateHistory = rateHistory,
             onDismiss = { showComparisonDialog = false }
         )
     }

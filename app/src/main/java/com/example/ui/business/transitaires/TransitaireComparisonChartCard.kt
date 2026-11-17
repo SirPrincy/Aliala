@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.business.CatalogueTransitaireSummaryUi
+import com.example.ui.business.model.TariffGridParser
 import com.example.ui.business.shared.TransitaireColors
 import com.example.ui.theme.Inter
 import com.example.ui.theme.PlusJakartaSans
@@ -159,7 +160,11 @@ internal fun TransitaireComparisonChartCard(
             ) {
                 if (displayedTransitaires.isEmpty()) {
                     Text(
-                        text = "Ajoutez des transitaires pour afficher le graphique comparatif.",
+                        text = if (activeTransitaires.isEmpty()) {
+                            "Ajoutez des transitaires pour afficher le graphique comparatif."
+                        } else {
+                            "Aucun tarif ${if (selectedFretMode == "AERIEN") "aérien" else "maritime"} défini pour vos transitaires actifs."
+                        },
                         fontFamily = Inter,
                         fontSize = 12.sp,
                         color = colors.textSecondary,
@@ -236,18 +241,28 @@ internal fun TransitaireComparisonChartCard(
                 }
             }
 
-            if (displayedTransitaires.isNotEmpty()) {
+            val unratedCount = activeTransitaires.count {
+                (if (selectedFretMode == "AERIEN") it.airRateAr else it.seaRateAr) <= 0L
+            }
+            if (unratedCount > 0) {
+                Text(
+                    text = "$unratedCount transitaire(s) actif(s) sans tarif ${if (selectedFretMode == "AERIEN") "aérien" else "maritime"} défini sont exclus du classement.",
+                    fontFamily = Inter,
+                    fontSize = 11.sp,
+                    color = colors.textSecondary
+                )
+            }
+
+            if (activeTransitaires.isNotEmpty()) {
                 val today = LocalDate.now()
                 val dateFmt = DateTimeFormatter.ofPattern("dd/MM/yyyy")
                 val maritimeSorted = remember(activeTransitaires) {
-                    activeTransitaires.map { t ->
-                        val nums = Regex("\\d+").findAll(t.seaLeadDays).map { it.value.toInt() }.toList()
-                        val minD = nums.firstOrNull() ?: 30
-                        val maxD = nums.lastOrNull() ?: minD
-                        Triple(t, minD, maxD)
+                    activeTransitaires.mapNotNull { t ->
+                        val parsed = TariffGridParser.parseMinMaxDaysOrNull(t.seaLeadDays) ?: return@mapNotNull null
+                        Triple(t, parsed.first, parsed.second)
                     }.sortedBy { it.second }
                 }
-                val fastestMinDays = maritimeSorted.firstOrNull()?.second ?: 30
+                val fastestMinDays = maritimeSorted.firstOrNull()?.second
 
                 Column(
                     modifier = Modifier
@@ -264,54 +279,63 @@ internal fun TransitaireComparisonChartCard(
                         fontSize = 13.sp,
                         color = colors.textPrimary
                     )
-                    Text(
-                        text = "Départ estimé : ${today.format(dateFmt)}",
-                        fontFamily = Inter,
-                        fontSize = 11.sp,
-                        color = colors.textSecondary
-                    )
-                    maritimeSorted.forEach { (t, minD, maxD) ->
-                        val arrivalMin = today.plusDays(minD.toLong()).format(dateFmt)
-                        val arrivalMax = today.plusDays(maxD.toLong()).format(dateFmt)
-                        val arrivalText = if (minD == maxD) arrivalMin else "$arrivalMin - $arrivalMax"
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = t.name,
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp,
-                                    color = colors.textPrimary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = "Arrivée : $arrivalText",
-                                    fontFamily = Inter,
-                                    fontSize = 11.sp,
-                                    color = colors.textSecondary
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(
-                                        if (minD == fastestMinDays) colors.cyanSoftBg
-                                        else colors.badgeNeutralBg
-                                    )
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    if (maritimeSorted.isEmpty()) {
+                        Text(
+                            text = "Aucun délai maritime défini sur vos transitaires actifs.",
+                            fontFamily = Inter,
+                            fontSize = 12.sp,
+                            color = colors.textSecondary
+                        )
+                    } else {
+                        Text(
+                            text = "Départ estimé : ${today.format(dateFmt)}",
+                            fontFamily = Inter,
+                            fontSize = 11.sp,
+                            color = colors.textSecondary
+                        )
+                        maritimeSorted.forEach { (t, minD, maxD) ->
+                            val arrivalMin = today.plusDays(minD.toLong()).format(dateFmt)
+                            val arrivalMax = today.plusDays(maxD.toLong()).format(dateFmt)
+                            val arrivalText = if (minD == maxD) arrivalMin else "$arrivalMin - $arrivalMax"
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = if (minD == maxD) "${minD}j" else "${minD}-${maxD}j",
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    color = if (minD == fastestMinDays) colors.cyanAccent else colors.textPrimary
-                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = t.name,
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 12.sp,
+                                        color = colors.textPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "Arrivée : $arrivalText",
+                                        fontFamily = Inter,
+                                        fontSize = 11.sp,
+                                        color = colors.textSecondary
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            if (fastestMinDays != null && minD == fastestMinDays) colors.cyanSoftBg
+                                            else colors.badgeNeutralBg
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = if (minD == maxD) "${minD}j" else "${minD}-${maxD}j",
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = if (fastestMinDays != null && minD == fastestMinDays) colors.cyanAccent else colors.textPrimary
+                                    )
+                                }
                             }
                         }
                     }

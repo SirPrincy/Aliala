@@ -9,12 +9,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.ReportProblem
@@ -24,6 +28,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,10 +38,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.BusinessOrderEntity
+import com.example.ui.business.shared.rememberTransitaireColors
 import com.example.ui.theme.Inter
 import com.example.ui.theme.PlusJakartaSans
 import com.example.util.CurrencyFormatter
@@ -45,12 +53,14 @@ import java.util.Locale
 @Composable
 internal fun Step5SecurityAndInvoiceCard(
     carrier: String,
-    freightCostAr: Long
+    freightCostAr: Long,
+    isFreightPaid: Boolean
 ) {
+    val colors = rememberTransitaireColors()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 1.dp
     ) {
         Column(
@@ -62,7 +72,7 @@ internal fun Step5SecurityAndInvoiceCard(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = Color(0xFFF2F3FF)
+                color = colors.innerCardBg
             ) {
                 Row(
                     modifier = Modifier
@@ -74,7 +84,7 @@ internal fun Step5SecurityAndInvoiceCard(
                     Icon(
                         imageVector = Icons.Default.Security,
                         contentDescription = null,
-                        tint = Color(0xFF00687A),
+                        tint = colors.cyanAccent,
                         modifier = Modifier.size(20.dp)
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -83,13 +93,13 @@ internal fun Step5SecurityAndInvoiceCard(
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 12.sp,
-                            color = Color(0xFF131B2E)
+                            color = colors.textPrimary
                         )
                         Text(
-                            text = "Le stock ne sera incrémenté qu'après validation complète du contrôle qualité à l'Étape 6. Vos bilans d'inventaire restent protégés.",
+                            text = "Le stock ne sera incrémenté qu'après validation du contrôle qualité à l'Étape 6.",
                             fontFamily = Inter,
                             fontSize = 11.sp,
-                            color = Color(0xFF3D494C),
+                            color = colors.textSecondary,
                             lineHeight = 16.sp
                         )
                     }
@@ -99,7 +109,7 @@ internal fun Step5SecurityAndInvoiceCard(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = Color(0xFFEAEDFF)
+                color = colors.violetSoftBg
             ) {
                 Row(
                     modifier = Modifier
@@ -116,47 +126,53 @@ internal fun Step5SecurityAndInvoiceCard(
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(Color.White),
+                                .background(colors.cardBg),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ReceiptLong,
                                 contentDescription = null,
-                                tint = Color(0xFF712AE2),
+                                tint = colors.violetAccent,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
                         Column {
                             Text(
-                                text = "Facture ${carrier.ifBlank { "Transitaire" }}",
+                                text = if (carrier.isNotBlank()) "Facture $carrier" else "Facture fret",
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.sp,
-                                color = Color(0xFF131B2E)
+                                color = colors.textPrimary
                             )
                             Text(
-                                text = "Solde fret à régler",
+                                text = when {
+                                    freightCostAr <= 0L -> "Tarif non encore calculé"
+                                    isFreightPaid -> "Fret déjà réglé"
+                                    else -> "Solde fret à régler"
+                                },
                                 fontFamily = Inter,
                                 fontSize = 11.sp,
-                                color = Color(0xFF3D494C)
+                                color = colors.textSecondary
                             )
                         }
                     }
 
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            text = CurrencyFormatter.formatAriary(freightCostAr),
+                            text = if (freightCostAr > 0L) CurrencyFormatter.formatAriary(freightCostAr) else "Non défini",
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
-                            color = Color(0xFF712AE2)
+                            color = colors.violetAccent
                         )
-                        Text(
-                            text = "Règlement au retrait",
-                            fontFamily = PlusJakartaSans,
-                            fontSize = 10.sp,
-                            color = Color(0xFF3D494C)
-                        )
+                        if (freightCostAr > 0L) {
+                            Text(
+                                text = if (isFreightPaid) "Payé" else "En attente",
+                                fontFamily = PlusJakartaSans,
+                                fontSize = 10.sp,
+                                color = if (isFreightPaid) colors.successAccent else colors.textSecondary
+                            )
+                        }
                     }
                 }
             }
@@ -165,16 +181,19 @@ internal fun Step5SecurityAndInvoiceCard(
 }
 
 @Composable
-internal fun Step5LiveCostCard(
-    totalDisbursedAr: Long,
-    merchandiseTotalAr: Long,
-    domesticPortAr: Long,
-    freightCostAr: Long
+internal fun Step5CustomsTaxCard(
+    customsTaxInput: String,
+    onCustomsTaxInputChange: (String) -> Unit,
+    customsTaxAr: Long,
+    savedCustomsTaxAr: Long,
+    onSaveCustomsTax: () -> Unit
 ) {
+    val colors = rememberTransitaireColors()
+    val hasPendingChange = customsTaxAr != savedCustomsTaxAr
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 1.dp
     ) {
         Column(
@@ -196,13 +215,169 @@ internal fun Step5LiveCostCard(
                         modifier = Modifier
                             .size(32.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFEAEDFF)),
+                            .background(colors.violetSoftBg),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AccountBalance,
+                            contentDescription = null,
+                            tint = colors.violetAccent,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "Frais de douane & taxes",
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = colors.textPrimary
+                        )
+                        Text(
+                            text = "Dédouanement à Madagascar (optionnel)",
+                            fontFamily = Inter,
+                            fontSize = 11.sp,
+                            color = colors.textSecondary
+                        )
+                    }
+                }
+
+                if (savedCustomsTaxAr > 0L && !hasPendingChange) {
+                    Surface(
+                        shape = RoundedCornerShape(9999.dp),
+                        color = colors.successSoftBg
+                    ) {
+                        Text(
+                            text = "Enregistré",
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            color = colors.successAccent,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = customsTaxInput,
+                    onValueChange = { raw ->
+                        onCustomsTaxInputChange(raw.filter { it.isDigit() })
+                    },
+                    label = { Text("Montant douane (Ar)", fontSize = 12.sp) },
+                    placeholder = { Text("0", fontSize = 13.sp) },
+                    suffix = {
+                        Text(
+                            text = "Ar",
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            color = colors.textSecondary
+                        )
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("input_step5_customs_tax"),
+                    textStyle = TextStyle(
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = colors.textPrimary
+                    ),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.violetAccent,
+                        unfocusedBorderColor = colors.border.copy(alpha = 0.5f),
+                        focusedContainerColor = colors.innerCardBg,
+                        unfocusedContainerColor = colors.innerCardBg
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Button(
+                    onClick = onSaveCustomsTax,
+                    enabled = hasPendingChange,
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("btn_save_step5_customs_tax"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.violetSolidBg,
+                        disabledContainerColor = colors.badgeNeutralBg
+                    )
+                ) {
+                    Text(
+                        text = "Appliquer",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = if (hasPendingChange) Color.White else colors.textSecondary
+                    )
+                }
+            }
+
+            Text(
+                text = if (customsTaxAr > 0L) {
+                    "Montant saisi : ${CurrencyFormatter.formatAriary(customsTaxAr)} (inclus dans le coût unitaire FIFO)"
+                } else {
+                    "Aucun droit de douane saisi (0 Ar)."
+                },
+                fontFamily = Inter,
+                fontSize = 11.sp,
+                color = colors.textSecondary
+            )
+        }
+    }
+}
+
+@Composable
+internal fun Step5LiveCostCard(
+    arrivalShortName: String,
+    totalDisbursedAr: Long,
+    merchandiseTotalAr: Long,
+    domesticPortAr: Long,
+    freightCostAr: Long,
+    customsTaxAr: Long
+) {
+    val colors = rememberTransitaireColors()
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = colors.cardBg,
+        shadowElevation = 1.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colors.cyanSoftBg),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Calculate,
                             contentDescription = null,
-                            tint = Color(0xFF00687A),
+                            tint = colors.cyanAccent,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -211,20 +386,20 @@ internal fun Step5LiveCostCard(
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
-                        color = Color(0xFF131B2E)
+                        color = colors.textPrimary
                     )
                 }
 
                 Surface(
                     shape = RoundedCornerShape(9999.dp),
-                    color = Color(0xFFACEDFF).copy(alpha = 0.40f)
+                    color = colors.cyanSoftBg
                 ) {
                     Text(
                         text = "Consolidé",
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
                         fontSize = 10.sp,
-                        color = Color(0xFF00687A),
+                        color = colors.cyanAccent,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                     )
                 }
@@ -233,7 +408,7 @@ internal fun Step5LiveCostCard(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = Color(0xFFFAF8FF)
+                color = colors.subtleBg
             ) {
                 Column(
                     modifier = Modifier
@@ -250,14 +425,14 @@ internal fun Step5LiveCostCard(
                             text = "Total déboursé réel",
                             fontFamily = Inter,
                             fontSize = 12.sp,
-                            color = Color(0xFF3D494C)
+                            color = colors.textSecondary
                         )
                         Text(
                             text = CurrencyFormatter.formatAriary(totalDisbursedAr),
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 20.sp,
-                            color = Color(0xFF00687A)
+                            color = colors.cyanAccent
                         )
                     }
 
@@ -267,24 +442,34 @@ internal fun Step5LiveCostCard(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Marchandise usine (Chine)", fontFamily = Inter, fontSize = 12.sp, color = Color(0xFF3D494C))
-                        Text(CurrencyFormatter.formatAriary(merchandiseTotalAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color(0xFF131B2E))
+                        Text("Marchandise usine (Chine)", fontFamily = Inter, fontSize = 12.sp, color = colors.textSecondary)
+                        Text(CurrencyFormatter.formatAriary(merchandiseTotalAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = colors.textPrimary)
                     }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Port Chine & logistique locale", fontFamily = Inter, fontSize = 12.sp, color = Color(0xFF3D494C))
-                        Text(CurrencyFormatter.formatAriary(domesticPortAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color(0xFF131B2E))
+                        Text("Port Chine & logistique locale", fontFamily = Inter, fontSize = 12.sp, color = colors.textSecondary)
+                        Text(CurrencyFormatter.formatAriary(domesticPortAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = colors.textPrimary)
                     }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Fret & Dédouanement Ivato", fontFamily = Inter, fontSize = 12.sp, color = Color(0xFF3D494C))
-                        Text(CurrencyFormatter.formatAriary(freightCostAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color(0xFF131B2E))
+                        Text("Fret international ($arrivalShortName)", fontFamily = Inter, fontSize = 12.sp, color = colors.textSecondary)
+                        Text(CurrencyFormatter.formatAriary(freightCostAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = colors.textPrimary)
+                    }
+
+                    if (customsTaxAr > 0L) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Douane & taxes", fontFamily = Inter, fontSize = 12.sp, color = colors.textSecondary)
+                            Text(CurrencyFormatter.formatAriary(customsTaxAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = colors.textPrimary)
+                        }
                     }
                 }
             }
@@ -297,13 +482,15 @@ internal fun Step5BottomActionsCard(
     receivedParcelsCount: Int,
     expectedParcels: Int,
     onValidateArrival: () -> Unit,
-    onOpenIncidentDialog: () -> Unit
+    onOpenIncidentDialog: () -> Unit,
+    onPreviousStep: () -> Unit
 ) {
+    val colors = rememberTransitaireColors()
     val canAdvance = receivedParcelsCount > 0
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 2.dp
     ) {
         Column(
@@ -317,14 +504,15 @@ internal fun Step5BottomActionsCard(
                 enabled = canAdvance,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
+                    .heightIn(min = 52.dp)
                     .testTag("btn_validate_arrival_and_qc"),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF00687A),
-                    disabledContainerColor = Color(0xFFBCC9CD)
+                    containerColor = colors.cyanSolidBg,
+                    disabledContainerColor = colors.badgeNeutralBg
                 ),
                 shape = RoundedCornerShape(12.dp)
             ) {
+                val ctaColor = if (canAdvance) Color.White else colors.textSecondary
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -334,12 +522,12 @@ internal fun Step5BottomActionsCard(
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
-                        color = Color.White
+                        color = ctaColor
                     )
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = ctaColor,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -349,23 +537,46 @@ internal fun Step5BottomActionsCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onOpenIncidentDialog)
-                    .padding(vertical = 4.dp),
+                    .padding(vertical = 6.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = Icons.Default.ReportProblem,
                     contentDescription = null,
-                    tint = Color(0xFFBA1A1A),
+                    tint = colors.dangerAccent,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "Signaler un carton endommagé ou manquant",
+                    text = "Signaler un colis endommagé ou manquant",
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Medium,
                     fontSize = 12.sp,
-                    color = Color(0xFFBA1A1A)
+                    color = colors.dangerAccent
+                )
+            }
+
+            TextButton(
+                onClick = onPreviousStep,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .heightIn(min = 44.dp)
+                    .testTag("btn_back_to_step4")
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = null,
+                    tint = colors.textSecondary,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Retour à l'étape 4 (Transit)",
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp,
+                    color = colors.textSecondary
                 )
             }
         }
@@ -375,70 +586,41 @@ internal fun Step5BottomActionsCard(
 @Composable
 internal fun Step5Dialogs(
     order: BusinessOrderEntity,
+    isMaritime: Boolean,
+    arrivalPortName: String,
     expectedParcels: Int,
     weightKg: Double,
-    showAddPhotoDialog: Boolean,
     showIncidentDialog: Boolean,
     incidentDescription: String,
     showColisDetailsDialog: Boolean,
-    onDismissAddPhoto: () -> Unit,
-    onConfirmAddPhoto: () -> Unit,
     onDismissIncident: () -> Unit,
     onIncidentDescriptionChange: (String) -> Unit,
     onConfirmIncident: () -> Unit,
     onDismissColisDetails: () -> Unit
 ) {
-    if (showAddPhotoDialog) {
-        AlertDialog(
-            onDismissRequest = onDismissAddPhoto,
-            title = {
-                Text("Prendre une photo à l'arrivée", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            },
-            text = {
-                Text(
-                    "Photographiez le déchargement des cartons sur le quai d'Ivato pour certifier l'intégrité des scellés.",
-                    fontFamily = Inter,
-                    fontSize = 13.sp,
-                    color = Color(0xFF3D494C)
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = onConfirmAddPhoto,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00687A))
-                ) {
-                    Text("Capturer", color = Color.White)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onDismissAddPhoto) {
-                    Text("Annuler")
-                }
-            }
-        )
-    }
+    val colors = rememberTransitaireColors()
 
     if (showIncidentDialog) {
         AlertDialog(
             onDismissRequest = onDismissIncident,
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.ReportProblem, contentDescription = null, tint = Color(0xFFBA1A1A))
+                    Icon(Icons.Default.ReportProblem, contentDescription = null, tint = colors.dangerAccent)
                     Text("Signaler une anomalie", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "Précisez les dommages constatés sur les colis au hub Ivato (carton écrasé, bande décollée, manquant) :",
+                        "Précisez les dommages ou manquants constatés à l'arrivée ($arrivalPortName) :",
                         fontFamily = Inter,
                         fontSize = 12.sp,
-                        color = Color(0xFF3D494C)
+                        color = colors.textSecondary
                     )
                     OutlinedTextField(
                         value = incidentDescription,
                         onValueChange = onIncidentDescriptionChange,
-                        placeholder = { Text("Ex: Colis 2 coin écrasé, ruban déchiré...") },
+                        placeholder = { Text("Ex: Colis abîmé, quantité manquante...") },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -446,7 +628,7 @@ internal fun Step5Dialogs(
             confirmButton = {
                 Button(
                     onClick = onConfirmIncident,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBA1A1A))
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.dangerAccent)
                 ) {
                     Text("Enregistrer", color = Color.White)
                 }
@@ -463,36 +645,64 @@ internal fun Step5Dialogs(
         AlertDialog(
             onDismissRequest = onDismissColisDetails,
             title = {
-                Text("Détail inspection Colis", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Détail du lot à l'arrivée", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val measureLabel = if (isMaritime) {
+                        val vol = order.volumeM3
+                        if (vol != null && vol > 0.0 && expectedParcels > 0) {
+                            "Volume par colis : ${String.format(Locale.FRENCH, "%.5f", vol / expectedParcels)} m³"
+                        } else {
+                            "Volume : Non renseigné"
+                        }
+                    } else {
+                        if (weightKg > 0.0 && expectedParcels > 0) {
+                            "Poids par colis : ${String.format(Locale.US, "%.1f", weightKg / expectedParcels)} kg"
+                        } else {
+                            "Poids : Non renseigné"
+                        }
+                    }
                     Text(
-                        "Poids estimé : ${if (expectedParcels > 0 && weightKg > 0) String.format(Locale.US, "%.1f", weightKg / expectedParcels) + " kg" else "—"}",
+                        text = measureLabel,
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp,
-                        color = Color(0xFF131B2E)
+                        color = colors.textPrimary
                     )
                     val contentSummary = order.variants.ifBlank { order.product.ifBlank { "Articles commandés" } }
-                    Text("Contenu théorique : $contentSummary", fontFamily = Inter, fontSize = 12.sp, color = Color(0xFF3D494C))
-                    Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFFF2F3FF), modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = "Observation déchargement : Colis inspecté à Ivato avec scellé ${order.carrier.ifBlank { "transitaire" }} intact. Aucun article exposé.",
-                            fontFamily = Inter,
-                            fontSize = 11.sp,
-                            color = Color(0xFF3D494C),
-                            modifier = Modifier.padding(10.dp)
-                        )
+                    Text("Contenu : $contentSummary", fontFamily = Inter, fontSize = 12.sp, color = colors.textSecondary)
+                    Text("Point d'arrivée : $arrivalPortName", fontFamily = Inter, fontSize = 12.sp, color = colors.textSecondary)
+                    if (order.receptionNotes.isNotBlank()) {
+                        Surface(shape = RoundedCornerShape(8.dp), color = colors.innerCardBg, modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "Note entrepôt : ${order.receptionNotes}",
+                                fontFamily = Inter,
+                                fontSize = 11.sp,
+                                color = colors.textSecondary,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+                    if (order.incidentReport.isNotBlank()) {
+                        Surface(shape = RoundedCornerShape(8.dp), color = colors.dangerSoftBg, modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "Anomalie : ${order.incidentReport}",
+                                fontFamily = Inter,
+                                fontSize = 11.sp,
+                                color = colors.dangerAccent,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
                     }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = onDismissColisDetails,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00687A))
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.cyanSolidBg)
                 ) {
-                    Text("Compris", color = Color.White)
+                    Text("Fermer", color = Color.White)
                 }
             }
         )

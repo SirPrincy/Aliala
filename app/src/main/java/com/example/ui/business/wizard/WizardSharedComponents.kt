@@ -286,9 +286,11 @@ internal fun WizardSelectTransitaireDialog(
                         transitaires.forEach { t ->
                             val isSel = selectedCarrierTmp.equals(t.name, ignoreCase = true)
                             val rateLine = if (selectedModeTmp == "MARITIME") {
-                                "${CurrencyFormatter.formatAriary(t.seaRateAr)}/m³ · ${t.seaLeadDays}"
+                                val rateTxt = if (t.seaRateAr > 0L) "${CurrencyFormatter.formatAriary(t.seaRateAr)}/m³" else "Tarif maritime non défini"
+                                if (t.seaLeadDays.isNotBlank()) "$rateTxt · ${t.seaLeadDays}" else rateTxt
                             } else {
-                                "${CurrencyFormatter.formatAriary(t.airRateAr)}/kg · ${t.airLeadDays}"
+                                val rateTxt = if (t.airRateAr > 0L) "${CurrencyFormatter.formatAriary(t.airRateAr)}/kg" else "Tarif aérien non défini"
+                                if (t.airLeadDays.isNotBlank()) "$rateTxt · ${t.airLeadDays}" else rateTxt
                             }
                             Surface(
                                 shape = RoundedCornerShape(10.dp),

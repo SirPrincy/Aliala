@@ -75,11 +75,12 @@ class SalesManager(private val repository: AppRepository) {
         saleSource: String,
         domain: String,
         linkedOrderId: Long? = null,
-        accountName: String = ""
+        accountName: String = "",
+        saleDateMillis: Long = System.currentTimeMillis()
     ): String {
         val totalPrice = unitPriceAr * quantity
         val trimmedClientName = clientName.trim()
-        val nowMs = System.currentTimeMillis()
+        val nowMs = saleDateMillis.takeIf { it > 0L } ?: System.currentTimeMillis()
         val cleanAccount = accountName.trim()
         val paymentMethodLabel = when {
             cleanAccount.isNotBlank() && !cleanAccount.equals("Hors caisse", ignoreCase = true) -> cleanAccount
@@ -121,6 +122,8 @@ class SalesManager(private val repository: AppRepository) {
                     totalPriceAr = totalPrice,
                     paidAmountAr = actualPaid,
                     isFullyPaid = actualPaid >= totalPrice,
+                    saleDate = nowMs,
+                    dueDate = nowMs + 15 * 86400000L,
                     invoiceNumber = invoiceNum,
                     saleSource = saleSource,
                     domain = domain,
@@ -198,6 +201,17 @@ class SalesManager(private val repository: AppRepository) {
             )
         )
         return "Vente enregistrée pour $clientName"
+    }
+
+    suspend fun updateSaleDate(sale: BusinessSaleEntity, newSaleDateMillis: Long): String {
+        val resolved = newSaleDateMillis.takeIf { it > 0L } ?: System.currentTimeMillis()
+        repository.updateBusinessSale(
+            sale.copy(
+                saleDate = resolved,
+                dueDate = resolved + 15 * 86400000L
+            )
+        )
+        return "Date de vente mise à jour pour ${sale.invoiceNumber.ifBlank { sale.clientName }}"
     }
 
     suspend fun deleteSale(sale: BusinessSaleEntity): String {

@@ -4,6 +4,7 @@ import com.example.data.local.entity.BusinessOrderEntity
 import com.example.ui.business.BusinessClientUi
 import com.example.ui.business.BusinessNotificationUi
 import com.example.ui.business.FamilyFilterUi
+import com.example.util.BordereauUtils
 import com.example.util.CurrencyFormatter
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -97,7 +98,8 @@ internal fun mapPurchasesSection(
                 order.carrier.contains(q, ignoreCase = true) ||
                 order.platform.contains(q, ignoreCase = true) ||
                 order.lotNumber.contains(q, ignoreCase = true) ||
-                order.assignedClient.contains(q, ignoreCase = true)
+                order.assignedClient.contains(q, ignoreCase = true) ||
+                (BordereauUtils.resolveCodeOrNull(order)?.contains(q, ignoreCase = true) == true)
         }
         matchStatus && matchCategory && matchSearch
     }.let { list ->

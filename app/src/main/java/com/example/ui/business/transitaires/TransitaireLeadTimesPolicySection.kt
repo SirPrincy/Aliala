@@ -61,15 +61,16 @@ fun TransitaireLeadTimesPolicySection(
     val colors = rememberTransitaireColors()
     var selectedMode by remember { mutableStateOf("AÉRIEN") }
 
-    val (airMin, airMax) = remember(airLeadDays) {
-        TariffGridParser.parseMinMaxDays(airLeadDays, 7, 10)
-    }
-    val (airFastMin, airFastMax) = remember(airFastLeadDays) {
-        TariffGridParser.parseMinMaxDays(airFastLeadDays, 3, 5)
-    }
-    val (seaMin, seaMax) = remember(seaLeadDays) {
-        TariffGridParser.parseMinMaxDays(seaLeadDays, 30, 45)
-    }
+    val airParsed = remember(airLeadDays) { TariffGridParser.parseMinMaxDaysOrNull(airLeadDays) }
+    val airFastParsed = remember(airFastLeadDays) { TariffGridParser.parseMinMaxDaysOrNull(airFastLeadDays) }
+    val seaParsed = remember(seaLeadDays) { TariffGridParser.parseMinMaxDaysOrNull(seaLeadDays) }
+
+    val airMin = airParsed?.first ?: 0
+    val airMax = airParsed?.second ?: 0
+    val airFastMin = airFastParsed?.first ?: 0
+    val airFastMax = airFastParsed?.second ?: 0
+    val seaMin = seaParsed?.first ?: 0
+    val seaMax = seaParsed?.second ?: 0
 
     val activeAccent = if (selectedMode == "AÉRIEN") colors.cyanAccent else colors.violetAccent
     val activeSoftBg = if (selectedMode == "AÉRIEN") colors.cyanSoftBg else colors.violetSoftBg
@@ -127,7 +128,7 @@ fun TransitaireLeadTimesPolicySection(
                             color = colors.textPrimary
                         )
                         Text(
-                            text = "Estimation d'arrivée (en jours) et conditions",
+                            text = "Optionnel — laissez vide si non défini",
                             fontFamily = Inter,
                             fontSize = 12.sp,
                             color = colors.textSecondary
@@ -135,16 +136,21 @@ fun TransitaireLeadTimesPolicySection(
                     }
                 }
 
+                val summaryText = listOfNotNull(
+                    airParsed?.let { "${it.first}–${it.second}j Air" },
+                    seaParsed?.let { "${it.first}–${it.second}j Mer" }
+                ).joinToString(" · ").ifBlank { "Non défini" }
+
                 Surface(
                     shape = RoundedCornerShape(9999.dp),
                     color = colors.badgeNeutralBg
                 ) {
                     Text(
-                        text = "$airMin–${airMax}j · $seaMin–${seaMax}j",
+                        text = summaryText,
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,
-                        color = colors.textPrimary,
+                        color = if (summaryText == "Non défini") colors.textSecondary else colors.textPrimary,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
@@ -181,8 +187,13 @@ fun TransitaireLeadTimesPolicySection(
                             tint = if (isAir) Color.White else colors.textSecondary,
                             modifier = Modifier.size(17.dp)
                         )
+                        val airLabel = when {
+                            airParsed != null -> "Aérien (${airParsed.first}–${airParsed.second}j)"
+                            airFastParsed != null -> "Aérien (${airFastParsed.first}–${airFastParsed.second}j)"
+                            else -> "Aérien"
+                        }
                         Text(
-                            text = "Aérien ($airFastMin–${airMax}j)",
+                            text = airLabel,
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
@@ -211,8 +222,9 @@ fun TransitaireLeadTimesPolicySection(
                             tint = if (isSea) Color.White else colors.textSecondary,
                             modifier = Modifier.size(17.dp)
                         )
+                        val seaLabel = if (seaParsed != null) "Maritime (${seaParsed.first}–${seaParsed.second}j)" else "Maritime"
                         Text(
-                            text = "Maritime ($seaMin–${seaMax}j)",
+                            text = seaLabel,
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
@@ -235,10 +247,12 @@ fun TransitaireLeadTimesPolicySection(
                     scaleMaxDays = 21,
                     minDays = airMin,
                     maxDays = airMax,
+                    isDefined = airParsed != null,
                     presets = listOf(Pair(5, 7), Pair(7, 10), Pair(10, 14)),
                     onDaysChange = { min, max ->
                         onAirLeadDaysChange(TariffGridParser.formatLeadDays(min, max))
-                    }
+                    },
+                    onClear = { onAirLeadDaysChange("") }
                 )
 
                 LeadTimeCard(
@@ -253,10 +267,12 @@ fun TransitaireLeadTimesPolicySection(
                     scaleMaxDays = 14,
                     minDays = airFastMin,
                     maxDays = airFastMax,
+                    isDefined = airFastParsed != null,
                     presets = listOf(Pair(2, 3), Pair(3, 5), Pair(4, 6)),
                     onDaysChange = { min, max ->
                         onAirFastLeadDaysChange(TariffGridParser.formatLeadDays(min, max))
-                    }
+                    },
+                    onClear = { onAirFastLeadDaysChange("") }
                 )
             } else {
                 LeadTimeCard(
@@ -271,10 +287,12 @@ fun TransitaireLeadTimesPolicySection(
                     scaleMaxDays = 75,
                     minDays = seaMin,
                     maxDays = seaMax,
+                    isDefined = seaParsed != null,
                     presets = listOf(Pair(25, 35), Pair(30, 45), Pair(45, 60)),
                     onDaysChange = { min, max ->
                         onSeaLeadDaysChange(TariffGridParser.formatLeadDays(min, max))
-                    }
+                    },
+                    onClear = { onSeaLeadDaysChange("") }
                 )
             }
 

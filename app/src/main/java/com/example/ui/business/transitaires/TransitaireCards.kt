@@ -271,15 +271,15 @@ internal fun TransitaireCard(
                             Icon(
                                 imageVector = Icons.Default.Flight,
                                 contentDescription = null,
-                                tint = Color(0xFF00687A),
+                                tint = if (trans.airRateAr > 0L) Color(0xFF00687A) else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
-                                text = "${CurrencyFormatter.formatAriary(trans.airRateAr)}/kg",
+                                text = if (trans.airRateAr > 0L) "${CurrencyFormatter.formatAriary(trans.airRateAr)}/kg" else "Aérien : Non défini",
                                 fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.SemiBold,
+                                fontWeight = if (trans.airRateAr > 0L) FontWeight.SemiBold else FontWeight.Medium,
                                 fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = if (trans.airRateAr > 0L) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             if (trans.isAirCheapest) {
                                 Box(
@@ -291,7 +291,18 @@ internal fun TransitaireCard(
                                     Text("Moins cher", fontFamily = PlusJakartaSans, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00424F))
                                 }
                             } else if (trans.airRateTrend.isNotBlank()) {
-                                MiniSparkline(isUp = true, color = Color(0xFFBA1A1A))
+                                val airDown = trans.airRateTrend.startsWith("-")
+                                MiniSparkline(
+                                    isUp = !airDown,
+                                    color = if (airDown) Color(0xFF06B6D4) else Color(0xFFBA1A1A)
+                                )
+                                Text(
+                                    text = trans.airRateTrend,
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp,
+                                    color = if (airDown) Color(0xFF00687A) else Color(0xFFBA1A1A)
+                                )
                             }
                         }
                     }
@@ -309,21 +320,56 @@ internal fun TransitaireCard(
                             Icon(
                                 imageVector = Icons.Default.DirectionsBoat,
                                 contentDescription = null,
-                                tint = Color(0xFF005AC2),
+                                tint = if (trans.seaRateAr > 0L) Color(0xFF005AC2) else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
-                                text = "${CurrencyFormatter.formatAriary(trans.seaRateAr)}/m³",
+                                text = if (trans.seaRateAr > 0L) "${CurrencyFormatter.formatAriary(trans.seaRateAr)}/m³" else "Maritime : Non défini",
                                 fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.SemiBold,
+                                fontWeight = if (trans.seaRateAr > 0L) FontWeight.SemiBold else FontWeight.Medium,
                                 fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = if (trans.seaRateAr > 0L) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            if (trans.seaRateTrend == "-3.2%") {
-                                MiniSparkline(isUp = false, color = Color(0xFF06B6D4))
+                            if (trans.seaRateTrend.isNotBlank()) {
+                                val seaDown = trans.seaRateTrend.startsWith("-")
+                                MiniSparkline(
+                                    isUp = !seaDown,
+                                    color = if (seaDown) Color(0xFF06B6D4) else Color(0xFFBA1A1A)
+                                )
+                                Text(
+                                    text = trans.seaRateTrend,
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp,
+                                    color = if (seaDown) Color(0xFF00687A) else Color(0xFFBA1A1A)
+                                )
                             }
                         }
                     }
+                }
+
+                if (trans.rateApplicationDate.isNotBlank() && (trans.airRateAr > 0L || trans.airFastRateAr > 0L || trans.seaRateAr > 0L)) {
+                    Text(
+                        text = "En vigueur depuis le ${trans.rateApplicationDate}",
+                        fontFamily = Inter,
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                val realStatsParts = buildList {
+                    trans.avgAirTransitDays?.let { add("Aérien ${com.example.util.TransitStatsCalculator.formatDaysAvg(it)}") }
+                    trans.avgSeaTransitDays?.let { add("Maritime ${com.example.util.TransitStatsCalculator.formatDaysAvg(it)}") }
+                    trans.avgTotalDays?.let { add("Total ${com.example.util.TransitStatsCalculator.formatDaysAvg(it)}") }
+                }
+                if (realStatsParts.isNotEmpty()) {
+                    Text(
+                        text = "Délai réel moy. : ${realStatsParts.joinToString(" · ")}",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
 
                 Row(

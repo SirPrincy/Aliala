@@ -24,6 +24,7 @@ import com.example.data.local.dao.LoanDao
 import com.example.data.local.dao.SalePaymentDao
 import com.example.data.local.dao.TaskDao
 import com.example.data.local.dao.TransactionDao
+import com.example.data.local.dao.TransitaireRateHistoryDao
 import com.example.data.local.dao.WalletDao
 import com.example.data.local.dao.YuanTransactionDao
 import com.example.data.local.entity.BudgetEntity
@@ -47,6 +48,7 @@ import com.example.data.local.entity.LoanPaymentEntity
 import com.example.data.local.entity.SalePaymentEntity
 import com.example.data.local.entity.TaskEntity
 import com.example.data.local.entity.TransactionEntity
+import com.example.data.local.entity.TransitaireRateHistoryEntity
 import com.example.data.local.entity.WalletEntity
 import com.example.data.local.entity.YuanTransactionEntity
 import kotlinx.coroutines.CoroutineScope
@@ -77,9 +79,10 @@ import kotlinx.coroutines.launch
         BusinessTransactionEntity::class,
         BusinessInvestmentEntity::class,
         BusinessDebtEntity::class,
-        BusinessDebtPaymentEntity::class
+        BusinessDebtPaymentEntity::class,
+        TransitaireRateHistoryEntity::class
     ],
-    version = 25,
+    version = 27,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -98,6 +101,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun cataloguePlatformDao(): CataloguePlatformDao
     abstract fun clientDao(): ClientDao
     abstract fun catalogueTransitaireDao(): CatalogueTransitaireDao
+    abstract fun transitaireRateHistoryDao(): TransitaireRateHistoryDao
     abstract fun salePaymentDao(): SalePaymentDao
     abstract fun businessAccountDao(): BusinessAccountDao
     abstract fun businessTransactionDao(): BusinessTransactionDao
@@ -241,13 +245,44 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_25_26 = object : Migration(25, 26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `transitaire_rate_history` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `transitaireId` INTEGER NOT NULL,
+                        `transitaireName` TEXT NOT NULL,
+                        `mode` TEXT NOT NULL,
+                        `oldRateAr` INTEGER NOT NULL,
+                        `newRateAr` INTEGER NOT NULL,
+                        `deltaAr` INTEGER NOT NULL,
+                        `deltaPercent` REAL NOT NULL,
+                        `changedAtMillis` INTEGER NOT NULL,
+                        `effectiveDateLabel` TEXT NOT NULL,
+                        `note` TEXT NOT NULL,
+                        `isDemo` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
+        val MIGRATION_26_27 = object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `business_orders` ADD COLUMN `warehouseArrivalDate` INTEGER DEFAULT NULL")
+                db.execSQL("ALTER TABLE `business_orders` ADD COLUMN `madaDispatchDate` INTEGER DEFAULT NULL")
+                db.execSQL("ALTER TABLE `business_orders` ADD COLUMN `madaArrivalDate` INTEGER DEFAULT NULL")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "ma_vie_database.db"
-                ).addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25)
+                ).addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)

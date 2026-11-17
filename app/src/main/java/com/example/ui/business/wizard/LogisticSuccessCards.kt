@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -30,6 +31,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.BusinessOrderEntity
+import com.example.ui.business.shared.VariantColorUtils
+import com.example.ui.business.shared.rememberTransitaireColors
 import com.example.ui.theme.Inter
 import com.example.ui.theme.PlusJakartaSans
 import com.example.util.CurrencyFormatter
@@ -38,10 +41,11 @@ import java.util.Locale
 
 @Composable
 internal fun SuccessHeroCelebrationCard(order: BusinessOrderEntity) {
+    val colors = rememberTransitaireColors()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 2.dp
     ) {
         Box(
@@ -55,14 +59,14 @@ internal fun SuccessHeroCelebrationCard(order: BusinessOrderEntity) {
                     .size(120.dp)
                     .offset(x = 180.dp, y = (-40).dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF06B6D4).copy(alpha = 0.08f))
+                    .background(colors.cyanSolidBg.copy(alpha = 0.08f))
             )
             Box(
                 modifier = Modifier
                     .size(100.dp)
                     .offset(x = (-30).dp, y = 100.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF712AE2).copy(alpha = 0.06f))
+                    .background(colors.violetAccent.copy(alpha = 0.06f))
             )
 
             Column(
@@ -78,14 +82,14 @@ internal fun SuccessHeroCelebrationCard(order: BusinessOrderEntity) {
                         modifier = Modifier
                             .size(80.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF06B6D4).copy(alpha = 0.2f)),
+                            .background(colors.cyanSoftBg),
                         contentAlignment = Alignment.Center
                     ) {
                         Box(
                             modifier = Modifier
                                 .size(56.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFF00687A)),
+                                .background(colors.cyanSolidBg),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -117,7 +121,7 @@ internal fun SuccessHeroCelebrationCard(order: BusinessOrderEntity) {
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold,
                     fontSize = 22.sp,
-                    color = Color(0xFF131B2E),
+                    color = colors.textPrimary,
                     textAlign = TextAlign.Center
                 )
 
@@ -133,18 +137,18 @@ internal fun SuccessHeroCelebrationCard(order: BusinessOrderEntity) {
                             text = "Le lot ",
                             fontFamily = Inter,
                             fontSize = 14.sp,
-                            color = Color(0xFF3D494C)
+                            color = colors.textSecondary
                         )
                         Surface(
                             shape = RoundedCornerShape(9999.dp),
-                            color = Color(0xFF06B6D4).copy(alpha = 0.15f)
+                            color = colors.cyanSoftBg
                         ) {
                             Text(
                                 text = order.lotNumber.ifBlank { "Lot #${order.id}" },
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,
-                                color = Color(0xFF00687A),
+                                color = colors.cyanAccent,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                             )
                         }
@@ -152,21 +156,21 @@ internal fun SuccessHeroCelebrationCard(order: BusinessOrderEntity) {
                             text = " de ${order.product.ifBlank { "Article #${order.id}" }}",
                             fontFamily = Inter,
                             fontSize = 14.sp,
-                            color = Color(0xFF3D494C)
+                            color = colors.textSecondary
                         )
                     }
                     Text(
                         text = "est maintenant enregistré dans le stock actif.",
                         fontFamily = Inter,
                         fontSize = 14.sp,
-                        color = Color(0xFF3D494C),
+                        color = colors.textSecondary,
                         textAlign = TextAlign.Center
                     )
                 }
 
                 Surface(
                     shape = RoundedCornerShape(9999.dp),
-                    color = Color(0xFFF2F3FF),
+                    color = colors.innerCardBg,
                     modifier = Modifier.padding(top = 4.dp)
                 ) {
                     Row(
@@ -177,7 +181,7 @@ internal fun SuccessHeroCelebrationCard(order: BusinessOrderEntity) {
                         Icon(
                             imageVector = Icons.Default.EventAvailable,
                             contentDescription = null,
-                            tint = Color(0xFF00687A),
+                            tint = colors.cyanAccent,
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
@@ -185,7 +189,7 @@ internal fun SuccessHeroCelebrationCard(order: BusinessOrderEntity) {
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Medium,
                             fontSize = 12.sp,
-                            color = Color(0xFF3D494C)
+                            color = colors.textSecondary
                         )
                     }
                 }
@@ -198,19 +202,14 @@ internal fun SuccessHeroCelebrationCard(order: BusinessOrderEntity) {
 internal fun SuccessStockIntegrationCard(
     order: BusinessOrderEntity,
     totalVendable: Int,
-    v1Name: String,
-    v2Name: String,
-    v3Name: String,
-    v1Count: Int,
-    v2Count: Int,
-    v3Count: Int,
-    v4Count: Int,
+    variantsBreakdown: List<Pair<String, Int>>,
     refundAr: Long
 ) {
+    val colors = rememberTransitaireColors()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 2.dp
     ) {
         Column(
@@ -232,13 +231,13 @@ internal fun SuccessStockIntegrationCard(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF06B6D4).copy(alpha = 0.2f)),
+                            .background(colors.cyanSoftBg),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Inventory2,
                             contentDescription = null,
-                            tint = Color(0xFF00687A),
+                            tint = colors.cyanAccent,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -248,13 +247,13 @@ internal fun SuccessStockIntegrationCard(
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
-                            color = Color(0xFF131B2E)
+                            color = colors.textPrimary
                         )
                         Text(
                             text = "Inventaire physique réceptionné",
                             fontFamily = Inter,
                             fontSize = 12.sp,
-                            color = Color(0xFF3D494C)
+                            color = colors.textSecondary
                         )
                     }
                 }
@@ -265,7 +264,7 @@ internal fun SuccessStockIntegrationCard(
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 28.sp,
-                        color = Color(0xFF00687A),
+                        color = colors.cyanAccent,
                         lineHeight = 28.sp
                     )
                     Text(
@@ -273,69 +272,42 @@ internal fun SuccessStockIntegrationCard(
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
                         fontSize = 10.sp,
-                        color = Color(0xFF3D494C),
+                        color = colors.textSecondary,
                         letterSpacing = 1.sp
                     )
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SuccessVariantTile(
-                    name = v1Name,
-                    count = v1Count,
-                    dotColor = Color(0xFF131B2E),
-                    dotBorderColor = Color(0xFFEAEDFF),
-                    statusDotColor = Color(0xFF00687A),
-                    statusLabel = "Prêt à la vente",
-                    statusTextColor = Color(0xFF00687A),
-                    modifier = Modifier.weight(1f)
-                )
-                SuccessVariantTile(
-                    name = v2Name,
-                    count = v2Count,
-                    dotColor = Color.White,
-                    dotBorderColor = Color(0xFFBCC9CD),
-                    statusDotColor = Color(0xFF00687A),
-                    statusLabel = "Prêt à la vente",
-                    statusTextColor = Color(0xFF00687A),
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SuccessVariantTile(
-                    name = v3Name,
-                    count = v3Count,
-                    dotColor = Color(0xFFEF4444),
-                    dotBorderColor = null,
-                    statusDotColor = Color(0xFF00687A),
-                    statusLabel = "Prêt à la vente",
-                    statusTextColor = Color(0xFF00687A),
-                    modifier = Modifier.weight(1f)
-                )
-                SuccessVariantTile(
-                    name = "Rouge Sport",
-                    count = v4Count,
-                    dotColor = Color(0xFFF59E0B),
-                    dotBorderColor = null,
-                    statusDotColor = Color(0xFFF59E0B),
-                    statusLabel = "Déstockage / Prix réduit",
-                    statusTextColor = Color(0xFF3D494C),
-                    statusFontSizeSp = 9,
-                    modifier = Modifier.weight(1f)
-                )
+            variantsBreakdown.chunked(2).forEachIndexed { rowIdx, rowItems ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    rowItems.forEachIndexed { colIdx, (name, count) ->
+                        val globalIdx = rowIdx * 2 + colIdx
+                        val dotColor = VariantColorUtils.getVariantColor(name, globalIdx)
+                        val dotBorder = if (VariantColorUtils.isLightColor(dotColor)) colors.border else null
+                        SuccessVariantTile(
+                            name = name,
+                            count = count,
+                            dotColor = dotColor,
+                            dotBorderColor = dotBorder,
+                            statusDotColor = if (count > 0) colors.cyanAccent else colors.textSecondary,
+                            statusLabel = if (count > 0) "Prêt à la vente" else "Épuisé",
+                            statusTextColor = if (count > 0) colors.cyanAccent else colors.textSecondary,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    if (rowItems.size == 1 && variantsBreakdown.size > 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
             }
 
             val hasAnomalies = order.lostCount > 0 || order.defectiveCount > 0 || order.refundYuan > 0.0
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = if (hasAnomalies) Color(0xFFE2E7FF).copy(alpha = 0.6f) else Color(0xFF00687A).copy(alpha = 0.10f),
+                color = if (hasAnomalies) colors.innerCardBg else colors.cyanSoftBg,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -347,13 +319,13 @@ internal fun SuccessStockIntegrationCard(
                         modifier = Modifier
                             .size(28.dp)
                             .clip(CircleShape)
-                            .background(if (hasAnomalies) Color(0xFFFFDAD6) else Color(0xFFACEDFF)),
+                            .background(if (hasAnomalies) colors.dangerSoftBg else colors.cyanSoftBg),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = if (hasAnomalies) Icons.Default.ReportProblem else Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = if (hasAnomalies) Color(0xFF93000A) else Color(0xFF00687A),
+                            tint = if (hasAnomalies) colors.dangerAccent else colors.cyanAccent,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -373,7 +345,7 @@ internal fun SuccessStockIntegrationCard(
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 12.sp,
-                            color = Color(0xFF131B2E)
+                            color = colors.textPrimary
                         )
                         Text(
                             text = if (order.refundYuan > 0.0) {
@@ -385,7 +357,7 @@ internal fun SuccessStockIntegrationCard(
                             },
                             fontFamily = Inter,
                             fontSize = 11.sp,
-                            color = Color(0xFF3D494C)
+                            color = colors.textSecondary
                         )
                     }
                 }
@@ -406,10 +378,11 @@ private fun SuccessVariantTile(
     statusFontSizeSp: Int = 10,
     modifier: Modifier = Modifier
 ) {
+    val colors = rememberTransitaireColors()
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(12.dp),
-        color = Color(0xFFF2F3FF)
+        color = colors.innerCardBg
     ) {
         Column(
             modifier = Modifier.padding(10.dp),
@@ -437,7 +410,7 @@ private fun SuccessVariantTile(
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 12.sp,
-                        color = Color(0xFF131B2E)
+                        color = colors.textPrimary
                     )
                 }
                 Text(
@@ -445,7 +418,7 @@ private fun SuccessVariantTile(
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
-                    color = Color(0xFF131B2E)
+                    color = colors.textPrimary
                 )
             }
             Row(

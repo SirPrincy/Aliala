@@ -56,6 +56,7 @@ internal fun buildBusinessUiState(
         catalogueFamilies = catalogue.catalogueFamiliesSummary,
         cataloguePlatforms = catalogue.cataloguePlatformsSummary,
         catalogueTransitaires = catalogue.catalogueTransitairesSummary,
+        transitaireRateHistory = raw.transitaireRateHistory,
 
         netProfit = overview.netProfit,
         cumulativeBusinessProfitAr = overview.cumulativeBusinessProfitAr,
@@ -144,6 +145,7 @@ internal fun buildBusinessUiState(
         topClientName = clients.topClient?.name ?: "—",
         topClientTotalAr = clients.topClient?.totalPurchasesAr ?: 0L,
         clientsList = clients.filteredClients,
+        allClients = clients.mergedClients.sortedBy { it.name.lowercase() },
 
         orders = raw.orders,
         yuanTransactions = raw.yuanTxs,

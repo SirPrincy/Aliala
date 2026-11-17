@@ -54,9 +54,7 @@ import com.example.ui.business.model.TariffGridParser
 import com.example.ui.business.shared.rememberTransitaireColors
 import com.example.ui.theme.Inter
 import com.example.ui.theme.PlusJakartaSans
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.example.util.DateUtils
 
 @Composable
 fun TransitaireDetailDialog(
@@ -133,10 +131,10 @@ fun TransitaireDetailDialog(
 
     val airTariffs = parsedTariffs.filter { it.mode == "AÉRIEN" }
     val seaTariffs = parsedTariffs.filter { it.mode == "MARITIME" }
-    val airMinPrice = airTariffs.minOfOrNull { it.priceAr } ?: currentAirRate
-    val airMaxPrice = airTariffs.maxOfOrNull { it.priceAr } ?: currentAirRate
-    val seaMinPrice = seaTariffs.minOfOrNull { it.priceAr } ?: currentSeaRate
-    val seaMaxPrice = seaTariffs.maxOfOrNull { it.priceAr } ?: currentSeaRate
+    val airMinPrice = airTariffs.minOfOrNull { it.priceAr } ?: if (currentAirRate > 0L) currentAirRate else 0L
+    val airMaxPrice = airTariffs.maxOfOrNull { it.priceAr } ?: if (currentAirRate > 0L) currentAirRate else 0L
+    val seaMinPrice = seaTariffs.minOfOrNull { it.priceAr } ?: if (currentSeaRate > 0L) currentSeaRate else 0L
+    val seaMaxPrice = seaTariffs.maxOfOrNull { it.priceAr } ?: if (currentSeaRate > 0L) currentSeaRate else 0L
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -384,17 +382,42 @@ fun TransitaireDetailDialog(
                     TransitaireTariffGridSection(
                         tariffItems = parsedTariffs,
                         headerTitle = "Tarifs en vigueur",
-                        headerBadge = if (transitaire.rateApplicationDate.isNotBlank()) "Au ${transitaire.rateApplicationDate}" else "Grille active",
+                        headerBadge = when {
+                            transitaire.rateApplicationDate.isNotBlank() -> "Depuis le ${transitaire.rateApplicationDate}"
+                            parsedTariffs.isEmpty() -> "Aucun tarif"
+                            else -> "Grille active"
+                        },
+                        defaultEffectiveDate = transitaire.rateApplicationDate,
                         onTariffItemsChanged = { updatedItems ->
-                            val newAirRate = TariffGridParser.matchTariffForMeasure(updatedItems, "AÉRIEN", 1.0)?.priceAr
-                                ?: updatedItems.firstOrNull { it.mode == "AÉRIEN" }?.priceAr
-                                ?: transitaire.airRateAr
-                            val newAirFastRate = updatedItems.filter { it.mode == "AÉRIEN" }.getOrNull(1)?.priceAr
-                                ?: newAirRate
+                            val airItems = updatedItems.filter { it.mode == "AÉRIEN" }
+                            val nonExpressAir = airItems.filterNot { it.shipmentType.contains("Express", ignoreCase = true) }
+                            val newAirRate = TariffGridParser.matchTariffForMeasure(nonExpressAir, "AÉRIEN", 1.0)?.priceAr
+                                ?: nonExpressAir.firstOrNull()?.priceAr
+                                ?: airItems.firstOrNull()?.priceAr
+                                ?: 0L
+                            val newAirFastRate = airItems.firstOrNull { it.shipmentType.contains("Express", ignoreCase = true) }?.priceAr
+                                ?: airItems.getOrNull(1)?.priceAr
+                                ?: 0L
                             val newSeaRate = TariffGridParser.matchTariffForMeasure(updatedItems, "MARITIME", 1.0)?.priceAr
                                 ?: updatedItems.firstOrNull { it.mode == "MARITIME" }?.priceAr
-                                ?: transitaire.seaRateAr
-                            val todayStr = SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(Date())
+                                ?: 0L
+                            val hasAnyRate = newAirRate > 0L || newAirFastRate > 0L || newSeaRate > 0L
+                            val changedItemDate = updatedItems
+                                .firstOrNull { updated ->
+                                    val prev = parsedTariffs.firstOrNull { it.id == updated.id }
+                                    (prev == null || prev.effectiveDate != updated.effectiveDate || prev.priceAr != updated.priceAr) &&
+                                        DateUtils.isValidFrenchDate(updated.effectiveDate)
+                                }?.effectiveDate
+                            val latestValidItemDate = updatedItems
+                                .mapNotNull { it.effectiveDate.takeIf { d -> DateUtils.isValidFrenchDate(d) } }
+                                .maxByOrNull { DateUtils.frenchDateToEpochMillis(it) }
+                            val effectiveDateStr = when {
+                                !hasAnyRate -> ""
+                                !changedItemDate.isNullOrBlank() -> changedItemDate
+                                !latestValidItemDate.isNullOrBlank() -> latestValidItemDate
+                                transitaire.rateApplicationDate.isNotBlank() -> transitaire.rateApplicationDate
+                                else -> DateUtils.getTodayFrenchDate()
+                            }
 
                             onUpdateTransitaire(
                                 transitaire.id,
@@ -405,7 +428,7 @@ fun TransitaireDetailDialog(
                                 transitaire.contact,
                                 transitaire.chinaWarehouseAddress,
                                 !transitaire.isArchived,
-                                todayStr,
+                                effectiveDateStr,
                                 transitaire.airLeadDays,
                                 transitaire.seaLeadDays,
                                 transitaire.internalNotes,
@@ -417,15 +440,26 @@ fun TransitaireDetailDialog(
                         }
                     )
 
+                    TransitaireRateHistoryCard(
+                        rateHistory = transitaire.rateHistory,
+                        rateApplicationDate = transitaire.rateApplicationDate,
+                        colors = colors
+                    )
+
                     TransitaireDelaysCard(
                         transitaire = transitaire,
                         colors = colors,
                         onEditClick = { showEditTransitaireDialog = true }
                     )
 
+                    TransitaireRealTransitStatsCard(
+                        transitaire = transitaire,
+                        colors = colors
+                    )
+
                     TransitaireSynthesisCard(
-                        airTariffsEmpty = airTariffs.isEmpty(),
-                        seaTariffsEmpty = seaTariffs.isEmpty(),
+                        airTariffsEmpty = airTariffs.isEmpty() && currentAirRate <= 0L,
+                        seaTariffsEmpty = seaTariffs.isEmpty() && currentSeaRate <= 0L,
                         airMinPrice = airMinPrice,
                         airMaxPrice = airMaxPrice,
                         seaMinPrice = seaMinPrice,

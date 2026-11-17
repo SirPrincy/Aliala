@@ -7,6 +7,7 @@ import com.example.data.repository.AppRepository
 import com.example.ui.business.CatalogueArticleSummaryUi
 import com.example.ui.business.CatalogueFamilySummaryUi
 import kotlinx.coroutines.flow.firstOrNull
+import java.util.Locale
 
 class StockManager(private val repository: AppRepository) {
 
@@ -44,19 +45,76 @@ class StockManager(private val repository: AppRepository) {
         return if (targetHidden) "${article.primaryOrder.product} masqué du catalogue" else "${article.primaryOrder.product} réaffiché"
     }
 
+    private fun formatYuanAmount(amount: Double): String {
+        return if (amount % 1.0 == 0.0) "${amount.toInt()}"
+        else String.format(Locale.US, "%.2f", amount)
+    }
+
+    private suspend fun restoreYuansForDeletedOrder(
+        order: BusinessOrderEntity,
+        allYuanTxs: List<com.example.data.local.entity.YuanTransactionEntity>
+    ): Double {
+        val linkedTxs = allYuanTxs.filter { it.orderId == order.id }
+        var restoredYuan = 0.0
+        if (linkedTxs.isNotEmpty()) {
+            linkedTxs.forEach { tx ->
+                val delta = when (tx.type) {
+                    "SPEND" -> tx.amountYuan
+                    "REFUND" -> -tx.amountYuan
+                    else -> 0.0
+                }
+                if (delta != 0.0) {
+                    repository.adjustYuanAccountBalance(delta, tx.platform)
+                    restoredYuan += delta
+                }
+                repository.deleteYuanTransaction(tx.id)
+            }
+        } else if (order.yuanDebited) {
+            val baseDebited = if (order.yuanDebitedAmount > 0.0) {
+                order.yuanDebitedAmount
+            } else {
+                (order.priceYuan * order.quantityBought) + order.domesticShippingYuan
+            }
+            val netFallback = (baseDebited - order.refundYuan).coerceAtLeast(0.0)
+            if (netFallback > 0.0) {
+                repository.adjustYuanAccountBalance(netFallback, "")
+                restoredYuan = netFallback
+            }
+        }
+        return restoredYuan.coerceAtLeast(0.0)
+    }
+
     suspend fun deleteStockOrder(order: BusinessOrderEntity): String {
-        repository.deleteBusinessOrder(order.id)
-        return "${order.product} supprimé"
+        val restoredYuan = repository.runInTransaction {
+            val allYuanTxs = repository.getYuanTransactionsSnapshot()
+            val restored = restoreYuansForDeletedOrder(order, allYuanTxs)
+            repository.deleteBusinessOrder(order.id)
+            restored
+        }
+        return if (restoredYuan > 0.0) {
+            "${order.product} supprimé (¥ ${formatYuanAmount(restoredYuan)} restitués)"
+        } else {
+            "${order.product} supprimé"
+        }
     }
 
     suspend fun deleteCatalogueArticle(article: CatalogueArticleSummaryUi): String {
         val lotsToDelete = article.lots.ifEmpty { listOf(article.primaryOrder) }
-        repository.runInTransaction {
+        val totalRestoredYuan = repository.runInTransaction {
+            val allYuanTxs = repository.getYuanTransactionsSnapshot()
+            var sum = 0.0
             lotsToDelete.forEach { lot ->
+                sum += restoreYuansForDeletedOrder(lot, allYuanTxs)
                 repository.deleteBusinessOrder(lot.id)
             }
+            sum
         }
-        return "${article.primaryOrder.product} supprimé (${lotsToDelete.size} lot${if (lotsToDelete.size > 1) "s" else ""})"
+        val baseMsg = "${article.primaryOrder.product} supprimé (${lotsToDelete.size} lot${if (lotsToDelete.size > 1) "s" else ""})"
+        return if (totalRestoredYuan > 0.0) {
+            "$baseMsg · ¥ ${formatYuanAmount(totalRestoredYuan)} restitués"
+        } else {
+            baseMsg
+        }
     }
 
     suspend fun addCatalogueArticle(
@@ -261,7 +319,8 @@ class StockManager(private val repository: AppRepository) {
         referenceCode: String = "",
         family: String = "Électronique",
         cmupRate: Double = 650.0,
-        domesticShippingYuan: Double = 0.0
+        domesticShippingYuan: Double = 0.0,
+        orderDateMillis: Long = System.currentTimeMillis()
     ): String {
         val cleanPlatform = platform.trim().ifBlank { "1688" }
         val cleanFamily = family.trim().ifBlank { "Électronique" }
@@ -289,7 +348,8 @@ class StockManager(private val repository: AppRepository) {
                 carrier = carrier.trim(),
                 variants = variants.trim(),
                 freightCostAr = freightAr.coerceAtLeast(0L),
-                isFreightPaid = false
+                isFreightPaid = false,
+                orderDate = orderDateMillis
             )
         )
         return "Nouvelle commande enregistrée"

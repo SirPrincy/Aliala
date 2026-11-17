@@ -26,6 +26,7 @@ import com.example.data.local.entity.LoanPaymentEntity
 import com.example.data.local.entity.SalePaymentEntity
 import com.example.data.local.entity.TaskEntity
 import com.example.data.local.entity.TransactionEntity
+import com.example.data.local.entity.TransitaireRateHistoryEntity
 import com.example.data.local.entity.WalletEntity
 import com.example.data.local.entity.YuanTransactionEntity
 import kotlinx.coroutines.flow.Flow
@@ -480,6 +481,33 @@ interface CatalogueTransitaireDao {
     suspend fun deleteDemoTransitaires()
 
     @Query("DELETE FROM catalogue_transitaires")
+    suspend fun clearAll()
+}
+
+@Dao
+interface TransitaireRateHistoryDao {
+    @Query("SELECT * FROM transitaire_rate_history ORDER BY changedAtMillis DESC, id DESC")
+    fun getAllHistory(): Flow<List<TransitaireRateHistoryEntity>>
+
+    @Query("SELECT * FROM transitaire_rate_history ORDER BY changedAtMillis DESC, id DESC")
+    suspend fun getAllHistorySnapshot(): List<TransitaireRateHistoryEntity>
+
+    @Query("SELECT * FROM transitaire_rate_history WHERE transitaireId = :transitaireId ORDER BY changedAtMillis DESC, id DESC")
+    suspend fun getHistoryForTransitaireSnapshot(transitaireId: Long): List<TransitaireRateHistoryEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertHistory(entry: TransitaireRateHistoryEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertHistories(entries: List<TransitaireRateHistoryEntity>)
+
+    @Query("DELETE FROM transitaire_rate_history WHERE transitaireId = :transitaireId")
+    suspend fun deleteByTransitaireId(transitaireId: Long)
+
+    @Query("DELETE FROM transitaire_rate_history WHERE isDemo = 1")
+    suspend fun deleteDemoHistory()
+
+    @Query("DELETE FROM transitaire_rate_history")
     suspend fun clearAll()
 }
 

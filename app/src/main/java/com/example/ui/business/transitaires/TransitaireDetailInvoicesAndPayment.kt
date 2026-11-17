@@ -353,7 +353,7 @@ internal fun TransitaireRecentShipmentsCard(
                 recentShipments.forEach { ship ->
                     val isSea = ship.transportMode == "SEA"
                     val measureStr = if (isSea) {
-                        if (ship.volumeCbm > 0.0) "${String.format(Locale.FRENCH, "%.2f", ship.volumeCbm)} m³" else "Maritime"
+                        if (ship.volumeCbm > 0.0) "${String.format(Locale.FRENCH, "%.5f", ship.volumeCbm)} m³" else "Maritime"
                     } else {
                         if (ship.weightKg > 0.0) "${String.format(Locale.FRENCH, "%.1f", ship.weightKg)} kg" else "Aérien"
                     }
@@ -398,8 +398,17 @@ internal fun TransitaireRecentShipmentsCard(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
+                                    val durationBits = buildList {
+                                        ship.fretTransitDays?.let { add("Fret ${it}j") }
+                                        ship.totalTransitDays?.let { add("Total ${it}j") }
+                                    }.joinToString(" · ")
                                     Text(
-                                        text = "$measureStr · ${CurrencyFormatter.formatAriary(ship.freightCostAr)} · ${ship.dateLabel}",
+                                        text = buildString {
+                                            append("$measureStr · ${CurrencyFormatter.formatAriary(ship.freightCostAr)} · ${ship.dateLabel}")
+                                            if (durationBits.isNotBlank()) {
+                                                append(" · $durationBits")
+                                            }
+                                        },
                                         fontFamily = Inter,
                                         fontSize = 11.sp,
                                         color = colors.textSecondary

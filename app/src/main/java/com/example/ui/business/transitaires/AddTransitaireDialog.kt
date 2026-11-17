@@ -19,11 +19,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -32,6 +36,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,10 +59,9 @@ import com.example.ui.business.model.TariffGridParser
 import com.example.ui.business.shared.rememberTransitaireColors
 import com.example.ui.theme.Inter
 import com.example.ui.theme.PlusJakartaSans
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.example.util.DateUtils
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTransitaireDialog(
     initialTransitaire: CatalogueTransitaireSummaryUi? = null,
@@ -89,26 +94,30 @@ fun AddTransitaireDialog(
 
     var tariffItems by remember {
         mutableStateOf(
-            TariffGridParser.parse(
-                raw = initialTransitaire?.goodsCategoryDelays ?: "",
-                airRateAr = initialTransitaire?.airRateAr ?: 45000L,
-                airFastRateAr = initialTransitaire?.airFastRateAr ?: 60000L,
-                seaRateAr = initialTransitaire?.seaRateAr ?: 18000L
-            )
+            if (initialTransitaire == null) {
+                emptyList()
+            } else {
+                TariffGridParser.parse(
+                    raw = initialTransitaire.goodsCategoryDelays,
+                    airRateAr = initialTransitaire.airRateAr,
+                    airFastRateAr = initialTransitaire.airFastRateAr,
+                    seaRateAr = initialTransitaire.seaRateAr
+                )
+            }
         )
     }
 
-    val dateApplication = remember(initialTransitaire) {
-        initialTransitaire?.rateApplicationDate?.ifBlank { null }
-            ?: SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(Date())
+    var dateApplication by remember {
+        mutableStateOf(initialTransitaire?.rateApplicationDate ?: "")
     }
+    var showAppDatePicker by remember { mutableStateOf(false) }
 
     var testKgInput by remember { mutableStateOf("3.2") }
     var testCbmInput by remember { mutableStateOf("0.30") }
 
-    var airLeadDays by remember { mutableStateOf(initialTransitaire?.airLeadDays ?: "7 à 10 jours") }
-    var airFastLeadDays by remember { mutableStateOf(initialTransitaire?.airFastLeadDays ?: "3 à 5 jours") }
-    var seaLeadDays by remember { mutableStateOf(initialTransitaire?.seaLeadDays ?: "30 à 45 jours") }
+    var airLeadDays by remember { mutableStateOf(initialTransitaire?.airLeadDays ?: "") }
+    var airFastLeadDays by remember { mutableStateOf(initialTransitaire?.airFastLeadDays ?: "") }
+    var seaLeadDays by remember { mutableStateOf(initialTransitaire?.seaLeadDays ?: "") }
     var notesInternes by remember { mutableStateOf(initialTransitaire?.internalNotes ?: "") }
 
     var showErrorName by remember { mutableStateOf(false) }
@@ -143,17 +152,36 @@ fun AddTransitaireDialog(
             ""
         }
 
-        val airBaseForSave = TariffGridParser.matchTariffForMeasure(tariffItems, "AÉRIEN", 1.0)?.priceAr
-            ?: tariffItems.firstOrNull { it.mode == "AÉRIEN" }?.priceAr
-            ?: (initialTransitaire?.airRateAr ?: 45000L)
-        val airFastForSave = tariffItems.filter { it.mode == "AÉRIEN" }.getOrNull(1)?.priceAr
-            ?: airBaseForSave
+        val airItems = tariffItems.filter { it.mode == "AÉRIEN" }
+        val nonExpressAirItems = airItems.filterNot { it.shipmentType.contains("Express", ignoreCase = true) }
+        val airBaseForSave = TariffGridParser.matchTariffForMeasure(nonExpressAirItems, "AÉRIEN", 1.0)?.priceAr
+            ?: nonExpressAirItems.firstOrNull()?.priceAr
+            ?: airItems.firstOrNull()?.priceAr
+            ?: 0L
+        val airFastForSave = airItems.firstOrNull { it.shipmentType.contains("Express", ignoreCase = true) }?.priceAr
+            ?: airItems.getOrNull(1)?.priceAr
+            ?: 0L
         val seaBaseForSave = TariffGridParser.matchTariffForMeasure(tariffItems, "MARITIME", 1.0)?.priceAr
             ?: tariffItems.firstOrNull { it.mode == "MARITIME" }?.priceAr
-            ?: (initialTransitaire?.seaRateAr ?: 18000L)
+            ?: 0L
 
         val goodsDelaysEncoded = TariffGridParser.encode(tariffItems)
-        val todayStr = SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(Date())
+        val hasAnyRate = airBaseForSave > 0L || airFastForSave > 0L || seaBaseForSave > 0L
+        val cleanDateApp = dateApplication.trim()
+        if (hasAnyRate && cleanDateApp.isNotBlank() && !DateUtils.isValidFrenchDate(cleanDateApp)) {
+            Toast.makeText(context, "Date des tarifs invalide (jj/mm/aaaa)", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val latestItemDate = tariffItems
+            .mapNotNull { item -> item.effectiveDate.takeIf { DateUtils.isValidFrenchDate(it) } }
+            .maxByOrNull { DateUtils.frenchDateToEpochMillis(it) }
+            .orEmpty()
+        val effectiveDate = when {
+            !hasAnyRate -> ""
+            cleanDateApp.isNotBlank() -> cleanDateApp
+            latestItemDate.isNotBlank() -> latestItemDate
+            else -> DateUtils.getTodayFrenchDate()
+        }
 
         onConfirm(
             nomTransitaire.trim(),
@@ -163,14 +191,38 @@ fun AddTransitaireDialog(
             contactTransitaire.trim(),
             adresseChine.trim(),
             isTransitaireActif,
-            if (isEditing) todayStr else dateApplication,
-            airLeadDays.trim().ifBlank { "7 à 10 jours" },
-            seaLeadDays.trim().ifBlank { "30 à 45 jours" },
+            effectiveDate,
+            airLeadDays.trim(),
+            seaLeadDays.trim(),
             notesInternes.trim(),
             airFastForSave,
-            airFastLeadDays.trim().ifBlank { "3 à 5 jours" },
+            airFastLeadDays.trim(),
             goodsDelaysEncoded
         )
+    }
+
+    if (showAppDatePicker) {
+        val initialUtcMillis = DateUtils.frenchDateToUtcPickerMillis(dateApplication)
+            ?: DateUtils.frenchDateToUtcPickerMillis(DateUtils.getTodayFrenchDate())
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialUtcMillis)
+        DatePickerDialog(
+            onDismissRequest = { showAppDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pickerState.selectedDateMillis?.let { picked ->
+                            dateApplication = DateUtils.utcPickerMillisToFrenchDate(picked)
+                        }
+                        showAppDatePicker = false
+                    }
+                ) { Text("OK", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAppDatePicker = false }) { Text("Annuler") }
+            }
+        ) {
+            DatePicker(state = pickerState)
+        }
     }
 
     Dialog(
@@ -437,9 +489,75 @@ fun AddTransitaireDialog(
 
                     TransitaireTariffGridSection(
                         tariffItems = tariffItems,
-                        onTariffItemsChanged = { tariffItems = it },
-                        headerBadge = if (!isEditing) "Indicatif modifiable" else null
+                        onTariffItemsChanged = { updatedItems ->
+                            val changedItemDate = updatedItems
+                                .firstOrNull { updated ->
+                                    val prev = tariffItems.firstOrNull { it.id == updated.id }
+                                    (prev == null || prev.effectiveDate != updated.effectiveDate || prev.priceAr != updated.priceAr) &&
+                                        DateUtils.isValidFrenchDate(updated.effectiveDate)
+                                }?.effectiveDate
+                            if (!changedItemDate.isNullOrBlank()) {
+                                dateApplication = changedItemDate
+                            } else if (updatedItems.isEmpty()) {
+                                dateApplication = ""
+                            }
+                            tariffItems = updatedItems
+                        },
+                        headerBadge = when {
+                            dateApplication.isNotBlank() -> "Au $dateApplication"
+                            !isEditing -> "Optionnel"
+                            else -> null
+                        },
+                        defaultEffectiveDate = dateApplication
                     )
+
+                    if (tariffItems.isNotEmpty() || dateApplication.isNotBlank()) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = colors.cardBg,
+                            shadowElevation = 1.dp
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "Date d'application de ces tarifs",
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = colors.textPrimary
+                                )
+                                OutlinedTextField(
+                                    value = dateApplication,
+                                    onValueChange = { dateApplication = it },
+                                    placeholder = { Text("jj/mm/aaaa (ex: 15/03/2025)") },
+                                    trailingIcon = {
+                                        IconButton(onClick = { showAppDatePicker = true }) {
+                                            Icon(
+                                                imageVector = Icons.Default.CalendarToday,
+                                                contentDescription = "Choisir une date",
+                                                tint = colors.cyanAccent
+                                            )
+                                        }
+                                    },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = fieldColors,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Text(
+                                    text = "Laissez la date d'origine ou choisissez une date passée pour vos anciennes données.",
+                                    fontFamily = Inter,
+                                    fontSize = 11.sp,
+                                    color = colors.textSecondary
+                                )
+                            }
+                        }
+                    }
 
                     AddTransitaireSimulatorCard(
                         testKgInput = testKgInput,

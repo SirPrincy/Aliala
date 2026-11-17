@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DirectionsBoat
 import androidx.compose.material.icons.filled.FlightLand
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Remove
@@ -36,16 +37,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.BusinessOrderEntity
+import com.example.ui.business.shared.TransitaireColors
+import com.example.ui.business.shared.rememberTransitaireColors
 import com.example.ui.theme.Inter
 import com.example.ui.theme.PlusJakartaSans
+import com.example.util.CurrencyFormatter
 import com.example.util.DateUtils
 
 @Composable
-internal fun Step5StepperCard() {
+internal fun Step5StepperCard(isMaritime: Boolean) {
+    val colors = rememberTransitaireColors()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 1.dp
     ) {
         Column(
@@ -59,48 +64,48 @@ internal fun Step5StepperCard() {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Step5DoneCircle("Sourcing")
-                Box(modifier = Modifier.width(12.dp).height(2.dp).background(Color(0xFF00687A)))
-                Step5DoneCircle("Chine")
-                Box(modifier = Modifier.width(12.dp).height(2.dp).background(Color(0xFF00687A)))
-                Step5DoneCircle("Fret")
-                Box(modifier = Modifier.width(12.dp).height(2.dp).background(Color(0xFF00687A)))
-                Step5DoneCircle("Transit")
-                Box(modifier = Modifier.width(12.dp).height(2.dp).background(Color(0xFF00687A)))
+                Step5DoneCircle("Sourcing", colors)
+                Box(modifier = Modifier.width(12.dp).height(2.dp).background(colors.cyanAccent))
+                Step5DoneCircle("Chine", colors)
+                Box(modifier = Modifier.width(12.dp).height(2.dp).background(colors.cyanAccent))
+                Step5DoneCircle("Fret", colors)
+                Box(modifier = Modifier.width(12.dp).height(2.dp).background(colors.cyanAccent))
+                Step5DoneCircle("Transit", colors)
+                Box(modifier = Modifier.width(12.dp).height(2.dp).background(colors.cyanAccent))
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
                         modifier = Modifier
                             .size(28.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF8A4CFC)),
+                            .background(colors.violetSolidBg),
                         contentAlignment = Alignment.Center
                     ) {
                         Text("5", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
                     }
-                    Text("Mada", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color(0xFF712AE2), modifier = Modifier.padding(top = 4.dp))
+                    Text("Mada", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 10.sp, color = colors.violetAccent, modifier = Modifier.padding(top = 4.dp))
                 }
 
-                Box(modifier = Modifier.width(12.dp).height(2.dp).background(Color(0xFFE2E7FF)))
+                Box(modifier = Modifier.width(12.dp).height(2.dp).background(colors.badgeNeutralBg))
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
                         modifier = Modifier
                             .size(28.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFE2E7FF)),
+                            .background(colors.badgeNeutralBg),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("6", fontFamily = PlusJakartaSans, fontSize = 12.sp, color = Color(0xFF3D494C).copy(alpha = 0.5f))
+                        Text("6", fontFamily = PlusJakartaSans, fontSize = 12.sp, color = colors.textSecondary)
                     }
-                    Text("Stock", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = Color(0xFF3D494C).copy(alpha = 0.5f), modifier = Modifier.padding(top = 4.dp))
+                    Text("Stock", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = colors.textSecondary, modifier = Modifier.padding(top = 4.dp))
                 }
             }
 
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0xFFF2F3FF)
+                color = colors.innerCardBg
             ) {
                 Row(
                     modifier = Modifier
@@ -114,9 +119,9 @@ internal fun Step5StepperCard() {
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.FlightLand,
+                            imageVector = if (isMaritime) Icons.Default.DirectionsBoat else Icons.Default.FlightLand,
                             contentDescription = null,
-                            tint = Color(0xFF712AE2),
+                            tint = colors.violetAccent,
                             modifier = Modifier.size(20.dp)
                         )
                         Column {
@@ -125,28 +130,28 @@ internal fun Step5StepperCard() {
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp,
-                                color = Color(0xFF712AE2)
+                                color = colors.violetAccent
                             )
                             Text(
-                                text = "Arrivé à Madagascar & Dédouanement",
+                                text = if (isMaritime) "Arrivée Port de Toamasina & Dédouanement" else "Arrivée à Ivato & Dédouanement",
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp,
-                                color = Color(0xFF131B2E)
+                                color = colors.textPrimary
                             )
                         }
                     }
 
                     Surface(
                         shape = RoundedCornerShape(9999.dp),
-                        color = Color(0xFFDAE2FD)
+                        color = colors.violetSoftBg
                     ) {
                         Text(
-                            text = "Actif",
+                            text = if (isMaritime) "Maritime" else "Aérien",
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 10.sp,
-                            color = Color(0xFF712AE2),
+                            color = colors.violetAccent,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
                     }
@@ -157,24 +162,28 @@ internal fun Step5StepperCard() {
 }
 
 @Composable
-private fun Step5DoneCircle(label: String) {
+private fun Step5DoneCircle(label: String, colors: TransitaireColors) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(28.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF00687A)),
+                .background(colors.cyanSolidBg),
             contentAlignment = Alignment.Center
         ) {
             Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
         }
-        Text(label, fontFamily = PlusJakartaSans, fontSize = 10.sp, color = Color(0xFF3D494C), modifier = Modifier.padding(top = 4.dp))
+        Text(label, fontFamily = PlusJakartaSans, fontSize = 10.sp, color = colors.textSecondary, modifier = Modifier.padding(top = 4.dp))
     }
 }
 
 @Composable
-internal fun Step5IvatoPointingCard(
+internal fun Step5ArrivalPointingCard(
     order: BusinessOrderEntity,
+    isMaritime: Boolean,
+    arrivalShortName: String,
+    arrivalPortName: String,
+    madaArrivalDateMillis: Long?,
     receivedParcelsCount: Int,
     expectedParcels: Int,
     isPartialReceptionChecked: Boolean,
@@ -182,10 +191,11 @@ internal fun Step5IvatoPointingCard(
     onIncrementParcels: () -> Unit,
     onTogglePartialReception: (Boolean) -> Unit
 ) {
+    val colors = rememberTransitaireColors()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 1.dp
     ) {
         Column(
@@ -201,49 +211,60 @@ internal fun Step5IvatoPointingCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
                     Box(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFFEAEDFF)),
+                            .background(colors.cyanSoftBg),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Warehouse,
+                            imageVector = if (isMaritime) Icons.Default.DirectionsBoat else Icons.Default.Warehouse,
                             contentDescription = null,
-                            tint = Color(0xFF00687A),
+                            tint = colors.cyanAccent,
                             modifier = Modifier.size(20.dp)
                         )
                     }
                     Column {
                         Text(
-                            text = "Pointage à Ivato",
+                            text = "Pointage à $arrivalShortName",
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
-                            color = Color(0xFF131B2E)
+                            color = colors.textPrimary
                         )
                         Text(
-                            text = "Hub ${order.carrier.ifBlank { "Transitaire partenaire" }} Cargo",
+                            text = if (order.carrier.isNotBlank()) {
+                                "${order.carrier} · ${if (isMaritime) "Fret Maritime" else "Fret Aérien"}"
+                            } else {
+                                if (isMaritime) "Fret Maritime" else "Fret Aérien"
+                            },
                             fontFamily = Inter,
                             fontSize = 12.sp,
-                            color = Color(0xFF3D494C)
+                            color = colors.textSecondary
                         )
                     }
                 }
 
                 Surface(
                     shape = RoundedCornerShape(9999.dp),
-                    color = Color(0xFFF2F3FF)
+                    color = if (madaArrivalDateMillis != null) colors.cyanSoftBg else colors.innerCardBg
                 ) {
                     Text(
-                        text = DateUtils.formatShortDate(order.estimatedArrival),
+                        text = if (madaArrivalDateMillis != null) {
+                            "Arrivé : ${DateUtils.formatShortDate(madaArrivalDateMillis)}"
+                        } else if (order.estimatedArrival > 0L) {
+                            "Prévu : ${DateUtils.formatShortDate(order.estimatedArrival)}"
+                        } else {
+                            "Date non définie"
+                        },
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Medium,
                         fontSize = 11.sp,
-                        color = Color(0xFF3D494C),
+                        color = if (madaArrivalDateMillis != null) colors.cyanAccent else colors.textSecondary,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
@@ -252,7 +273,7 @@ internal fun Step5IvatoPointingCard(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = Color(0xFFF2F3FF)
+                color = colors.innerCardBg
             ) {
                 Row(
                     modifier = Modifier
@@ -264,22 +285,26 @@ internal fun Step5IvatoPointingCard(
                     Icon(
                         imageVector = Icons.Default.LocationOn,
                         contentDescription = null,
-                        tint = Color(0xFF00687A),
+                        tint = colors.cyanAccent,
                         modifier = Modifier.size(18.dp)
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = "Lieu de mise à disposition",
+                            text = "Lieu d'arrivée Madagascar",
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 12.sp,
-                            color = Color(0xFF131B2E)
+                            color = colors.textPrimary
                         )
                         Text(
-                            text = "Hub ${order.carrier.ifBlank { "Transitaire" }} Ivato Cargo, Zone Fret International, Antananarivo",
+                            text = if (isMaritime) {
+                                "$arrivalPortName — Débarquement maritime"
+                            } else {
+                                "$arrivalPortName (Antananarivo) — Fret aérien"
+                            } + if (order.carrier.isNotBlank()) " · ${order.carrier}" else "",
                             fontFamily = Inter,
                             fontSize = 11.sp,
-                            color = Color(0xFF3D494C)
+                            color = colors.textSecondary
                         )
                     }
                 }
@@ -288,7 +313,7 @@ internal fun Step5IvatoPointingCard(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0xFFFAF8FF)
+                color = colors.subtleBg
             ) {
                 Row(
                     modifier = Modifier
@@ -303,7 +328,7 @@ internal fun Step5IvatoPointingCard(
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Medium,
                             fontSize = 12.sp,
-                            color = Color(0xFF131B2E)
+                            color = colors.textPrimary
                         )
                         Row(
                             verticalAlignment = Alignment.Bottom,
@@ -315,20 +340,20 @@ internal fun Step5IvatoPointingCard(
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 26.sp,
-                                color = Color(0xFF00687A)
+                                color = colors.cyanAccent
                             )
                             Text(
                                 text = "sur $expectedParcels attendus",
                                 fontFamily = Inter,
                                 fontSize = 13.sp,
-                                color = Color(0xFF3D494C)
+                                color = colors.textSecondary
                             )
                         }
                     }
 
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = Color.White,
+                        color = colors.cardBg,
                         shadowElevation = 1.dp
                     ) {
                         Row(
@@ -343,7 +368,7 @@ internal fun Step5IvatoPointingCard(
                                 Icon(
                                     imageVector = Icons.Default.Remove,
                                     contentDescription = "Retirer un colis",
-                                    tint = Color(0xFF3D494C),
+                                    tint = colors.textSecondary,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
@@ -353,7 +378,7 @@ internal fun Step5IvatoPointingCard(
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
-                                color = Color(0xFF131B2E),
+                                color = colors.textPrimary,
                                 modifier = Modifier.padding(horizontal = 4.dp)
                             )
 
@@ -364,7 +389,7 @@ internal fun Step5IvatoPointingCard(
                                 Icon(
                                     imageVector = Icons.Default.Add,
                                     contentDescription = "Ajouter un colis",
-                                    tint = Color(0xFF00687A),
+                                    tint = colors.cyanAccent,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
@@ -384,58 +409,41 @@ internal fun Step5IvatoPointingCard(
                 Checkbox(
                     checked = isPartialReceptionChecked,
                     onCheckedChange = onTogglePartialReception,
-                    colors = CheckboxDefaults.colors(checkedColor = Color(0xFF00687A))
+                    colors = CheckboxDefaults.colors(checkedColor = colors.cyanAccent)
                 )
                 Text(
                     text = "Réception partielle : continuer avec les colis arrivés",
                     fontFamily = Inter,
                     fontSize = 12.sp,
-                    color = Color(0xFF3D494C)
+                    color = colors.textSecondary
                 )
             }
 
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
-                color = Color(0xFFF2F3FF)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.Top
+            if (order.customsTaxAr > 0L) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    color = colors.innerCardBg
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Verified,
-                        contentDescription = null,
-                        tint = Color(0xFF00687A),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = "Dédouané sans surtaxe",
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 12.sp,
-                                color = Color(0xFF131B2E)
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF00687A))
-                            )
-                        }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Verified,
+                            contentDescription = null,
+                            tint = colors.cyanAccent,
+                            modifier = Modifier.size(18.dp)
+                        )
                         Text(
-                            text = "Taxe douanière comprise dans le fret transitaire international.",
-                            fontFamily = Inter,
-                            fontSize = 11.sp,
-                            color = Color(0xFF3D494C)
+                            text = "Frais de douane saisis : ${CurrencyFormatter.formatAriary(order.customsTaxAr)}",
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp,
+                            color = colors.textPrimary
                         )
                     }
                 }

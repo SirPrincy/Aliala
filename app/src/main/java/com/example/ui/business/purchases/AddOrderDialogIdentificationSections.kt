@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CurrencyExchange
 import androidx.compose.material.icons.filled.CurrencyYuan
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -55,6 +57,9 @@ internal fun OrderIdentificationSectionCard(
     onSupplierRefChange: (String) -> Unit,
     familyCategory: String,
     onFamilyCategoryChange: (String) -> Unit,
+    orderDateText: String,
+    onOrderDateChange: (String) -> Unit,
+    onOpenDatePicker: () -> Unit,
     onArticleSelected: (BusinessOrderEntity) -> Unit,
     onClearArticle: () -> Unit
 ) {
@@ -264,6 +269,34 @@ internal fun OrderIdentificationSectionCard(
                     }
                 }
             }
+
+            OutlinedTextField(
+                value = orderDateText,
+                onValueChange = onOrderDateChange,
+                label = { Text("Date d'achat (jj/mm/aaaa) *") },
+                placeholder = { Text("ex. 15/03/2025") },
+                trailingIcon = {
+                    IconButton(
+                        onClick = onOpenDatePicker,
+                        modifier = Modifier.testTag("btn_order_date_picker")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CalendarToday,
+                            contentDescription = "Choisir la date d'achat",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("input_order_date"),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                )
+            )
         }
     }
 }

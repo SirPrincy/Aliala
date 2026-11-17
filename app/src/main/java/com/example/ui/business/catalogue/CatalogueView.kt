@@ -353,15 +353,13 @@ fun CatalogueView(
                 "Transitaires" -> {
                     TransitairesSubTabContent(
                         transitaires = uiState.catalogueTransitaires,
+                        rateHistory = uiState.transitaireRateHistory,
                         orders = uiState.orders,
                         accounts = accounts,
                         onCreateTransitaire = { name, hub, air, sea ->
-                            val today = SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(Date())
-                            val fastDefault = if (air > 0L) round(air * 1.33 / 1000.0).toLong() * 1000L else 60000L
-                            val defaultGrid = TariffGridParser.encode(
-                                TariffGridParser.defaultTariffs(air, fastDefault, sea)
-                            )
-                            onCreateTransitaire(name, hub, air, sea, "", "", true, today, "7 à 10 jours", "30 à 45 jours", "", fastDefault, "3 à 5 jours", defaultGrid)
+                            val hasRates = air > 0L || sea > 0L
+                            val today = if (hasRates) SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(Date()) else ""
+                            onCreateTransitaire(name, hub, air, sea, "", "", true, today, "", "", "", 0L, "", "")
                         },
                         onUpdateTransitaire = onUpdateTransitaire,
                         onToggleArchived = onToggleTransitaireArchived,

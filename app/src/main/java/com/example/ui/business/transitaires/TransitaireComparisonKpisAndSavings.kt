@@ -58,15 +58,26 @@ internal fun TransitaireMarketKpisGrid(
     val spreadPct = if (bestRate > 0L && rateSpread > 0L) {
         ((rateSpread.toDouble() / bestRate.toDouble()) * 100.0).toInt()
     } else 0
-    val avgMarketRate = if (activeTransitaires.isNotEmpty()) {
-        activeTransitaires.map { if (selectedFretMode == "AERIEN") it.airRateAr else it.seaRateAr }.average().toLong()
+    val avgMarketRate = if (sortedByRate.isNotEmpty()) {
+        sortedByRate.map { if (selectedFretMode == "AERIEN") it.airRateAr else it.seaRateAr }.average().toLong()
     } else 0L
-    val fastestLeadEntry = remember(activeTransitaires, selectedFretMode) {
-        activeTransitaires.map { t ->
-            val rawLead = if (selectedFretMode == "AERIEN") t.airLeadDays else t.seaLeadDays
-            val minDays = Regex("\\d+").find(rawLead)?.value?.toIntOrNull() ?: 99
-            Triple(t, rawLead, minDays)
+    val fastestRealEntry = remember(activeTransitaires, selectedFretMode) {
+        activeTransitaires.mapNotNull { t ->
+            val avg = if (selectedFretMode == "AERIEN") t.avgAirTransitDays else t.avgSeaTransitDays
+            if (avg != null) Triple(t, "${com.example.util.TransitStatsCalculator.formatDaysAvg(avg)} réel", avg) else null
         }.minByOrNull { it.third }
+    }
+    val fastestLeadEntry = remember(activeTransitaires, selectedFretMode, fastestRealEntry) {
+        if (fastestRealEntry != null) {
+            fastestRealEntry
+        } else {
+            activeTransitaires.mapNotNull { t ->
+                val rawLead = if (selectedFretMode == "AERIEN") t.airLeadDays else t.seaLeadDays
+                val minDays = Regex("\\d+").find(rawLead)?.value?.toIntOrNull()
+                if (rawLead.isBlank() || minDays == null || minDays <= 0) null
+                else Triple(t, rawLead, minDays.toDouble())
+            }.minByOrNull { it.third }
+        }
     }
     val currentUnit = if (selectedFretMode == "AERIEN") "Ar/kg" else "Ar/m³"
 
@@ -239,7 +250,7 @@ internal fun TransitaireMarketKpisGrid(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "DÉLAI LE + COURT",
+                        text = if (fastestRealEntry != null) "LE + RAPIDE (RÉEL)" else "DÉLAI LE + COURT",
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
                         fontSize = 10.sp,
@@ -273,11 +284,11 @@ internal fun TransitaireMarketKpisGrid(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = fastestLeadEntry?.second?.ifBlank { "Non défini" } ?: "Aucun",
+                        text = fastestLeadEntry?.second ?: "Non défini",
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
-                        color = colors.cyanAccent,
+                        color = if (fastestLeadEntry != null) colors.cyanAccent else colors.textSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -344,7 +355,7 @@ internal fun TransitaireMarketKpisGrid(
                             color = colors.textSecondary
                         )
                         Text(
-                            text = "(${activeTransitaires.size} actifs)",
+                            text = "(${sortedByRate.size} tarifés)",
                             fontFamily = Inter,
                             fontSize = 10.sp,
                             color = colors.textSecondary
@@ -387,7 +398,7 @@ internal fun TransitairePotentialSavingCard(
             val optimalCost = kotlin.math.round(totalMeasure * bestRate).toLong()
             val saving = (totalActualFreight - optimalCost).coerceAtLeast(0L)
             val measureStr = if (selectedFretMode == "AERIEN") "${String.format(Locale.FRANCE, "%.1f", totalMeasure)} kg"
-            else "${String.format(Locale.FRANCE, "%.2f", totalMeasure)} m³"
+            else "${String.format(Locale.FRANCE, "%.5f", totalMeasure)} m³"
             saving to "Sur tes ${matchingModeOrders.size} dernière(s) expédition(s) ($measureStr), le tarif $bestName aurait permis d'économiser ${CurrencyFormatter.formatAriary(saving)}."
         } else if (sortedByRate.size >= 2) {
             val sampleUnits = if (selectedFretMode == "AERIEN") 10 else 1

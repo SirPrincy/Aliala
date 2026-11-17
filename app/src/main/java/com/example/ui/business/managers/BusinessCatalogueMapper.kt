@@ -349,6 +349,26 @@ internal fun mapCatalogueSection(
     }
 
     val dateFmt = SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE)
+    val historyByTransitaire = raw.transitaireRateHistory.groupBy { it.transitaireId }
+
+    fun formatTrendFromHistory(entries: List<com.example.data.local.entity.TransitaireRateHistoryEntity>, mode: String): String {
+        val latestDiff = entries.firstOrNull { it.mode == mode && it.oldRateAr > 0L && it.newRateAr > 0L && it.deltaAr != 0L }
+            ?: return ""
+        val pct = latestDiff.deltaPercent
+        val sign = if (pct > 0.0) "+" else ""
+        return if (kotlin.math.abs(pct) >= 10.0 || kotlin.math.abs(pct % 1.0) < 0.05) {
+            "$sign${kotlin.math.round(pct).toInt()}%"
+        } else {
+            String.format(Locale.US, "%s%.1f%%", sign, pct)
+        }
+    }
+
+    val ratedAirRates = raw.transitaires
+        .filter { !it.notes.startsWith("[ARCHIVED]") }
+        .map { if (it.airNormalRateAr > 0L) it.airNormalRateAr else it.defaultTariffPerKg }
+        .filter { it > 0L }
+    val minActiveAirRate = if (ratedAirRates.size >= 2) ratedAirRates.minOrNull() else null
+
     val catalogueTransitairesSummary = raw.transitaires.map { t ->
         val transOrders = orders.filter { it.carrier.contains(t.name, ignoreCase = true) }
         val inTransitCount = transOrders.count { it.status in inTransitStatuses }
@@ -383,6 +403,7 @@ internal fun mapCatalogueSection(
             val modeStr = if (ord.freightMode.equals("SEA", ignoreCase = true) || ord.freightMode.equals("MARITIME", ignoreCase = true)) {
                 "SEA"
             } else "AIR"
+            val orderStats = com.example.util.TransitStatsCalculator.calculateForOrder(ord)
             TransitaireShipmentSummaryUi(
                 id = ord.id,
                 code = ord.referenceCode.ifBlank { "#CMD-${ord.id}" },
@@ -393,25 +414,35 @@ internal fun mapCatalogueSection(
                 freightCostAr = ord.freightCostAr,
                 statusLabel = statusLabel,
                 isDelivered = isDelivered,
-                dateLabel = dateFmt.format(Date(ord.orderDate))
+                dateLabel = dateFmt.format(Date(ord.orderDate)),
+                fretTransitDays = orderStats.transitDays,
+                totalTransitDays = orderStats.totalDays
             )
         }
         val dynamicHub = t.address.lines().firstOrNull()?.trim()?.take(38)?.ifBlank { null }
             ?: "Fret Chine → Madagascar"
+        val isArchived = t.notes.startsWith("[ARCHIVED]")
+        val resolvedAirRate = if (t.airNormalRateAr > 0L) t.airNormalRateAr else t.defaultTariffPerKg.coerceAtLeast(0L)
+        val transHistory = historyByTransitaire[t.id].orEmpty()
+        val transitStats = com.example.util.TransitStatsCalculator.aggregateForOrders(transOrders)
 
         CatalogueTransitaireSummaryUi(
             id = t.id,
             name = t.name,
             initials = inits,
             routeHub = dynamicHub,
-            airRateAr = if (t.airNormalRateAr > 0) t.airNormalRateAr else (if (t.defaultTariffPerKg > 0) t.defaultTariffPerKg else 45000L),
-            airFastRateAr = if (t.airFastRateAr > 0) t.airFastRateAr else 60000L,
-            seaRateAr = if (t.seaRateAr > 0) t.seaRateAr else 18000L,
+            airRateAr = resolvedAirRate,
+            airFastRateAr = t.airFastRateAr.coerceAtLeast(0L),
+            seaRateAr = t.seaRateAr.coerceAtLeast(0L),
+            airRateTrend = formatTrendFromHistory(transHistory, "AERIEN"),
+            seaRateTrend = formatTrendFromHistory(transHistory, "MARITIME"),
+            isAirCheapest = !isArchived && minActiveAirRate != null && resolvedAirRate == minActiveAirRate,
             contact = t.contact,
             chinaWarehouseAddress = t.address,
             rateApplicationDate = t.rateApplicationDate,
             internalNotes = t.notes.removePrefix("[ARCHIVED]").trim(),
-            isArchived = t.notes.startsWith("[ARCHIVED]"),
+            isArchived = isArchived,
+            isActive = !isArchived,
             activeShipmentsCount = inTransitCount,
             lastShipmentDate = lastDate,
             lastShipmentCode = lastCode,
@@ -419,11 +450,20 @@ internal fun mapCatalogueSection(
             paidAmountAr = paidAmount,
             balanceDueAr = balanceDue,
             effectiveRateAr = effectiveRate,
-            airLeadDays = t.airNormalLeadDays.ifBlank { "7 à 10 jours" },
-            airFastLeadDays = t.airFastLeadDays.ifBlank { "3 à 5 jours" },
-            seaLeadDays = t.seaNormalLeadDays.ifBlank { "30 à 45 jours" },
+            airLeadDays = t.airNormalLeadDays,
+            airFastLeadDays = t.airFastLeadDays,
+            seaLeadDays = t.seaNormalLeadDays,
             goodsCategoryDelays = t.goodsCategoryDelays,
-            recentShipments = recentShipments
+            recentShipments = recentShipments,
+            rateHistory = transHistory,
+            avgChinaDays = transitStats.avgChinaDays,
+            avgHubWaitDays = transitStats.avgHubWaitDays,
+            avgAirTransitDays = transitStats.avgAirTransitDays,
+            avgSeaTransitDays = transitStats.avgSeaTransitDays,
+            avgTotalDays = transitStats.avgTotalDays,
+            measuredShipmentsCount = transitStats.measuredShipmentsCount,
+            measuredAirCount = transitStats.measuredAirCount,
+            measuredSeaCount = transitStats.measuredSeaCount
         )
     }
 

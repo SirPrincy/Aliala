@@ -73,8 +73,9 @@ fun FinancesView(
         amountYuan: Double,
         rateAr: Double,
         platform: String,
-        sourceAccountName: String
-    ) -> Unit = { _, _, _, _ -> },
+        sourceAccountName: String,
+        purchaseDateMillis: Long
+    ) -> Unit = { _, _, _, _, _ -> },
     onDeleteTransaction: (BusinessTransactionEntity) -> Unit = {},
     onRecordCapitalMovement: (title: String, isContribution: Boolean, amountAr: Long, accountName: String, note: String, affectAccount: Boolean, dateMillis: Long) -> Unit = { _, _, _, _, _, _, _ -> },
     onAddInvestment: (title: String, category: String, amountAr: Long, estimatedValueAr: Long, generatedReturnAr: Long, accountName: String, notes: String, dateMillis: Long) -> Unit = { _, _, _, _, _, _, _, _ -> },
@@ -372,8 +373,8 @@ fun FinancesView(
                 onAddTransaction(title, type, amountAr, accountName, referenceTag, destinationAccount)
                 showAddTxDialog = false
             },
-            onConfirmBuyYuans = { amountYuan, rateAr, platform, sourceAccountName ->
-                onBuyYuansFromTx(amountYuan, rateAr, platform, sourceAccountName)
+            onConfirmBuyYuans = { amountYuan, rateAr, platform, sourceAccountName, purchaseDateMillis ->
+                onBuyYuansFromTx(amountYuan, rateAr, platform, sourceAccountName, purchaseDateMillis)
                 showAddTxDialog = false
             }
         )

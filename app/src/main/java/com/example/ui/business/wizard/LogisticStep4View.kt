@@ -12,27 +12,44 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.data.model.OrderStatus
+import com.example.ui.business.CatalogueTransitaireSummaryUi
 import com.example.ui.business.model.DomesticParcelStorage
+import com.example.util.BordereauUtils
 import com.example.util.LotCostCalculator
 
 @Composable
 fun LogisticStep4View(
     order: BusinessOrderEntity,
     cmupRate: Long,
+    transitaires: List<CatalogueTransitaireSummaryUi> = emptyList(),
     onUpdateOrder: (updatedOrder: BusinessOrderEntity) -> Unit = {},
     onAdvanceToCustoms: (updatedOrder: BusinessOrderEntity) -> Unit,
     onPreviousStep: () -> Unit
 ) {
     val context = LocalContext.current
 
-    val breakdown = remember(order, cmupRate) {
-        LotCostCalculator.calculate(order, cmupRate)
+    val selectedTransitaire = remember(transitaires, order.carrier) {
+        if (order.carrier.isBlank()) null
+        else transitaires.firstOrNull {
+            it.name.equals(order.carrier, ignoreCase = true) ||
+                order.carrier.contains(it.name, ignoreCase = true)
+        }
+    }
+
+    val breakdown = remember(order, cmupRate, selectedTransitaire) {
+        LotCostCalculator.calculate(
+            order = order,
+            cmupRate = cmupRate,
+            transitaireAirRateAr = selectedTransitaire?.airRateAr,
+            transitaireSeaRateAr = selectedTransitaire?.seaRateAr
+        )
     }
     val totalQty = breakdown.quantity
     val unitPriceYuan = breakdown.unitPriceYuan
@@ -40,19 +57,29 @@ fun LogisticStep4View(
     val domesticPortAr = breakdown.domesticPortAr
     val isMaritime = breakdown.isMaritime
     val weightKg = order.weightKg ?: 0.0
+    val volumeM3 = order.volumeM3 ?: 0.0
     val freightCostAr = breakdown.freightCostAr
     val totalCostOfGoodsAr = breakdown.totalDisbursedAr
     val unitCostAr = breakdown.unitCostAr
 
     val modeTitle = if (isMaritime) "En navire cargo vers Madagascar" else "En vol cargo vers Madagascar"
     val modeSubtitle = if (isMaritime) "Fret maritime en transit" else "Vol cargo en transit"
-    val modeBadge = if (isMaritime) "En transit maritime" else "En vol international"
+    val modeBadge = if (isMaritime) "En transit maritime" else "En transit aérien"
     val arrivalPortName = if (isMaritime) "TOA" else "TNR"
     val arrivalPortCity = if (isMaritime) "Toamasina" else "Antananarivo"
     val carrierHeader = if (isMaritime) "Fret Maritime Groupage" else "Fret Aérien Express"
 
-    val carrierName = order.carrier.ifBlank { "Transitaire partenaire" }
-    val awbNumber = if (order.referenceCode.isNotBlank()) "AWB-${order.referenceCode}" else "AWB-LOT-${order.id}"
+    val originHubLabel = selectedTransitaire?.routeHub?.takeIf { it.isNotBlank() } ?: "Hub Chine"
+    val leadDaysLabel = if (isMaritime) {
+        selectedTransitaire?.seaLeadDays?.trim().orEmpty()
+    } else {
+        selectedTransitaire?.airLeadDays?.trim().orEmpty()
+    }
+
+    val carrierName = order.carrier.ifBlank { "Transitaire non défini" }
+    val bordereauPrefix = BordereauUtils.prefix(order)
+    val departureMillis = BordereauUtils.departureMillis(order)
+    val awbNumber = BordereauUtils.formatCode(order)
     val parcels = remember(order.trackingNumbers, order.parcelDetailsJson) {
         DomesticParcelStorage.parse(order)
     }
@@ -60,7 +87,7 @@ fun LogisticStep4View(
     var isCostDetailsExpanded by remember { mutableStateOf(false) }
     var showRadarDialog by remember { mutableStateOf(false) }
     var showIncidentDialog by remember { mutableStateOf(false) }
-    var incidentText by remember { mutableStateOf("") }
+    var incidentText by rememberSaveable(order.id) { mutableStateOf(order.incidentReport) }
 
     fun copyToClipboard(label: String, text: String, msg: String) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -80,6 +107,9 @@ fun LogisticStep4View(
             order = order,
             isMaritime = isMaritime,
             modeBadge = modeBadge,
+            originHubLabel = originHubLabel,
+            leadDaysLabel = leadDaysLabel,
+            parcelsCount = parcels.size.coerceAtLeast(1),
             arrivalPortName = arrivalPortName,
             arrivalPortCity = arrivalPortCity
         )
@@ -91,19 +121,29 @@ fun LogisticStep4View(
             carrierName = carrierName,
             awbNumber = awbNumber,
             arrivalPortCity = arrivalPortCity,
-            onCopyAwb = { copyToClipboard("Bordereau LTA", awbNumber, "Bordereau LTA $awbNumber copié !") }
+            leadDaysLabel = leadDaysLabel,
+            onCopyAwb = { copyToClipboard("Bordereau $bordereauPrefix", awbNumber, "Bordereau $awbNumber copié !") },
+            onSelectDelayDays = { days ->
+                val baseMillis = departureMillis ?: System.currentTimeMillis()
+                val newEta = baseMillis + days * 86_400_000L
+                onUpdateOrder(order.copy(estimatedArrival = newEta))
+                Toast.makeText(context, "Délai fixé à +${days}j", Toast.LENGTH_SHORT).show()
+            }
         )
 
         Step4HoldParcelsCard(
             order = order,
             parcels = parcels,
+            isMaritime = isMaritime,
             weightKg = weightKg,
+            volumeM3 = volumeM3,
             totalQty = totalQty,
             onOpenRadar = { showRadarDialog = true }
         )
 
         Step4TransitCostCard(
             order = order,
+            isMaritime = isMaritime,
             isExpanded = isCostDetailsExpanded,
             onToggleExpanded = { isCostDetailsExpanded = !isCostDetailsExpanded },
             totalCostOfGoodsAr = totalCostOfGoodsAr,
@@ -113,6 +153,7 @@ fun LogisticStep4View(
             merchandiseTotalAr = merchandiseTotalAr,
             domesticPortAr = domesticPortAr,
             weightKg = weightKg,
+            volumeM3 = volumeM3,
             freightCostAr = freightCostAr
         )
 
@@ -122,12 +163,13 @@ fun LogisticStep4View(
             onValidateCustoms = {
                 val updated = order.copy(
                     status = OrderStatus.CUSTOMS.code,
-                    incidentReport = if (incidentText.isNotBlank()) incidentText else order.incidentReport
+                    freightCostAr = freightCostAr,
+                    incidentReport = if (incidentText.isNotBlank()) incidentText.trim() else order.incidentReport
                 )
                 onAdvanceToCustoms(updated)
                 Toast.makeText(
                     context,
-                    if (isMaritime) "Navire arrivé au port de Toamasina ! Passage en douane." else "Vol atterri à Ivato ! Passage en douane.",
+                    if (isMaritime) "Navire arrivé au port de Toamasina ! Passage en douane." else "Vol arrivé à Ivato ! Passage en douane.",
                     Toast.LENGTH_SHORT
                 ).show()
             },
@@ -139,6 +181,8 @@ fun LogisticStep4View(
         Step4RadarDialog(
             isMaritime = isMaritime,
             carrierName = carrierName,
+            originHubLabel = originHubLabel,
+            arrivalPortCity = arrivalPortCity,
             awbNumber = awbNumber,
             estimatedArrival = order.estimatedArrival,
             onDismiss = { showRadarDialog = false }
@@ -152,7 +196,7 @@ fun LogisticStep4View(
             onDismiss = { showIncidentDialog = false },
             onConfirm = {
                 val updated = order.copy(
-                    incidentReport = if (incidentText.isNotBlank()) incidentText else order.incidentReport
+                    incidentReport = incidentText.trim()
                 )
                 onUpdateOrder(updated)
                 showIncidentDialog = false

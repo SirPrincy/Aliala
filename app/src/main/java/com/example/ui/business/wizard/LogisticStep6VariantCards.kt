@@ -1,5 +1,6 @@
 package com.example.ui.business.wizard
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.BusinessOrderEntity
+import com.example.ui.business.shared.rememberTransitaireColors
 import com.example.ui.theme.Inter
 import com.example.ui.theme.PlusJakartaSans
 
@@ -40,10 +42,11 @@ internal fun Step6StepperCard(
     unitsReceived: Int,
     totalQty: Int
 ) {
+    val colors = rememberTransitaireColors()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 1.dp
     ) {
         Column(
@@ -62,10 +65,10 @@ internal fun Step6StepperCard(
                         modifier = Modifier
                             .size(28.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF06B6D4).copy(alpha = 0.20f)),
+                            .background(colors.cyanSoftBg),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF00687A), modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Check, contentDescription = null, tint = colors.cyanAccent, modifier = Modifier.size(16.dp))
                     }
                     Box(
                         modifier = Modifier
@@ -73,7 +76,7 @@ internal fun Step6StepperCard(
                             .height(4.dp)
                             .padding(horizontal = 2.dp)
                             .clip(RoundedCornerShape(9999.dp))
-                            .background(if (idx == 4) Color(0xFF712AE2) else Color(0xFF06B6D4).copy(alpha = 0.30f))
+                            .background(if (idx == 4) colors.violetSolidBg else colors.cyanAccent.copy(alpha = 0.35f))
                     )
                 }
 
@@ -81,7 +84,7 @@ internal fun Step6StepperCard(
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF712AE2)),
+                        .background(colors.violetSolidBg),
                     contentAlignment = Alignment.Center
                 ) {
                     Text("6", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
@@ -99,14 +102,14 @@ internal fun Step6StepperCard(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(9999.dp),
-                        color = Color(0xFFEADDFF)
+                        color = colors.violetSoftBg
                     ) {
                         Text(
                             text = "Étape 6 sur 6",
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 11.sp,
-                            color = Color(0xFF712AE2),
+                            color = colors.violetAccent,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
                     }
@@ -115,7 +118,7 @@ internal fun Step6StepperCard(
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
-                        color = Color(0xFF131B2E)
+                        color = colors.textPrimary
                     )
                 }
 
@@ -124,7 +127,7 @@ internal fun Step6StepperCard(
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp,
-                    color = Color(0xFF00687A)
+                    color = colors.cyanAccent
                 )
             }
         }
@@ -136,10 +139,11 @@ internal fun Step6InspectionOverviewPill(
     order: BusinessOrderEntity,
     totalQty: Int
 ) {
+    val colors = rememberTransitaireColors()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        color = Color(0xFFF2F3FF)
+        color = colors.innerCardBg
     ) {
         Row(
             modifier = Modifier
@@ -157,13 +161,13 @@ internal fun Step6InspectionOverviewPill(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFFEAEDFF)),
+                        .background(colors.badgeNeutralBg),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Verified,
                         contentDescription = null,
-                        tint = Color(0xFF00687A),
+                        tint = colors.cyanAccent,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -173,13 +177,13 @@ internal fun Step6InspectionOverviewPill(
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
-                        color = Color(0xFF131B2E)
+                        color = colors.textPrimary
                     )
                     Text(
                         text = "Fournisseur ${order.supplier.ifBlank { "Chine" }}",
                         fontFamily = Inter,
                         fontSize = 11.sp,
-                        color = Color(0xFF3D494C)
+                        color = colors.textSecondary
                     )
                 }
             }
@@ -190,13 +194,13 @@ internal fun Step6InspectionOverviewPill(
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 24.sp,
-                    color = Color(0xFF00687A)
+                    color = colors.cyanAccent
                 )
                 Text(
                     text = "commandées",
                     fontFamily = PlusJakartaSans,
                     fontSize = 10.sp,
-                    color = Color(0xFF6D797D)
+                    color = colors.textSecondary
                 )
             }
         }
@@ -214,21 +218,27 @@ internal fun Step6VariantInspectionCard(
     nonSellableCount: Int,
     lostCount: Int,
     minorDefectLabel: String = "Défaut mineur",
-    minorDefectTitleColor: Color = Color(0xFF3D494C),
-    minorDefectContainerColor: Color = Color(0xFFF2F3FF),
+    minorDefectTitleColor: Color? = null,
+    minorDefectContainerColor: Color? = null,
     lostLabel: String = "Manquant/Perdu",
-    lostTitleColor: Color = Color(0xFF6D797D),
-    lostContainerColor: Color = Color(0xFFF2F3FF),
+    lostTitleColor: Color? = null,
+    lostContainerColor: Color? = null,
     onOkChange: (Int) -> Unit,
     onMinorDefectChange: (Int) -> Unit,
     onNonSellableChange: (Int) -> Unit,
     onLostChange: (Int) -> Unit
 ) {
+    val colors = rememberTransitaireColors()
+    val resolvedMinorTitleColor = minorDefectTitleColor ?: colors.textSecondary
+    val resolvedMinorContainerColor = minorDefectContainerColor ?: colors.innerCardBg
+    val resolvedLostTitleColor = lostTitleColor ?: colors.textSecondary
+    val resolvedLostContainerColor = lostContainerColor ?: colors.innerCardBg
     val sum = okCount + minorDefectCount + nonSellableCount + lostCount
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 1.dp
     ) {
         Column(
@@ -256,14 +266,14 @@ internal fun Step6VariantInspectionCard(
                         Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(badgeInnerColor))
                     }
                     Column {
-                        Text(variantName, fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF131B2E))
-                        Text("$orderedCount unités commandées", fontFamily = Inter, fontSize = 11.sp, color = Color(0xFF3D494C))
+                        Text(variantName, fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = colors.textPrimary)
+                        Text("$orderedCount unités commandées", fontFamily = Inter, fontSize = 11.sp, color = colors.textSecondary)
                     }
                 }
 
                 Surface(
                     shape = RoundedCornerShape(9999.dp),
-                    color = if (sum == orderedCount) Color(0xFFACEDFF) else Color(0xFFFFDAD6)
+                    color = if (sum == orderedCount) colors.cyanSoftBg else colors.dangerSoftBg
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
@@ -273,7 +283,7 @@ internal fun Step6VariantInspectionCard(
                         Icon(
                             if (sum == orderedCount) Icons.Default.CheckCircle else Icons.Default.ReportProblem,
                             contentDescription = null,
-                            tint = if (sum == orderedCount) Color(0xFF001F26) else Color(0xFFBA1A1A),
+                            tint = if (sum == orderedCount) colors.cyanAccent else colors.dangerAccent,
                             modifier = Modifier.size(13.dp)
                         )
                         Text(
@@ -281,7 +291,7 @@ internal fun Step6VariantInspectionCard(
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
-                            color = if (sum == orderedCount) Color(0xFF001F26) else Color(0xFFBA1A1A)
+                            color = if (sum == orderedCount) colors.cyanAccent else colors.dangerAccent
                         )
                     }
                 }
@@ -291,7 +301,8 @@ internal fun Step6VariantInspectionCard(
                 StatusCounterBox(
                     title = "Conforme (OK)",
                     count = okCount,
-                    titleColor = Color(0xFF00687A),
+                    titleColor = colors.cyanAccent,
+                    containerColor = colors.innerCardBg,
                     onDecrement = { if (okCount > 0) onOkChange(okCount - 1) },
                     onIncrement = { if (sum < orderedCount) onOkChange(okCount + 1) },
                     modifier = Modifier.weight(1f)
@@ -299,8 +310,8 @@ internal fun Step6VariantInspectionCard(
                 StatusCounterBox(
                     title = minorDefectLabel,
                     count = minorDefectCount,
-                    titleColor = minorDefectTitleColor,
-                    containerColor = minorDefectContainerColor,
+                    titleColor = resolvedMinorTitleColor,
+                    containerColor = resolvedMinorContainerColor,
                     onDecrement = { if (minorDefectCount > 0) onMinorDefectChange(minorDefectCount - 1) },
                     onIncrement = { if (sum < orderedCount) onMinorDefectChange(minorDefectCount + 1) },
                     modifier = Modifier.weight(1f)
@@ -311,7 +322,8 @@ internal fun Step6VariantInspectionCard(
                 StatusCounterBox(
                     title = "Non vendable",
                     count = nonSellableCount,
-                    titleColor = Color(0xFFBA1A1A),
+                    titleColor = colors.dangerAccent,
+                    containerColor = colors.innerCardBg,
                     onDecrement = { if (nonSellableCount > 0) onNonSellableChange(nonSellableCount - 1) },
                     onIncrement = { if (sum < orderedCount) onNonSellableChange(nonSellableCount + 1) },
                     modifier = Modifier.weight(1f)
@@ -319,8 +331,8 @@ internal fun Step6VariantInspectionCard(
                 StatusCounterBox(
                     title = lostLabel,
                     count = lostCount,
-                    titleColor = lostTitleColor,
-                    containerColor = lostContainerColor,
+                    titleColor = resolvedLostTitleColor,
+                    containerColor = resolvedLostContainerColor,
                     onDecrement = { if (lostCount > 0) onLostChange(lostCount - 1) },
                     onIncrement = { if (sum < orderedCount) onLostChange(lostCount + 1) },
                     modifier = Modifier.weight(1f)
@@ -337,10 +349,11 @@ internal fun Step6DistributionSummaryRow(
     totalPerdu: Int,
     totalDistributed: Int
 ) {
+    val colors = rememberTransitaireColors()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
-        color = Color(0xFFF2F3FF)
+        color = colors.innerCardBg
     ) {
         Row(
             modifier = Modifier
@@ -353,12 +366,12 @@ internal fun Step6DistributionSummaryRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF6D797D), modifier = Modifier.size(15.dp))
+                Icon(Icons.Default.Info, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(15.dp))
                 Text(
                     text = "Bilan : $totalConforme OK · $totalDefautVendable défectueux vendable · $totalPerdu perdu",
                     fontFamily = Inter,
                     fontSize = 11.sp,
-                    color = Color(0xFF3D494C)
+                    color = colors.textSecondary
                 )
             }
             Text(
@@ -366,7 +379,7 @@ internal fun Step6DistributionSummaryRow(
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp,
-                color = Color(0xFF00687A)
+                color = colors.cyanAccent
             )
         }
     }
@@ -377,11 +390,12 @@ internal fun StatusCounterBox(
     title: String,
     count: Int,
     titleColor: Color,
-    containerColor: Color = Color(0xFFF2F3FF),
+    containerColor: Color,
     onDecrement: () -> Unit,
     onIncrement: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colors = rememberTransitaireColors()
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(10.dp),
@@ -407,34 +421,34 @@ internal fun StatusCounterBox(
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
-                    color = Color(0xFF131B2E)
+                    color = colors.textPrimary
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Surface(
                     modifier = Modifier
-                        .size(26.dp)
+                        .size(28.dp)
                         .clickable { onDecrement() },
                     shape = RoundedCornerShape(6.dp),
-                    color = Color.White,
-                    shadowElevation = 0.5.dp
+                    color = colors.cardBg,
+                    border = BorderStroke(1.dp, colors.border.copy(alpha = 0.35f))
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Remove, contentDescription = "Diminuer", tint = Color(0xFF131B2E), modifier = Modifier.size(14.dp))
+                        Icon(Icons.Default.Remove, contentDescription = "Diminuer", tint = colors.textPrimary, modifier = Modifier.size(14.dp))
                     }
                 }
 
                 Surface(
                     modifier = Modifier
-                        .size(26.dp)
+                        .size(28.dp)
                         .clickable { onIncrement() },
                     shape = RoundedCornerShape(6.dp),
-                    color = Color.White,
-                    shadowElevation = 0.5.dp
+                    color = colors.cardBg,
+                    border = BorderStroke(1.dp, colors.border.copy(alpha = 0.35f))
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Add, contentDescription = "Augmenter", tint = Color(0xFF131B2E), modifier = Modifier.size(14.dp))
+                        Icon(Icons.Default.Add, contentDescription = "Augmenter", tint = colors.textPrimary, modifier = Modifier.size(14.dp))
                     }
                 }
             }

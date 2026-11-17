@@ -27,11 +27,15 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +55,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.ui.business.shared.VariantColorUtils
 import com.example.ui.theme.PlusJakartaSans
+import com.example.util.DateUtils
 import java.util.Locale
 
 data class VariantItemState(
@@ -84,12 +89,14 @@ private fun parseInitialVariants(variantsStr: String?): List<VariantItemState> {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddOrderDialog(
     cmupRate: Long,
     availableYuans: Double = 0.0,
     availableArticles: List<BusinessOrderEntity> = emptyList(),
     initialArticle: BusinessOrderEntity? = null,
+    editingOrder: BusinessOrderEntity? = null,
     transitaires: List<String> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (
@@ -105,24 +112,44 @@ fun AddOrderDialog(
         platform: String,
         referenceCode: String,
         family: String,
-        domesticShippingYuan: Double
+        domesticShippingYuan: Double,
+        orderDateMillis: Long
     ) -> Unit
 ) {
     val context = LocalContext.current
-    val targetItem = initialArticle
-    var selectedArticleId by remember { mutableStateOf<Long?>(targetItem?.id) }
-    var product by remember { mutableStateOf(targetItem?.product ?: "") }
-    var supplierRef by remember { mutableStateOf(targetItem?.referenceCode ?: "") }
-    var familyCategory by remember { mutableStateOf(targetItem?.family?.ifBlank { "Électronique" } ?: "Électronique") }
-    var selectedSupplier by remember { mutableStateOf(targetItem?.platform?.ifBlank { "1688.com" } ?: "1688.com") }
-    var priceYuanText by remember { mutableStateOf(if ((targetItem?.priceYuan ?: 0.0) > 0) String.format(Locale.US, "%.2f", targetItem!!.priceYuan).removeSuffix(".00") else "") }
-    var isShippingPaid by remember { mutableStateOf((targetItem?.domesticShippingYuan ?: 0.0) > 0.0) }
-    var shippingCostYuanText by remember { mutableStateOf(if ((targetItem?.domesticShippingYuan ?: 0.0) > 0.0) targetItem!!.domesticShippingYuan.toString() else "") }
-    var category by remember { mutableStateOf(targetItem?.category?.ifBlank { "BUSINESS" } ?: "BUSINESS") }
-    var carrier by remember { mutableStateOf(if (targetItem?.carrier?.isNotBlank() == true) targetItem.carrier else (transitaires.firstOrNull() ?: "")) }
-    var resaleArText by remember { mutableStateOf(if ((targetItem?.resalePriceAr ?: 0L) > 0) targetItem!!.resalePriceAr.toString() else "") }
+    val isEditMode = editingOrder != null
+    val targetItem = editingOrder ?: initialArticle
+    var selectedArticleId by remember(targetItem?.id) { mutableStateOf<Long?>(targetItem?.id) }
+    var product by remember(targetItem?.id) { mutableStateOf(targetItem?.product ?: "") }
+    var supplierRef by remember(targetItem?.id) { mutableStateOf(targetItem?.referenceCode ?: "") }
+    var familyCategory by remember(targetItem?.id) { mutableStateOf(targetItem?.family?.ifBlank { "Électronique" } ?: "Électronique") }
+    var selectedSupplier by remember(targetItem?.id) { mutableStateOf(targetItem?.platform?.ifBlank { "1688.com" } ?: "1688.com") }
+    var priceYuanText by remember(targetItem?.id) {
+        mutableStateOf(
+            if ((targetItem?.priceYuan ?: 0.0) > 0) String.format(Locale.US, "%.2f", targetItem!!.priceYuan).removeSuffix(".00")
+            else ""
+        )
+    }
+    var isShippingPaid by remember(targetItem?.id) { mutableStateOf((targetItem?.domesticShippingYuan ?: 0.0) > 0.0) }
+    var shippingCostYuanText by remember(targetItem?.id) {
+        mutableStateOf(
+            if ((targetItem?.domesticShippingYuan ?: 0.0) > 0.0) {
+                String.format(Locale.US, "%.2f", targetItem!!.domesticShippingYuan).removeSuffix(".00")
+            } else ""
+        )
+    }
+    var category by remember(targetItem?.id) { mutableStateOf(targetItem?.category?.ifBlank { "BUSINESS" } ?: "BUSINESS") }
+    var carrier by remember(targetItem?.id) { mutableStateOf(if (targetItem?.carrier?.isNotBlank() == true) targetItem.carrier else (transitaires.firstOrNull() ?: "")) }
+    var resaleArText by remember(targetItem?.id) { mutableStateOf(if ((targetItem?.resalePriceAr ?: 0L) > 0) targetItem!!.resalePriceAr.toString() else "") }
+    var orderDateText by remember(editingOrder?.id) {
+        mutableStateOf(
+            if (editingOrder != null) DateUtils.formatShortDate(editingOrder.orderDate)
+            else DateUtils.getTodayFrenchDate()
+        )
+    }
+    var showDatePicker by remember { mutableStateOf(false) }
 
-    var variantsList by remember {
+    var variantsList by remember(targetItem?.id) {
         mutableStateOf(parseInitialVariants(targetItem?.variants))
     }
 
@@ -144,10 +171,20 @@ fun AddOrderDialog(
             Toast.makeText(context, "Veuillez saisir le nom de l'article", Toast.LENGTH_SHORT).show()
         } else if (priceYuan <= 0.0) {
             Toast.makeText(context, "Veuillez indiquer le prix unitaire en Yuans (¥)", Toast.LENGTH_SHORT).show()
+        } else if (!DateUtils.isValidFrenchDate(orderDateText)) {
+            Toast.makeText(context, "Date d'achat invalide (format attendu : jj/mm/aaaa)", Toast.LENGTH_SHORT).show()
         } else {
             val variantsStr = variantsList.filter { it.name.isNotBlank() }.joinToString(", ") { "${it.name} ×${it.quantity}" }
             val resaleAr = resaleArText.toLongOrNull() ?: (priceYuan * effectiveCmupRate * 1.5).toLong()
             val cleanPlat = if (selectedSupplier.equals("1688.com", ignoreCase = true)) "1688" else selectedSupplier.trim()
+            val finalOrderDateMillis = if (
+                editingOrder != null &&
+                orderDateText.trim() == DateUtils.formatShortDate(editingOrder.orderDate)
+            ) {
+                editingOrder.orderDate
+            } else {
+                DateUtils.frenchDateToEpochMillis(orderDateText)
+            }
             onConfirm(
                 product.trim(),
                 cleanPlat,
@@ -161,9 +198,34 @@ fun AddOrderDialog(
                 cleanPlat,
                 supplierRef.trim(),
                 familyCategory.trim().ifBlank { "Électronique" },
-                shippingCostYuan
+                shippingCostYuan,
+                finalOrderDateMillis
             )
             onDismiss()
+        }
+    }
+
+    if (showDatePicker) {
+        val initialUtcMillis = DateUtils.frenchDateToUtcPickerMillis(orderDateText)
+            ?: DateUtils.frenchDateToUtcPickerMillis(DateUtils.getTodayFrenchDate())
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialUtcMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pickerState.selectedDateMillis?.let { picked ->
+                            orderDateText = DateUtils.utcPickerMillisToFrenchDate(picked)
+                        }
+                        showDatePicker = false
+                    }
+                ) { Text("OK", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Annuler") }
+            }
+        ) {
+            DatePicker(state = pickerState)
         }
     }
 
@@ -217,7 +279,7 @@ fun AddOrderDialog(
                                     )
                                 }
                                 Text(
-                                    text = "Nouvel Achat",
+                                    text = if (isEditMode) "Modifier l'achat" else "Nouvel Achat",
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 18.sp,
@@ -266,16 +328,19 @@ fun AddOrderDialog(
                             .padding(horizontal = 16.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        OrderDialogStepperHeader()
+                        OrderDialogStepperHeader(isEditMode = isEditMode)
 
                         OrderIdentificationSectionCard(
-                            availableArticles = availableArticles,
+                            availableArticles = if (isEditMode) emptyList() else availableArticles,
                             product = product,
                             onProductChange = { product = it },
                             supplierRef = supplierRef,
                             onSupplierRefChange = { supplierRef = it },
                             familyCategory = familyCategory,
                             onFamilyCategoryChange = { familyCategory = it },
+                            orderDateText = orderDateText,
+                            onOrderDateChange = { orderDateText = it },
+                            onOpenDatePicker = { showDatePicker = true },
                             onArticleSelected = { art ->
                                 selectedArticleId = art.id
                                 product = art.product
@@ -386,7 +451,7 @@ fun AddOrderDialog(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "Continuer vers Livraison",
+                                        text = if (isEditMode) "Enregistrer les modifications" else "Continuer vers Livraison",
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 13.sp,
@@ -436,7 +501,7 @@ fun AddOrderDialog(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Text(
-                                    text = "Enregistrer l'achat",
+                                    text = if (isEditMode) "Mettre à jour l'achat" else "Enregistrer l'achat",
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp,
@@ -458,7 +523,7 @@ fun AddOrderDialog(
 }
 
 @Composable
-private fun OrderDialogStepperHeader() {
+private fun OrderDialogStepperHeader(isEditMode: Boolean = false) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -469,7 +534,7 @@ private fun OrderDialogStepperHeader() {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "MODULE BUSINESS",
+                text = if (isEditMode) "MODIFICATION" else "MODULE BUSINESS",
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp,
@@ -477,7 +542,7 @@ private fun OrderDialogStepperHeader() {
                 letterSpacing = 0.5.sp
             )
             Text(
-                text = "Étape 2 sur 4",
+                text = if (isEditMode) "Édition de l'achat" else "Étape 2 sur 4",
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
                 fontSize = 12.sp,
@@ -486,7 +551,7 @@ private fun OrderDialogStepperHeader() {
         }
 
         Text(
-            text = "Quantités & Prix",
+            text = if (isEditMode) "Détails de la commande" else "Quantités & Prix",
             fontFamily = PlusJakartaSans,
             fontWeight = FontWeight.Bold,
             fontSize = 22.sp,

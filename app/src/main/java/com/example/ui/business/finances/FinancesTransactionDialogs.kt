@@ -16,16 +16,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -44,9 +51,11 @@ import com.example.data.local.entity.BusinessAccountEntity
 import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.PlusJakartaSans
 import com.example.util.CurrencyFormatter
+import com.example.util.DateUtils
 import java.util.Locale
 import kotlin.math.roundToLong
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddBusinessTransactionDialog(
     accounts: List<BusinessAccountEntity>,
@@ -67,8 +76,9 @@ fun AddBusinessTransactionDialog(
         amountYuan: Double,
         rateAr: Double,
         platform: String,
-        sourceAccountName: String
-    ) -> Unit = { _, _, _, _ -> }
+        sourceAccountName: String,
+        purchaseDateMillis: Long
+    ) -> Unit = { _, _, _, _, _ -> }
 ) {
     val ariaryAccounts = remember(accounts) {
         accounts.filter { !it.isYuanAccount && it.isActive }
@@ -95,6 +105,8 @@ fun AddBusinessTransactionDialog(
     var yuanPlatform by remember(yuanAccounts) {
         mutableStateOf(yuanAccounts.firstOrNull()?.name ?: "")
     }
+    var yuanDateText by remember { mutableStateOf(DateUtils.getTodayFrenchDate()) }
+    var showYuanDatePicker by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val types = listOf(
@@ -107,6 +119,31 @@ fun AddBusinessTransactionDialog(
     val parsedYuan = yuanAmountText.toDoubleOrNull() ?: 0.0
     val parsedRate = yuanRateText.toDoubleOrNull() ?: 0.0
     val computedYuanAr = (parsedYuan * parsedRate).roundToLong()
+
+    if (showYuanDatePicker) {
+        val initialUtcMillis = DateUtils.frenchDateToUtcPickerMillis(yuanDateText)
+            ?: DateUtils.frenchDateToUtcPickerMillis(DateUtils.getTodayFrenchDate())
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialUtcMillis)
+        DatePickerDialog(
+            onDismissRequest = { showYuanDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pickerState.selectedDateMillis?.let { picked ->
+                            yuanDateText = DateUtils.utcPickerMillisToFrenchDate(picked)
+                            errorMessage = null
+                        }
+                        showYuanDatePicker = false
+                    }
+                ) { Text("OK", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showYuanDatePicker = false }) { Text("Annuler") }
+            }
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -183,6 +220,27 @@ fun AddBusinessTransactionDialog(
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = yuanDateText,
+                        onValueChange = {
+                            yuanDateText = it
+                            errorMessage = null
+                        },
+                        label = { Text("Date d'achat (jj/mm/aaaa)") },
+                        placeholder = { Text("ex. 15/03/2025") },
+                        trailingIcon = {
+                            IconButton(onClick = { showYuanDatePicker = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.CalendarToday,
+                                    contentDescription = "Choisir la date d'achat",
+                                    tint = CyanPrimary
+                                )
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("input_tx_yuan_purchase_date")
                     )
 
                     Text(
@@ -410,11 +468,13 @@ fun AddBusinessTransactionDialog(
                             yuanPlatform.isBlank() -> errorMessage = "Sélectionnez Alipay ou Wechat Pay."
                             parsedYuan <= 0.0 -> errorMessage = "Veuillez saisir un montant en yuans valide."
                             parsedRate <= 0.0 -> errorMessage = "Veuillez saisir un taux de change valide."
+                            !DateUtils.isValidFrenchDate(yuanDateText) -> errorMessage = "Date d'achat invalide (format attendu : jj/mm/aaaa)."
                             else -> onConfirmBuyYuans(
                                 parsedYuan,
                                 parsedRate,
                                 yuanPlatform,
-                                selectedAccount.ifBlank { "Externe" }
+                                selectedAccount.ifBlank { "Externe" },
+                                DateUtils.frenchDateToEpochMillis(yuanDateText)
                             )
                         }
                     } else {

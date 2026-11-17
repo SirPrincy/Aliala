@@ -17,16 +17,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,14 +53,16 @@ import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.Inter
 import com.example.ui.theme.PlusJakartaSans
 import com.example.util.CurrencyFormatter
+import com.example.util.DateUtils
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BuyYuansDialog(
     accounts: List<BusinessAccountEntity> = emptyList(),
     defaultRate: Long = 650L,
     onDismiss: () -> Unit,
-    onConfirm: (amountYuan: Double, rateAr: Double, platform: String, sourceAccountName: String) -> Unit,
+    onConfirm: (amountYuan: Double, rateAr: Double, platform: String, sourceAccountName: String, purchaseDateMillis: Long) -> Unit,
     onCreateAccountClick: (() -> Unit)? = null
 ) {
     val ariaryAccounts = remember(accounts) {
@@ -75,6 +83,8 @@ fun BuyYuansDialog(
         )
     }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var dateText by remember { mutableStateOf(DateUtils.getTodayFrenchDate()) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     val amountYuan = amountText.toDoubleOrNull() ?: 0.0
     val rateAr = rateText.toDoubleOrNull() ?: 0.0
@@ -83,6 +93,31 @@ fun BuyYuansDialog(
         it.name.equals(selectedAccount, ignoreCase = true)
     }?.balanceAr ?: 0L
     val isAriaryInsufficient = selectedAccount != "Externe" && totalAr > 0L && totalAr > selectedAriaryBalance
+
+    if (showDatePicker) {
+        val initialUtcMillis = DateUtils.frenchDateToUtcPickerMillis(dateText)
+            ?: DateUtils.frenchDateToUtcPickerMillis(DateUtils.getTodayFrenchDate())
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialUtcMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pickerState.selectedDateMillis?.let { picked ->
+                            dateText = DateUtils.utcPickerMillisToFrenchDate(picked)
+                            errorMessage = null
+                        }
+                        showDatePicker = false
+                    }
+                ) { Text("OK", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Annuler") }
+            }
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -139,6 +174,27 @@ fun BuyYuansDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().testTag("input_yuan_rate")
+                )
+
+                OutlinedTextField(
+                    value = dateText,
+                    onValueChange = {
+                        dateText = it
+                        errorMessage = null
+                    },
+                    label = { Text("Date d'achat (jj/mm/aaaa)") },
+                    placeholder = { Text("ex. 15/03/2025") },
+                    trailingIcon = {
+                        IconButton(onClick = { showDatePicker = true }) {
+                            Icon(
+                                imageVector = Icons.Default.CalendarToday,
+                                contentDescription = "Choisir la date d'achat",
+                                tint = CyanPrimary
+                            )
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("input_yuan_purchase_date")
                 )
 
                 Text(
@@ -368,8 +424,15 @@ fun BuyYuansDialog(
                         selectedPlatform.isBlank() -> errorMessage = "Veuillez sélectionner un compte Yuan."
                         amountYuan <= 0.0 -> errorMessage = "Veuillez saisir un montant en yuans valide."
                         rateAr <= 0.0 -> errorMessage = "Veuillez saisir un taux de change valide."
+                        !DateUtils.isValidFrenchDate(dateText) -> errorMessage = "Date d'achat invalide (format attendu : jj/mm/aaaa)."
                         else -> {
-                            onConfirm(amountYuan, rateAr, selectedPlatform, selectedAccount)
+                            onConfirm(
+                                amountYuan,
+                                rateAr,
+                                selectedPlatform,
+                                selectedAccount,
+                                DateUtils.frenchDateToEpochMillis(dateText)
+                            )
                             onDismiss()
                         }
                     }

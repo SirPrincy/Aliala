@@ -16,7 +16,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DirectionsBoat
 import androidx.compose.material.icons.filled.EventAvailable
@@ -42,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.business.shared.rememberTransitaireColors
 import com.example.ui.theme.Inter
 import com.example.ui.theme.PlusJakartaSans
 import com.example.util.CurrencyFormatter
@@ -50,10 +50,12 @@ import java.util.Locale
 
 @Composable
 internal fun Step3StepperHeaderCard() {
+    val colors = rememberTransitaireColors()
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 1.dp
     ) {
         Column(
@@ -72,7 +74,7 @@ internal fun Step3StepperHeaderCard() {
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.sp,
-                    color = Color(0xFF712AE2),
+                    color = colors.violetAccent,
                     letterSpacing = 0.5.sp
                 )
                 Text(
@@ -80,7 +82,7 @@ internal fun Step3StepperHeaderCard() {
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Medium,
                     fontSize = 11.sp,
-                    color = Color(0xFF3D494C)
+                    color = colors.textSecondary
                 )
             }
 
@@ -89,7 +91,7 @@ internal fun Step3StepperHeaderCard() {
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
-                color = Color(0xFF131B2E)
+                color = colors.textPrimary
             )
 
             Row(
@@ -102,12 +104,12 @@ internal fun Step3StepperHeaderCard() {
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF06B6D4).copy(alpha = 0.20f)),
+                            .background(colors.cyanSoftBg),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF00687A), modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Check, contentDescription = null, tint = colors.cyanAccent, modifier = Modifier.size(16.dp))
                     }
-                    Text("Cmd", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = Color(0xFF3D494C), modifier = Modifier.padding(top = 4.dp))
+                    Text("Cmd", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = colors.textSecondary, modifier = Modifier.padding(top = 4.dp))
                 }
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
@@ -115,12 +117,12 @@ internal fun Step3StepperHeaderCard() {
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF06B6D4).copy(alpha = 0.20f)),
+                            .background(colors.cyanSoftBg),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF00687A), modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Check, contentDescription = null, tint = colors.cyanAccent, modifier = Modifier.size(16.dp))
                     }
-                    Text("Transit", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = Color(0xFF3D494C), modifier = Modifier.padding(top = 4.dp))
+                    Text("Transit", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = colors.textSecondary, modifier = Modifier.padding(top = 4.dp))
                 }
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
@@ -128,12 +130,12 @@ internal fun Step3StepperHeaderCard() {
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF712AE2)),
+                            .background(colors.violetSolidBg),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Default.Warehouse, contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp))
                     }
-                    Text("Entrepôt", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color(0xFF712AE2), modifier = Modifier.padding(top = 4.dp))
+                    Text("Entrepôt", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 10.sp, color = colors.violetAccent, modifier = Modifier.padding(top = 4.dp))
                 }
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
@@ -141,12 +143,12 @@ internal fun Step3StepperHeaderCard() {
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFE2E7FF)),
+                            .background(colors.badgeNeutralBg),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("4", fontFamily = PlusJakartaSans, fontSize = 11.sp, color = Color(0xFF3D494C).copy(alpha = 0.6f))
+                        Text("4", fontFamily = PlusJakartaSans, fontSize = 11.sp, color = colors.textSecondary)
                     }
-                    Text("Vers Ma...", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = Color(0xFF3D494C).copy(alpha = 0.6f), modifier = Modifier.padding(top = 4.dp))
+                    Text("Vers Ma...", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = colors.textSecondary, modifier = Modifier.padding(top = 4.dp))
                 }
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
@@ -154,12 +156,12 @@ internal fun Step3StepperHeaderCard() {
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFE2E7FF)),
+                            .background(colors.badgeNeutralBg),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("5", fontFamily = PlusJakartaSans, fontSize = 11.sp, color = Color(0xFF3D494C).copy(alpha = 0.6f))
+                        Text("5", fontFamily = PlusJakartaSans, fontSize = 11.sp, color = colors.textSecondary)
                     }
-                    Text("Arrivé M...", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = Color(0xFF3D494C).copy(alpha = 0.6f), modifier = Modifier.padding(top = 4.dp))
+                    Text("Arrivé M...", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = colors.textSecondary, modifier = Modifier.padding(top = 4.dp))
                 }
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
@@ -167,12 +169,12 @@ internal fun Step3StepperHeaderCard() {
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFE2E7FF)),
+                            .background(colors.badgeNeutralBg),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("6", fontFamily = PlusJakartaSans, fontSize = 11.sp, color = Color(0xFF3D494C).copy(alpha = 0.6f))
+                        Text("6", fontFamily = PlusJakartaSans, fontSize = 11.sp, color = colors.textSecondary)
                     }
-                    Text("Stock", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = Color(0xFF3D494C).copy(alpha = 0.6f), modifier = Modifier.padding(top = 4.dp))
+                    Text("Stock", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = colors.textSecondary, modifier = Modifier.padding(top = 4.dp))
                 }
             }
         }
@@ -189,10 +191,12 @@ internal fun Step3ForwarderModeCard(
     onOpenChangeForwarder: () -> Unit,
     onSelectAirMode: (Boolean) -> Unit
 ) {
+    val colors = rememberTransitaireColors()
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 1.dp
     ) {
         Column(
@@ -214,20 +218,20 @@ internal fun Step3ForwarderModeCard(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF712AE2).copy(alpha = 0.10f)),
+                            .background(colors.violetSoftBg),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.LocalShipping, contentDescription = null, tint = Color(0xFF712AE2), modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.LocalShipping, contentDescription = null, tint = colors.violetAccent, modifier = Modifier.size(20.dp))
                     }
                     Column {
-                        Text("TRANSITAIRE PARTENAIRE", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = Color(0xFF3D494C), letterSpacing = 0.5.sp)
-                        Text(selectedForwarder, fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF131B2E))
+                        Text("TRANSITAIRE PARTENAIRE", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = colors.textSecondary, letterSpacing = 0.5.sp)
+                        Text(selectedForwarder, fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.textPrimary)
                     }
                 }
 
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFEADDFF).copy(alpha = 0.30f),
+                    color = colors.violetSoftBg,
                     modifier = Modifier.clickable(onClick = onOpenChangeForwarder)
                 ) {
                     Row(
@@ -235,8 +239,8 @@ internal fun Step3ForwarderModeCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = Color(0xFF712AE2), modifier = Modifier.size(16.dp))
-                        Text("Changer", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color(0xFF712AE2))
+                        Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = colors.violetAccent, modifier = Modifier.size(16.dp))
+                        Text("Changer", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = colors.violetAccent)
                     }
                 }
             }
@@ -244,7 +248,7 @@ internal fun Step3ForwarderModeCard(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = Color(0xFFF2F3FF)
+                color = colors.innerCardBg
             ) {
                 Row(
                     modifier = Modifier
@@ -255,22 +259,25 @@ internal fun Step3ForwarderModeCard(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF00687A), modifier = Modifier.size(16.dp))
-                        Text(warehouseLocation, fontFamily = Inter, fontSize = 12.sp, color = Color(0xFF3D494C))
+                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = colors.cyanAccent, modifier = Modifier.size(16.dp))
+                        Text(warehouseLocation, fontFamily = Inter, fontSize = 12.sp, color = colors.textSecondary)
                     }
 
                     Surface(
                         shape = RoundedCornerShape(9999.dp),
-                        color = Color(0xFFEADDFF).copy(alpha = 0.40f)
+                        color = colors.violetSoftBg
                     ) {
+                        val airBadge = if (airRatePerKg > 0L) "${CurrencyFormatter.formatAriary(airRatePerKg)}/kg" else "Aérien non défini"
+                        val seaBadge = if (seaRatePerM3 > 0L) "${CurrencyFormatter.formatAriary(seaRatePerM3)}/m³" else "Maritime non défini"
                         Text(
-                            text = "${CurrencyFormatter.formatAriary(airRatePerKg)}/kg · ${CurrencyFormatter.formatAriary(seaRatePerM3)}/m³",
+                            text = "$airBadge · $seaBadge",
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Medium,
                             fontSize = 10.sp,
-                            color = Color(0xFF712AE2),
+                            color = colors.violetAccent,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
                     }
@@ -278,12 +285,12 @@ internal fun Step3ForwarderModeCard(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Mode de Fret International", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Color(0xFF131B2E))
+                Text("Mode de Fret International", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = colors.textPrimary)
 
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFFF2F3FF)
+                    color = colors.toggleTrackBg
                 ) {
                     Row(
                         modifier = Modifier
@@ -297,7 +304,7 @@ internal fun Step3ForwarderModeCard(
                                 .height(42.dp)
                                 .clickable { onSelectAirMode(true) },
                             shape = RoundedCornerShape(8.dp),
-                            color = if (isAirFreight) Color.White else Color.Transparent,
+                            color = if (isAirFreight) colors.cardBg else Color.Transparent,
                             shadowElevation = if (isAirFreight) 1.dp else 0.dp
                         ) {
                             Row(
@@ -305,9 +312,9 @@ internal fun Step3ForwarderModeCard(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center
                             ) {
-                                Icon(Icons.Default.FlightTakeoff, contentDescription = null, tint = if (isAirFreight) Color(0xFF712AE2) else Color(0xFF3D494C), modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.FlightTakeoff, contentDescription = null, tint = if (isAirFreight) colors.violetAccent else colors.textSecondary, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("✈ Aérien (Express)", fontFamily = PlusJakartaSans, fontWeight = if (isAirFreight) FontWeight.Bold else FontWeight.Medium, fontSize = 12.sp, color = if (isAirFreight) Color(0xFF712AE2) else Color(0xFF3D494C))
+                                Text("✈ Aérien (Express)", fontFamily = PlusJakartaSans, fontWeight = if (isAirFreight) FontWeight.Bold else FontWeight.Medium, fontSize = 12.sp, color = if (isAirFreight) colors.violetAccent else colors.textSecondary)
                             }
                         }
 
@@ -317,7 +324,7 @@ internal fun Step3ForwarderModeCard(
                                 .height(42.dp)
                                 .clickable { onSelectAirMode(false) },
                             shape = RoundedCornerShape(8.dp),
-                            color = if (!isAirFreight) Color.White else Color.Transparent,
+                            color = if (!isAirFreight) colors.cardBg else Color.Transparent,
                             shadowElevation = if (!isAirFreight) 1.dp else 0.dp
                         ) {
                             Row(
@@ -325,9 +332,9 @@ internal fun Step3ForwarderModeCard(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center
                             ) {
-                                Icon(Icons.Default.DirectionsBoat, contentDescription = null, tint = if (!isAirFreight) Color(0xFF712AE2) else Color(0xFF3D494C), modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.DirectionsBoat, contentDescription = null, tint = if (!isAirFreight) colors.violetAccent else colors.textSecondary, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("🚢 Maritime (Groupé)", fontFamily = PlusJakartaSans, fontWeight = if (!isAirFreight) FontWeight.Bold else FontWeight.Medium, fontSize = 12.sp, color = if (!isAirFreight) Color(0xFF712AE2) else Color(0xFF3D494C))
+                                Text("🚢 Maritime (Groupé)", fontFamily = PlusJakartaSans, fontWeight = if (!isAirFreight) FontWeight.Bold else FontWeight.Medium, fontSize = 12.sp, color = if (!isAirFreight) colors.violetAccent else colors.textSecondary)
                             }
                         }
                     }
@@ -339,7 +346,7 @@ internal fun Step3ForwarderModeCard(
 
 @Composable
 internal fun Step3WeighingAndProofsCard(
-    orderDate: Long,
+    warehouseArrivalDate: Long?,
     isAirFreight: Boolean,
     weightInput: String,
     onWeightChange: (String) -> Unit,
@@ -349,13 +356,15 @@ internal fun Step3WeighingAndProofsCard(
     volumeDouble: Double,
     upstreamCarrierLabel: String,
     agentNotes: String,
-    onAgentNotesChange: (String) -> Unit,
-    onOpenAddPhoto: () -> Unit
+    onAgentNotesChange: (String) -> Unit
 ) {
+    val colors = rememberTransitaireColors()
+    val hasValidMeasure = if (isAirFreight) weightDouble > 0.0 else volumeDouble > 0.0
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 1.dp
     ) {
         Column(
@@ -367,7 +376,7 @@ internal fun Step3WeighingAndProofsCard(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = Color(0xFFACEDFF).copy(alpha = 0.25f)
+                color = colors.cyanSoftBg
             ) {
                 Row(
                     modifier = Modifier
@@ -376,14 +385,14 @@ internal fun Step3WeighingAndProofsCard(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = Color(0xFF00687A), modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = colors.cyanAccent, modifier = Modifier.size(20.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Pesée & Cubage Certifiés", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Color(0xFF00424F))
+                        Text("Pesée & Cubage Certifiés", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = colors.cyanAccent)
                         Text(
-                            text = "Le poids et le volume réels ne sont certifiés qu'à l'arrivée physique à l'entrepôt du transitaire.",
+                            text = "Renseignez le poids ou le volume réel mesuré à l'arrivée physique à l'entrepôt.",
                             fontFamily = Inter,
                             fontSize = 11.sp,
-                            color = Color(0xFF004E5C),
+                            color = colors.textSecondary,
                             lineHeight = 16.sp
                         )
                     }
@@ -393,7 +402,7 @@ internal fun Step3WeighingAndProofsCard(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = Color(0xFFF2F3FF)
+                color = colors.innerCardBg
             ) {
                 Row(
                     modifier = Modifier
@@ -403,10 +412,16 @@ internal fun Step3WeighingAndProofsCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Default.EventAvailable, contentDescription = null, tint = Color(0xFF3D494C), modifier = Modifier.size(18.dp))
-                        Text("Arrivée certifiée :", fontFamily = Inter, fontSize = 12.sp, color = Color(0xFF3D494C))
+                        Icon(Icons.Default.EventAvailable, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(18.dp))
+                        Text("Arrivée dépôt Chine :", fontFamily = Inter, fontSize = 12.sp, color = colors.textSecondary)
                     }
-                    Text(DateUtils.formatShortDate(orderDate), fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color(0xFF131B2E))
+                    Text(
+                        text = warehouseArrivalDate?.let { DateUtils.formatShortDate(it) } ?: "Non renseignée",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        color = if (warehouseArrivalDate != null) colors.textPrimary else colors.textSecondary
+                    )
                 }
             }
 
@@ -415,8 +430,8 @@ internal fun Step3WeighingAndProofsCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Poids réel mesuré", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0xFF131B2E))
-                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = Color(0xFFF2F3FF)) {
+                    Text("Poids réel mesuré", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = colors.textPrimary)
+                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = colors.inputBg) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -428,21 +443,28 @@ internal fun Step3WeighingAndProofsCard(
                                 value = weightInput,
                                 onValueChange = onWeightChange,
                                 singleLine = true,
+                                placeholder = {
+                                    Text("0.0", fontFamily = PlusJakartaSans, fontSize = 15.sp, color = colors.textSecondary.copy(alpha = 0.5f))
+                                },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color.Transparent, focusedBorderColor = Color.Transparent),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    unfocusedBorderColor = Color.Transparent,
+                                    focusedBorderColor = Color.Transparent,
+                                    cursorColor = colors.cyanAccent
+                                ),
                                 modifier = Modifier.weight(1f),
-                                textStyle = TextStyle(fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF131B2E))
+                                textStyle = TextStyle(fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.textPrimary)
                             )
-                            Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFEADDFF).copy(alpha = 0.50f)) {
-                                Text("kg", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF712AE2), modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                            Surface(shape = RoundedCornerShape(6.dp), color = colors.violetSoftBg) {
+                                Text("kg", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = colors.violetAccent, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
                             }
                         }
                     }
                 }
 
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Volume certifié", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0xFF131B2E))
-                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = Color(0xFFF2F3FF)) {
+                    Text("Volume certifié", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = colors.textPrimary)
+                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = colors.inputBg) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -454,12 +476,19 @@ internal fun Step3WeighingAndProofsCard(
                                 value = volumeInput,
                                 onValueChange = onVolumeChange,
                                 singleLine = true,
+                                placeholder = {
+                                    Text("0,00000", fontFamily = PlusJakartaSans, fontSize = 15.sp, color = colors.textSecondary.copy(alpha = 0.5f))
+                                },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color.Transparent, focusedBorderColor = Color.Transparent),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    unfocusedBorderColor = Color.Transparent,
+                                    focusedBorderColor = Color.Transparent,
+                                    cursorColor = colors.cyanAccent
+                                ),
                                 modifier = Modifier.weight(1f),
-                                textStyle = TextStyle(fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF131B2E))
+                                textStyle = TextStyle(fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.textPrimary)
                             )
-                            Text("m³", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF3D494C), modifier = Modifier.padding(end = 4.dp))
+                            Text("m³", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = colors.textSecondary, modifier = Modifier.padding(end = 4.dp))
                         }
                     }
                 }
@@ -468,7 +497,7 @@ internal fun Step3WeighingAndProofsCard(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = Color(0xFFF2F3FF)
+                color = colors.innerCardBg
             ) {
                 Row(
                     modifier = Modifier
@@ -477,107 +506,61 @@ internal fun Step3WeighingAndProofsCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Default.Inventory2, contentDescription = null, tint = Color(0xFF00687A), modifier = Modifier.size(20.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Inventory2, contentDescription = null, tint = colors.cyanAccent, modifier = Modifier.size(20.dp))
                         Column {
                             Text(
-                                text = if (isAirFreight) "Lot pesé : ${String.format(Locale.US, "%.1f", weightDouble)} kg" else "Lot mesuré : ${String.format(Locale.US, "%.3f", volumeDouble)} m³",
+                                text = when {
+                                    isAirFreight && weightDouble > 0.0 -> "Lot pesé : ${String.format(Locale.US, "%.1f", weightDouble)} kg"
+                                    !isAirFreight && volumeDouble > 0.0 -> "Lot mesuré : ${String.format(Locale.FRENCH, "%.5f", volumeDouble)} m³"
+                                    else -> "Mesure en attente de saisie"
+                                },
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.sp,
-                                color = Color(0xFF131B2E)
+                                color = colors.textPrimary
                             )
-                            Text("Transporteur amont : $upstreamCarrierLabel", fontFamily = Inter, fontSize = 11.sp, color = Color(0xFF3D494C))
-                        }
-                    }
-
-                    Surface(shape = RoundedCornerShape(9999.dp), color = Color(0xFFACEDFF).copy(alpha = 0.40f)) {
-                        Text("Scellé OK", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color(0xFF00687A), modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
-                    }
-                }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Preuves visuelles (Pesée & Étiquette)", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = Color(0xFF131B2E))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(80.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFFE2E7FF)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Inventory2, contentDescription = null, tint = Color(0xFF00687A), modifier = Modifier.size(24.dp))
-                            Text("Balance", fontFamily = Inter, fontSize = 9.sp, color = Color(0xFF3D494C))
-                        }
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(4.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0xFF131B2E).copy(alpha = 0.75f))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                        ) {
-                            Text("${weightDouble}kg", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 9.sp, color = Color.White)
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(80.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFFEADDFF).copy(alpha = 0.50f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.LocalShipping, contentDescription = null, tint = Color(0xFF712AE2), modifier = Modifier.size(24.dp))
-                            Text("Bordereau", fontFamily = Inter, fontSize = 9.sp, color = Color(0xFF3D494C))
-                        }
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(4.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0xFF131B2E).copy(alpha = 0.75f))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                        ) {
-                            Text(upstreamCarrierLabel.take(8), fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 9.sp, color = Color.White)
+                            Text("Transporteur amont : $upstreamCarrierLabel", fontFamily = Inter, fontSize = 11.sp, color = colors.textSecondary)
                         }
                     }
 
                     Surface(
-                        modifier = Modifier
-                            .size(80.dp)
-                            .clickable(onClick = onOpenAddPhoto),
-                        shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFFF2F3FF)
+                        shape = RoundedCornerShape(9999.dp),
+                        color = if (hasValidMeasure) colors.cyanSoftBg else colors.badgeNeutralBg
                     ) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(Icons.Default.AddAPhoto, contentDescription = null, tint = Color(0xFF712AE2), modifier = Modifier.size(24.dp))
-                            Text("+ Photo", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF712AE2), modifier = Modifier.padding(top = 4.dp))
-                        }
+                        Text(
+                            text = if (hasValidMeasure) "Mesuré" else "À saisir",
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            color = if (hasValidMeasure) colors.cyanAccent else colors.textSecondary,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
                     }
                 }
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Notes de l'agent de réception", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0xFF131B2E))
-                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = Color(0xFFF2F3FF)) {
+                Text("Notes de réception entrepôt", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = colors.textPrimary)
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = colors.inputBg) {
                     OutlinedTextField(
                         value = agentNotes,
                         onValueChange = onAgentNotesChange,
+                        placeholder = {
+                            Text(
+                                text = "Saisir une note réelle de réception (optionnel)",
+                                fontFamily = Inter,
+                                fontSize = 12.sp,
+                                color = colors.textSecondary.copy(alpha = 0.6f)
+                            )
+                        },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color.Transparent, focusedBorderColor = Color.Transparent),
-                        textStyle = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = Color(0xFF131B2E))
+                        colors = OutlinedTextFieldDefaults.colors(
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedBorderColor = Color.Transparent,
+                            cursorColor = colors.cyanAccent
+                        ),
+                        textStyle = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = colors.textPrimary)
                     )
                 }
             }

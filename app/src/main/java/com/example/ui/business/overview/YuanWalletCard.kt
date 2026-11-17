@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -23,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +37,8 @@ import com.example.ui.business.BusinessUiState
 import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.PlusJakartaSans
 import com.example.util.CurrencyFormatter
+import com.example.util.DateUtils
+import java.util.Locale
 
 @Composable
 fun YuanWalletCard(
@@ -153,6 +157,44 @@ fun YuanWalletCard(
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
                         color = CyanPrimary
+                    )
+                }
+            }
+
+            val latestBuyTx = remember(uiState.yuanTransactions) {
+                uiState.yuanTransactions
+                    .filter { it.type == "BUY" }
+                    .maxByOrNull { it.date }
+            }
+            if (latestBuyTx != null) {
+                val amountFmt = if (latestBuyTx.amountYuan % 1.0 == 0.0) {
+                    "¥ ${latestBuyTx.amountYuan.toInt()}"
+                } else {
+                    "¥ ${String.format(Locale.US, "%.2f", latestBuyTx.amountYuan)}"
+                }
+                val dateFmt = DateUtils.formatShortDate(latestBuyTx.date)
+                val platformLabel = latestBuyTx.platform.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(CyanPrimary.copy(alpha = 0.08f))
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarToday,
+                        contentDescription = null,
+                        tint = CyanPrimary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = "Dernier achat le $dateFmt : $amountFmt à ${latestBuyTx.exchangeRate.toInt()} Ar$platformLabel",
+                        fontFamily = PlusJakartaSans,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }

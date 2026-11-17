@@ -400,7 +400,9 @@ internal fun BusinessTabContent(
                 onNewPurchaseClick = { modalState.showAddOrderDialog = true },
                 onBuyYuansClick = { modalState.showBuyYuansDialog = true },
                 onAdvanceQualityControl = { order -> modalState.selectedOrderId = order.id },
-                onOrderClick = { order -> modalState.selectedOrderId = order.id }
+                onOrderClick = { order -> modalState.selectedOrderId = order.id },
+                onEditOrder = { order -> modalState.orderToEdit = order },
+                onDeleteOrder = { order -> viewModel.deleteStockOrder(order) }
             )
         }
         "Clients" -> {
@@ -432,8 +434,8 @@ internal fun BusinessTabContent(
                 onAddTransaction = { title, type, amountAr, accountName, ref, dest ->
                     viewModel.addBusinessTransaction(title, type, amountAr, accountName, ref, dest)
                 },
-                onBuyYuansFromTx = { amountYuan, rateAr, platform, sourceAccountName ->
-                    viewModel.buyYuans(amountYuan, rateAr, platform, sourceAccountName)
+                onBuyYuansFromTx = { amountYuan, rateAr, platform, sourceAccountName, purchaseDateMillis ->
+                    viewModel.buyYuans(amountYuan, rateAr, platform, sourceAccountName, purchaseDateMillis)
                 },
                 onDeleteTransaction = { tx -> viewModel.deleteBusinessTransaction(tx) },
                 onRecordCapitalMovement = { title, isContrib, amountAr, accName, note, affectAccount, dateMillis ->

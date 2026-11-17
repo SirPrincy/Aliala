@@ -41,12 +41,36 @@ import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.BusinessAccountEntity
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.data.model.OrderStatus
+import com.example.ui.business.CatalogueTransitaireSummaryUi
 import com.example.ui.business.shared.VariantColorUtils
+import com.example.ui.business.shared.rememberTransitaireColors
 import com.example.ui.theme.Inter
 import com.example.ui.theme.PlusJakartaSans
 import com.example.util.CurrencyFormatter
 import com.example.util.LotCostCalculator
 import java.util.Locale
+
+private data class SavedInspectionCounts(
+    val ok: Int,
+    val minorDefect: Int,
+    val nonSellable: Int,
+    val lost: Int
+) {
+    val total: Int get() = ok + minorDefect + nonSellable + lost
+}
+
+private fun parseInspectionResults(raw: String): SavedInspectionCounts? {
+    if (raw.isBlank()) return null
+    val match = Regex(
+        """(\d+)\s*conformes?,\s*(\d+)\s*d[ée]fauts?\s*mineurs?,\s*(\d+)\s*non\s*vendables?,\s*(\d+)\s*perdus?""",
+        RegexOption.IGNORE_CASE
+    ).find(raw) ?: return null
+    val ok = match.groupValues[1].toIntOrNull() ?: return null
+    val minor = match.groupValues[2].toIntOrNull() ?: return null
+    val nonSellable = match.groupValues[3].toIntOrNull() ?: return null
+    val lost = match.groupValues[4].toIntOrNull() ?: return null
+    return SavedInspectionCounts(ok, minor, nonSellable, lost)
+}
 
 private fun parseVariantWithCount(raw: String): Pair<String, Int?> {
     val timesMatch = Regex("""^(.*?)\s*[×xX]\s*(\d+)$""").find(raw.trim())
@@ -62,6 +86,7 @@ private fun parseVariantWithCount(raw: String): Pair<String, Int?> {
 fun LogisticStep6View(
     order: BusinessOrderEntity,
     cmupRate: Long,
+    transitaires: List<CatalogueTransitaireSummaryUi> = emptyList(),
     accounts: List<BusinessAccountEntity> = emptyList(),
     onUpdateOrder: (updatedOrder: BusinessOrderEntity) -> Unit = {},
     onCompleteWizard: (updatedOrder: BusinessOrderEntity) -> Unit,
@@ -70,19 +95,48 @@ fun LogisticStep6View(
     onPayOrderFreight: (order: BusinessOrderEntity, amountAr: Long, accountName: String) -> Unit = { _, _, _ -> }
 ) {
     val context = LocalContext.current
+    val colors = rememberTransitaireColors()
 
-    var refundYuanInput by rememberSaveable {
-        mutableStateOf(if (order.refundYuan > 0.0) String.format(Locale.US, "%.1f", order.refundYuan) else "0")
+    val selectedTransitaire = remember(transitaires, order.carrier) {
+        if (order.carrier.isBlank()) null
+        else transitaires.firstOrNull {
+            it.name.equals(order.carrier, ignoreCase = true) ||
+                order.carrier.contains(it.name, ignoreCase = true)
+        }
     }
-    val refundYuan = refundYuanInput.replace(',', '.').toDoubleOrNull() ?: 0.0
-
-    var customsTaxInput by rememberSaveable {
-        mutableStateOf(if (order.customsTaxAr > 0) order.customsTaxAr.toString() else "0")
+    val resolvedAirRate = if (order.freightMode.equals("EXPRESS", ignoreCase = true) && (selectedTransitaire?.airFastRateAr ?: 0L) > 0L) {
+        selectedTransitaire?.airFastRateAr
+    } else {
+        selectedTransitaire?.airRateAr
     }
-    val customsTaxAr = customsTaxInput.toLongOrNull() ?: 0L
 
-    val breakdown = remember(order, cmupRate, refundYuan, customsTaxAr) {
-        LotCostCalculator.calculate(order, cmupRate, customRefundYuan = refundYuan, customsTaxArInput = customsTaxAr)
+    val alreadyRefundedYuan = order.refundYuan.coerceAtLeast(0.0)
+    val isRefundAlreadyCredited = alreadyRefundedYuan > 0.0
+
+    var refundYuanInput by rememberSaveable(order.id) {
+        mutableStateOf(if (alreadyRefundedYuan > 0.0) String.format(Locale.US, "%.1f", alreadyRefundedYuan) else "")
+    }
+    LaunchedEffect(order.id, order.refundYuan) {
+        if (order.refundYuan > 0.0) {
+            refundYuanInput = String.format(Locale.US, "%.1f", order.refundYuan)
+        }
+    }
+    val refundYuan = if (isRefundAlreadyCredited) {
+        alreadyRefundedYuan
+    } else {
+        (refundYuanInput.replace(',', '.').toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+    }
+    val customsTaxAr = order.customsTaxAr.coerceAtLeast(0L)
+
+    val breakdown = remember(order, cmupRate, refundYuan, customsTaxAr, selectedTransitaire) {
+        LotCostCalculator.calculate(
+            order = order,
+            cmupRate = cmupRate,
+            customRefundYuan = refundYuan,
+            customsTaxArInput = customsTaxAr,
+            transitaireAirRateAr = resolvedAirRate,
+            transitaireSeaRateAr = selectedTransitaire?.seaRateAr
+        )
     }
     val totalQty = breakdown.quantity
     val effectiveCmupRate = breakdown.effectiveCmupRate
@@ -105,22 +159,42 @@ fun LogisticStep6View(
     val v2Name = parsedVariants.getOrElse(1) { "Variante 2" }
     val v3Name = parsedVariants.getOrElse(2) { "Variante 3" }
 
-    val (v1Ordered, v2Ordered, v3Ordered) = remember(parsedVariantEntries, unitsReceived) {
-        val explicitCounts = parsedVariantEntries.take(3).map { it.second }
-        val allHaveCounts = explicitCounts.all { it != null } && explicitCounts.sumOf { it ?: 0 } == unitsReceived
-        if (allHaveCounts) {
+    val savedInspection = remember(order.inspectionResults) {
+        parseInspectionResults(order.inspectionResults)
+    }
+
+    val (v1Ordered, v2Ordered, v3Ordered) = remember(parsedVariantEntries, unitsReceived, savedInspection) {
+        val visibleVariantCount = parsedVariants.size.coerceIn(1, 3)
+        val explicitCounts = parsedVariantEntries.take(visibleVariantCount).map { it.second }
+        val allHaveCounts = explicitCounts.all { it != null }
+        val explicitSum = explicitCounts.sumOf { it ?: 0 }
+
+        if (allHaveCounts && explicitSum == unitsReceived) {
             Triple(
                 explicitCounts.getOrElse(0) { 0 } ?: 0,
                 explicitCounts.getOrElse(1) { 0 } ?: 0,
                 explicitCounts.getOrElse(2) { 0 } ?: 0
             )
+        } else if (
+            savedInspection != null &&
+            savedInspection.total == unitsReceived &&
+            allHaveCounts &&
+            visibleVariantCount > 1 &&
+            explicitSum + savedInspection.minorDefect + savedInspection.nonSellable + savedInspection.lost == unitsReceived
+        ) {
+            val extraAnomalies = savedInspection.minorDefect + savedInspection.nonSellable + savedInspection.lost
+            Triple(
+                (explicitCounts.getOrElse(0) { 0 } ?: 0) + extraAnomalies,
+                explicitCounts.getOrElse(1) { 0 } ?: 0,
+                explicitCounts.getOrElse(2) { 0 } ?: 0
+            )
         } else {
-            val v1 = when (parsedVariants.size) {
+            val v1 = when (visibleVariantCount) {
                 1 -> unitsReceived
                 2 -> (unitsReceived + 1) / 2
-                else -> (unitsReceived * 0.5).toInt().coerceAtLeast(if (unitsReceived > 0) 1 else 0)
+                else -> if (unitsReceived > 0) (unitsReceived * 0.5).toInt().coerceAtLeast(1) else 0
             }
-            val v2 = when (parsedVariants.size) {
+            val v2 = when (visibleVariantCount) {
                 1 -> 0
                 2 -> (unitsReceived - v1).coerceAtLeast(0)
                 else -> ((unitsReceived - v1) / 2).coerceAtLeast(0)
@@ -130,20 +204,40 @@ fun LogisticStep6View(
         }
     }
 
-    var noirOk by rememberSaveable(v1Ordered) { mutableIntStateOf(v1Ordered) }
-    var noirDefautMineur by rememberSaveable { mutableIntStateOf(0) }
-    var noirNonVendable by rememberSaveable { mutableIntStateOf(0) }
-    var noirPerdu by rememberSaveable { mutableIntStateOf(0) }
+    val restoreSavedSingleVariant = savedInspection != null &&
+        savedInspection.total == unitsReceived &&
+        parsedVariants.size == 1 &&
+        v1Ordered == unitsReceived
+    val restoreSavedMultiVariant = savedInspection != null &&
+        savedInspection.total == unitsReceived &&
+        parsedVariants.size > 1 &&
+        parsedVariantEntries.take(parsedVariants.size.coerceAtMost(3)).all { it.second != null } &&
+        (parsedVariantEntries.take(parsedVariants.size.coerceAtMost(3)).sumOf { it.second ?: 0 } +
+            savedInspection.minorDefect + savedInspection.nonSellable + savedInspection.lost == unitsReceived)
 
-    var blancOk by rememberSaveable(v2Ordered) { mutableIntStateOf(v2Ordered) }
-    var blancDefautMineur by rememberSaveable { mutableIntStateOf(0) }
-    var blancNonVendable by rememberSaveable { mutableIntStateOf(0) }
-    var blancPerdu by rememberSaveable { mutableIntStateOf(0) }
+    val initialV1Ok = when {
+        restoreSavedSingleVariant -> savedInspection!!.ok
+        restoreSavedMultiVariant -> parsedVariantEntries[0].second ?: v1Ordered
+        else -> v1Ordered
+    }
+    val initialV1Minor = if (restoreSavedSingleVariant || restoreSavedMultiVariant) savedInspection!!.minorDefect else 0
+    val initialV1NonSellable = if (restoreSavedSingleVariant || restoreSavedMultiVariant) savedInspection!!.nonSellable else 0
+    val initialV1Lost = if (restoreSavedSingleVariant || restoreSavedMultiVariant) savedInspection!!.lost else 0
 
-    var rougeOk by rememberSaveable(v3Ordered) { mutableIntStateOf(v3Ordered) }
-    var rougeDefautVendable by rememberSaveable { mutableIntStateOf(0) }
-    var rougeNonVendable by rememberSaveable { mutableIntStateOf(0) }
-    var rougePerdu by rememberSaveable { mutableIntStateOf(0) }
+    var noirOk by rememberSaveable(order.id, v1Ordered, order.inspectionResults) { mutableIntStateOf(initialV1Ok) }
+    var noirDefautMineur by rememberSaveable(order.id, v1Ordered, order.inspectionResults) { mutableIntStateOf(initialV1Minor) }
+    var noirNonVendable by rememberSaveable(order.id, v1Ordered, order.inspectionResults) { mutableIntStateOf(initialV1NonSellable) }
+    var noirPerdu by rememberSaveable(order.id, v1Ordered, order.inspectionResults) { mutableIntStateOf(initialV1Lost) }
+
+    var blancOk by rememberSaveable(order.id, v2Ordered, order.inspectionResults) { mutableIntStateOf(v2Ordered) }
+    var blancDefautMineur by rememberSaveable(order.id, v2Ordered, order.inspectionResults) { mutableIntStateOf(0) }
+    var blancNonVendable by rememberSaveable(order.id, v2Ordered, order.inspectionResults) { mutableIntStateOf(0) }
+    var blancPerdu by rememberSaveable(order.id, v2Ordered, order.inspectionResults) { mutableIntStateOf(0) }
+
+    var rougeOk by rememberSaveable(order.id, v3Ordered, order.inspectionResults) { mutableIntStateOf(v3Ordered) }
+    var rougeDefautVendable by rememberSaveable(order.id, v3Ordered, order.inspectionResults) { mutableIntStateOf(0) }
+    var rougeNonVendable by rememberSaveable(order.id, v3Ordered, order.inspectionResults) { mutableIntStateOf(0) }
+    var rougePerdu by rememberSaveable(order.id, v3Ordered, order.inspectionResults) { mutableIntStateOf(0) }
 
     val v1Sum = noirOk + noirDefautMineur + noirNonVendable + noirPerdu
     val v2Sum = blancOk + blancDefautMineur + blancNonVendable + blancPerdu
@@ -160,7 +254,7 @@ fun LogisticStep6View(
     val unitFifoCostAr = if (totalVendable > 0) breakdown.netCostAr / totalVendable else 0L
 
     var isInvoicePaid by rememberSaveable(order.id) { mutableStateOf(order.isFreightPaid) }
-    LaunchedEffect(order.isFreightPaid) {
+    LaunchedEffect(order.id, order.isFreightPaid) {
         isInvoicePaid = order.isFreightPaid
     }
     var showPaymentDialog by remember { mutableStateOf(false) }
@@ -168,14 +262,14 @@ fun LogisticStep6View(
     val ariaryAccounts = remember(accounts) {
         accounts.filter { !it.isYuanAccount && it.isActive }
     }
-    var selectedAccountId by rememberSaveable(accounts) {
+    var selectedAccountId by rememberSaveable(order.id, ariaryAccounts.size) {
         mutableStateOf(ariaryAccounts.firstOrNull()?.id ?: 0L)
     }
 
     val yuanAccounts = remember(accounts) {
         accounts.filter { it.isYuanAccount && it.isActive }
     }
-    var selectedRefundYuanAccount by rememberSaveable(yuanAccounts) {
+    var selectedRefundYuanAccount by rememberSaveable(order.id, yuanAccounts.size) {
         mutableStateOf(yuanAccounts.firstOrNull()?.name ?: "Alipay")
     }
 
@@ -200,21 +294,22 @@ fun LogisticStep6View(
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
-                color = Color(0xFF131B2E)
+                color = colors.textPrimary
             )
             Text(
                 text = "4 statuts normalisés",
                 fontFamily = PlusJakartaSans,
                 fontSize = 12.sp,
-                color = Color(0xFF3D494C)
+                color = colors.textSecondary
             )
         }
 
+        val v1Color = VariantColorUtils.getVariantColor(v1Name, 0)
         Step6VariantInspectionCard(
             variantName = v1Name,
             orderedCount = v1Ordered,
-            badgeOuterColor = Color(0xFF283044),
-            badgeInnerColor = Color(0xFFFAF8FF),
+            badgeOuterColor = if (VariantColorUtils.isLightColor(v1Color)) colors.badgeNeutralBg else v1Color.copy(alpha = 0.16f),
+            badgeInnerColor = v1Color,
             okCount = noirOk,
             minorDefectCount = noirDefautMineur,
             nonSellableCount = noirNonVendable,
@@ -226,11 +321,12 @@ fun LogisticStep6View(
         )
 
         if (parsedVariants.size >= 2 && v2Ordered > 0) {
+            val v2Color = VariantColorUtils.getVariantColor(v2Name, 1)
             Step6VariantInspectionCard(
                 variantName = v2Name,
                 orderedCount = v2Ordered,
-                badgeOuterColor = Color(0xFFDAE2FD),
-                badgeInnerColor = Color.White,
+                badgeOuterColor = if (VariantColorUtils.isLightColor(v2Color)) colors.badgeNeutralBg else v2Color.copy(alpha = 0.16f),
+                badgeInnerColor = v2Color,
                 okCount = blancOk,
                 minorDefectCount = blancDefautMineur,
                 nonSellableCount = blancNonVendable,
@@ -243,21 +339,22 @@ fun LogisticStep6View(
         }
 
         if (parsedVariants.size >= 3 && v3Ordered > 0) {
+            val v3Color = VariantColorUtils.getVariantColor(v3Name, 2)
             Step6VariantInspectionCard(
                 variantName = v3Name,
                 orderedCount = v3Ordered,
-                badgeOuterColor = Color(0xFFFFDAD6),
-                badgeInnerColor = Color(0xFFBA1A1A),
+                badgeOuterColor = if (VariantColorUtils.isLightColor(v3Color)) colors.badgeNeutralBg else v3Color.copy(alpha = 0.16f),
+                badgeInnerColor = v3Color,
                 okCount = rougeOk,
                 minorDefectCount = rougeDefautVendable,
                 nonSellableCount = rougeNonVendable,
                 lostCount = rougePerdu,
                 minorDefectLabel = "Défaut vendable",
-                minorDefectTitleColor = Color(0xFF712AE2),
-                minorDefectContainerColor = Color(0xFFEADDFF).copy(alpha = 0.35f),
+                minorDefectTitleColor = colors.violetAccent,
+                minorDefectContainerColor = colors.violetSoftBg,
                 lostLabel = "Perdu / Volé",
-                lostTitleColor = Color(0xFFBA1A1A),
-                lostContainerColor = Color(0xFFFFDAD6).copy(alpha = 0.50f),
+                lostTitleColor = colors.dangerAccent,
+                lostContainerColor = colors.dangerSoftBg,
                 onOkChange = { rougeOk = it },
                 onMinorDefectChange = { rougeDefautVendable = it },
                 onNonSellableChange = { rougeNonVendable = it },
@@ -273,13 +370,15 @@ fun LogisticStep6View(
         )
 
         Step6SupplierRefundCard(
+            platform = order.platform,
             refundYuanInput = refundYuanInput,
             onRefundYuanInputChange = { refundYuanInput = it },
             refundAr = refundAr,
             effectiveCmupRate = kotlin.math.round(effectiveCmupRate).toLong(),
             yuanAccounts = yuanAccounts,
             selectedRefundYuanAccount = selectedRefundYuanAccount,
-            onSelectRefundYuanAccount = { selectedRefundYuanAccount = it }
+            onSelectRefundYuanAccount = { selectedRefundYuanAccount = it },
+            isRefundAlreadyCredited = isRefundAlreadyCredited
         )
 
         Step6CertifiedFifoCard(
@@ -298,13 +397,6 @@ fun LogisticStep6View(
             order = order,
             freightCostAr = freightCostAr,
             isInvoicePaid = isInvoicePaid,
-            onSaveInvoiceClick = {
-                Toast.makeText(
-                    context,
-                    "Facture ${order.carrier.ifBlank { "transitaire" }} enregistrée dans vos documents.",
-                    Toast.LENGTH_SHORT
-                ).show()
-            },
             onPayFreightClick = { showPaymentDialog = true }
         )
 
@@ -320,13 +412,14 @@ fun LogisticStep6View(
                     if (parsedVariants.size > 1) add("$v2Name ($blancOk ok)")
                     if (parsedVariants.size > 2) add("$v3Name ($rougeOk ok)")
                 }.joinToString(", ")
+                val finalRefundYuan = if (isRefundAlreadyCredited) alreadyRefundedYuan else refundYuan
                 val updated = order.copy(
                     status = OrderStatus.IN_STOCK.code,
                     stockCount = totalVendable,
                     defectiveCount = totalNonVendable,
                     lostCount = totalPerdu,
                     customsTaxAr = customsTaxAr,
-                    refundYuan = refundYuan,
+                    refundYuan = finalRefundYuan,
                     unitCostAr = unitFifoCostAr,
                     inspectionResults = inspectionSummary,
                     variants = variantSummary.ifBlank { "$v1Name ($noirOk ok)" },
@@ -334,9 +427,9 @@ fun LogisticStep6View(
                     isFreightPaid = isInvoicePaid,
                     soldDate = System.currentTimeMillis()
                 )
-                if (refundYuan > 0.0) {
+                if (!isRefundAlreadyCredited && finalRefundYuan > 0.0) {
                     onRefundYuans(
-                        refundYuan,
+                        finalRefundYuan,
                         effectiveCmupRate.toDouble(),
                         selectedRefundYuanAccount.ifBlank { "Alipay" },
                         "Remboursement usine : ${order.product} (Lot #${order.id})"
@@ -382,10 +475,11 @@ private fun Step6BottomValidationCard(
     totalVendable: Int,
     onConfirmStockInjection: () -> Unit
 ) {
+    val colors = rememberTransitaireColors()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 2.dp
     ) {
         Column(
@@ -402,7 +496,7 @@ private fun Step6BottomValidationCard(
                 Icon(
                     imageVector = if (isDistributedValid) Icons.Default.TaskAlt else Icons.Default.ReportProblem,
                     contentDescription = null,
-                    tint = if (isDistributedValid) Color(0xFF00687A) else Color(0xFFBA1A1A),
+                    tint = if (isDistributedValid) colors.cyanAccent else colors.dangerAccent,
                     modifier = Modifier.size(16.dp)
                 )
                 Text(
@@ -410,7 +504,7 @@ private fun Step6BottomValidationCard(
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp,
-                    color = if (isDistributedValid) Color(0xFF00687A) else Color(0xFFBA1A1A)
+                    color = if (isDistributedValid) colors.cyanAccent else colors.dangerAccent
                 )
             }
 
@@ -422,11 +516,12 @@ private fun Step6BottomValidationCard(
                     .height(52.dp)
                     .testTag("btn_validate_stock_injection"),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF00687A),
-                    disabledContainerColor = Color(0xFFBCC9CD)
+                    containerColor = colors.cyanSolidBg,
+                    disabledContainerColor = colors.badgeNeutralBg
                 ),
                 shape = RoundedCornerShape(12.dp)
             ) {
+                val ctaColor = if (isDistributedValid) Color.White else colors.textSecondary
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -436,12 +531,12 @@ private fun Step6BottomValidationCard(
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
-                        color = Color.White
+                        color = ctaColor
                     )
                     Icon(
                         imageVector = Icons.Default.Check,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = ctaColor,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -461,12 +556,19 @@ private fun Step6FreightPaymentDialog(
     onDismiss: () -> Unit,
     onConfirmPayment: () -> Unit
 ) {
+    val colors = rememberTransitaireColors()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Default.Payments, contentDescription = null, tint = Color(0xFF712AE2))
-                Text("Paiement Fret ${order.carrier.ifBlank { "Transitaire" }}", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Icon(Icons.Default.Payments, contentDescription = null, tint = colors.violetAccent)
+                Text(
+                    text = "Paiement Fret ${order.carrier.ifBlank { "Transitaire" }}",
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = colors.textPrimary
+                )
             }
         },
         text = {
@@ -475,7 +577,7 @@ private fun Step6FreightPaymentDialog(
                     text = "Règlement de ${CurrencyFormatter.formatAriary(freightCostAr)} au transitaire ${order.carrier.ifBlank { "partenaire" }}.",
                     fontFamily = Inter,
                     fontSize = 13.sp,
-                    color = Color(0xFF131B2E)
+                    color = colors.textPrimary
                 )
 
                 if (ariaryAccounts.isNotEmpty()) {
@@ -484,7 +586,7 @@ private fun Step6FreightPaymentDialog(
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 12.sp,
-                        color = Color(0xFF131B2E)
+                        color = colors.textPrimary
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         ariaryAccounts.forEach { acct ->
@@ -494,7 +596,7 @@ private fun Step6FreightPaymentDialog(
                                     .fillMaxWidth()
                                     .clickable { onSelectAccount(acct.id) },
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (isSelected) Color(0xFFEADDFF).copy(alpha = 0.5f) else Color(0xFFF2F3FF)
+                                color = if (isSelected) colors.violetSoftBg else colors.innerCardBg
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -508,26 +610,26 @@ private fun Step6FreightPaymentDialog(
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                         fontSize = 13.sp,
-                                        color = if (isSelected) Color(0xFF712AE2) else Color(0xFF131B2E)
+                                        color = if (isSelected) colors.violetAccent else colors.textPrimary
                                     )
                                     Text(
                                         text = CurrencyFormatter.formatAriary(acct.balanceAr),
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 12.sp,
-                                        color = Color(0xFF00687A)
+                                        color = colors.cyanAccent
                                     )
                                 }
                             }
                         }
                     }
                 } else {
-                    Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFFF2F3FF), modifier = Modifier.fillMaxWidth()) {
+                    Surface(shape = RoundedCornerShape(8.dp), color = colors.innerCardBg, modifier = Modifier.fillMaxWidth()) {
                         Text(
                             text = "Mode de règlement : Espèces / Mobile Money",
                             fontFamily = Inter,
                             fontSize = 11.sp,
-                            color = Color(0xFF3D494C),
+                            color = colors.textSecondary,
                             modifier = Modifier.padding(10.dp)
                         )
                     }
@@ -538,9 +640,15 @@ private fun Step6FreightPaymentDialog(
             Button(
                 onClick = onConfirmPayment,
                 enabled = !isInvoicePaid,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF712AE2))
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.violetSolidBg,
+                    disabledContainerColor = colors.badgeNeutralBg
+                )
             ) {
-                Text(if (isInvoicePaid) "Déjà réglé" else "Confirmer le paiement", color = Color.White)
+                Text(
+                    text = if (isInvoicePaid) "Déjà réglé" else "Confirmer le paiement",
+                    color = if (isInvoicePaid) colors.textSecondary else Color.White
+                )
             }
         },
         dismissButton = {

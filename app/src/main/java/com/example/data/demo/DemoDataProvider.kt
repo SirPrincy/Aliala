@@ -17,6 +17,7 @@ import com.example.data.local.entity.LoanPaymentEntity
 import com.example.data.local.entity.SalePaymentEntity
 import com.example.data.local.entity.TaskEntity
 import com.example.data.local.entity.TransactionEntity
+import com.example.data.local.entity.TransitaireRateHistoryEntity
 import com.example.data.local.entity.WalletEntity
 import com.example.data.local.entity.YuanTransactionEntity
 import com.example.ui.business.model.TariffGridParser
@@ -626,7 +627,7 @@ object DemoDataProvider {
         // 7b-ter. Demo Transitaires
         val existingTransitaires = db.catalogueTransitaireDao().getAllTransitairesSnapshot()
         if (existingTransitaires.none { it.notes.contains("[DEMO]") }) {
-            val demoTransitaires = listOf(
+            val sinoId = db.catalogueTransitaireDao().insertTransitaire(
                 CatalogueTransitaireEntity(
                     name = "SinoExpress",
                     contact = "+86 138 0013 8000",
@@ -643,7 +644,9 @@ object DemoDataProvider {
                         TariffGridParser.defaultTariffs(45_000L, 58_000L, 1_150_000L)
                     ),
                     rateApplicationDate = "01/10/2026"
-                ),
+                )
+            )
+            val madaId = db.catalogueTransitaireDao().insertTransitaire(
                 CatalogueTransitaireEntity(
                     name = "MadaAir Logistics",
                     contact = "034 00 112 23",
@@ -662,7 +665,49 @@ object DemoDataProvider {
                     rateApplicationDate = "05/10/2026"
                 )
             )
-            db.catalogueTransitaireDao().insertTransitaires(demoTransitaires)
+            db.transitaireRateHistoryDao().insertHistories(
+                listOf(
+                    TransitaireRateHistoryEntity(
+                        transitaireId = sinoId,
+                        transitaireName = "SinoExpress",
+                        mode = "AERIEN",
+                        oldRateAr = 47_500L,
+                        newRateAr = 45_000L,
+                        deltaAr = -2_500L,
+                        deltaPercent = -5.26,
+                        changedAtMillis = now - 15 * 86400_000L,
+                        effectiveDateLabel = "01/10/2026",
+                        note = "Révision tarifaire",
+                        isDemo = true
+                    ),
+                    TransitaireRateHistoryEntity(
+                        transitaireId = sinoId,
+                        transitaireName = "SinoExpress",
+                        mode = "MARITIME",
+                        oldRateAr = 1_200_000L,
+                        newRateAr = 1_150_000L,
+                        deltaAr = -50_000L,
+                        deltaPercent = -4.17,
+                        changedAtMillis = now - 15 * 86400_000L,
+                        effectiveDateLabel = "01/10/2026",
+                        note = "Révision maritime",
+                        isDemo = true
+                    ),
+                    TransitaireRateHistoryEntity(
+                        transitaireId = madaId,
+                        transitaireName = "MadaAir Logistics",
+                        mode = "AERIEN",
+                        oldRateAr = 46_000L,
+                        newRateAr = 48_000L,
+                        deltaAr = 2_000L,
+                        deltaPercent = 4.35,
+                        changedAtMillis = now - 10 * 86400_000L,
+                        effectiveDateLabel = "05/10/2026",
+                        note = "Ajustement saisonnier",
+                        isDemo = true
+                    )
+                )
+            )
         }
 
         // 7b-quater. Demo Business Cashflow Transactions
@@ -1052,6 +1097,7 @@ object DemoDataProvider {
         db.clientDao().deleteDemoClients()
         db.catalogueFamilyDao().deleteDemoFamilies()
         db.cataloguePlatformDao().deleteDemoPlatforms()
+        db.transitaireRateHistoryDao().deleteDemoHistory()
         db.catalogueTransitaireDao().deleteDemoTransitaires()
         db.businessTransactionDao().deleteDemoTransactions()
         db.businessInvestmentDao().deleteDemoInvestments()

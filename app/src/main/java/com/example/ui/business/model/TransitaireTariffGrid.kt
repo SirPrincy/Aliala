@@ -11,19 +11,20 @@ data class TariffItem(
     val leadDays: String = "",   // e.g. "7 à 10 jours"
     val conditionOp: String = "NONE", // "NONE", "LT", "LTE", "GT", "GTE"
     val conditionValue: Double? = null, // Threshold in CBM (Maritime) or kg (Aérien)
-    val usdPrice: Double? = null // Optional USD price reference (e.g. 380.0 $)
+    val usdPrice: Double? = null, // Optional USD price reference (e.g. 380.0 $)
+    val effectiveDate: String = "" // Effective date dd/MM/yyyy
 )
 
 object TariffGridParser {
     fun parse(
         raw: String,
-        airRateAr: Long = 45000L,
-        airFastRateAr: Long = 60000L,
-        seaRateAr: Long = 18000L
+        airRateAr: Long = 0L,
+        airFastRateAr: Long = 0L,
+        seaRateAr: Long = 0L
     ): List<TariffItem> {
         if (raw.startsWith("GRID:")) {
             val content = raw.removePrefix("GRID:")
-            if (content.isBlank()) return defaultTariffs(airRateAr, airFastRateAr, seaRateAr)
+            if (content.isBlank()) return emptyList()
             val items = content.split("||").mapNotNull { part ->
                 val tokens = part.split("~")
                 if (tokens.size >= 5) {
@@ -36,22 +37,62 @@ object TariffGridParser {
                         leadDays = tokens[4],
                         conditionOp = if (tokens.size >= 7 && tokens[6].isNotBlank()) tokens[6] else "NONE",
                         conditionValue = if (tokens.size >= 8) tokens[7].toDoubleOrNull() else null,
-                        usdPrice = if (tokens.size >= 9) tokens[8].toDoubleOrNull() else null
+                        usdPrice = if (tokens.size >= 9) tokens[8].toDoubleOrNull() else null,
+                        effectiveDate = if (tokens.size >= 10) tokens[9].trim() else ""
                     )
                 } else null
             }
-            if (items.isNotEmpty()) return items
+            return items
         }
 
-        return defaultTariffs(airRateAr, airFastRateAr, seaRateAr)
+        if (airRateAr <= 0L && airFastRateAr <= 0L && seaRateAr <= 0L) {
+            return emptyList()
+        }
+
+        // Fallback uniquement si des tarifs > 0 existent sans grille structurée (anciennes fiches)
+        val legacyItems = mutableListOf<TariffItem>()
+        if (airRateAr > 0L) {
+            legacyItems.add(
+                TariffItem(
+                    mode = "AÉRIEN",
+                    shipmentType = "Standard Cargo",
+                    goodsCategory = "Marchandise Générale",
+                    priceAr = airRateAr,
+                    leadDays = ""
+                )
+            )
+        }
+        if (airFastRateAr > 0L && airFastRateAr != airRateAr) {
+            legacyItems.add(
+                TariffItem(
+                    mode = "AÉRIEN",
+                    shipmentType = "Express Direct",
+                    goodsCategory = "Express",
+                    priceAr = airFastRateAr,
+                    leadDays = ""
+                )
+            )
+        }
+        if (seaRateAr > 0L) {
+            legacyItems.add(
+                TariffItem(
+                    mode = "MARITIME",
+                    shipmentType = "Groupage LCL",
+                    goodsCategory = "Marchandise Générale",
+                    priceAr = seaRateAr,
+                    leadDays = ""
+                )
+            )
+        }
+        return legacyItems
     }
 
     fun encode(items: List<TariffItem>): String {
-        if (items.isEmpty()) return ""
+        if (items.isEmpty()) return "GRID:"
         val gridStr = items.joinToString("||") { item ->
             val condValStr = item.conditionValue?.toString() ?: ""
             val usdStr = item.usdPrice?.toString() ?: ""
-            "${item.mode}~${item.shipmentType}~${item.goodsCategory}~${item.priceAr}~${item.leadDays}~${item.id}~${item.conditionOp}~$condValStr~$usdStr"
+            "${item.mode}~${item.shipmentType}~${item.goodsCategory}~${item.priceAr}~${item.leadDays}~${item.id}~${item.conditionOp}~$condValStr~$usdStr~${item.effectiveDate}"
         }
         return "GRID:$gridStr"
     }
@@ -145,13 +186,18 @@ object TariffGridParser {
         )
     }
 
-    fun parseMinMaxDays(raw: String, defaultMin: Int, defaultMax: Int): Pair<Int, Int> {
+    fun parseMinMaxDaysOrNull(raw: String): Pair<Int, Int>? {
+        if (raw.isBlank()) return null
         val nums = Regex("\\d+").findAll(raw).mapNotNull { it.value.toIntOrNull() }.filter { it > 0 }.toList()
         return when {
             nums.size >= 2 -> Pair(nums[0], nums[1])
             nums.size == 1 -> Pair(nums[0], nums[0])
-            else -> Pair(defaultMin, defaultMax)
+            else -> null
         }
+    }
+
+    fun parseMinMaxDays(raw: String, defaultMin: Int, defaultMax: Int): Pair<Int, Int> {
+        return parseMinMaxDaysOrNull(raw) ?: Pair(defaultMin, defaultMax)
     }
 
     fun formatLeadDays(min: Int, max: Int): String {

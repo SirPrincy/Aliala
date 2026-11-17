@@ -292,13 +292,20 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         saleSource: String,
         domain: String,
         linkedOrderId: Long? = null,
-        accountName: String = ""
+        accountName: String = "",
+        saleDateMillis: Long = System.currentTimeMillis()
     ) {
         viewModelScope.launch {
             snackbarFlow.value = salesManager.addNewSale(
                 productName, clientName, clientPhone, quantity, unitPriceAr, unitCostAr,
-                paidAmountAr, saleSource, domain, linkedOrderId, accountName
+                paidAmountAr, saleSource, domain, linkedOrderId, accountName, saleDateMillis
             )
+        }
+    }
+
+    fun updateSaleDate(sale: BusinessSaleEntity, newSaleDateMillis: Long) {
+        viewModelScope.launch {
+            snackbarFlow.value = salesManager.updateSaleDate(sale, newSaleDateMillis)
         }
     }
 
@@ -326,9 +333,17 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { snackbarFlow.value = stockManager.onAdvanceQualityControl(order) }
     }
 
-    fun buyYuans(amountYuan: Double, rateAr: Double, platform: String, sourceAccountName: String = "") {
+    fun buyYuans(
+        amountYuan: Double,
+        rateAr: Double,
+        platform: String,
+        sourceAccountName: String = "",
+        purchaseDateMillis: Long = System.currentTimeMillis()
+    ) {
         viewModelScope.launch {
-            snackbarFlow.value = financialReporter.buyYuans(amountYuan, rateAr, platform, sourceAccountName)
+            snackbarFlow.value = financialReporter.buyYuans(
+                amountYuan, rateAr, platform, sourceAccountName, purchaseDateMillis
+            )
         }
     }
 
@@ -370,12 +385,14 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         platform: String = "1688",
         referenceCode: String = "",
         family: String = "Électronique",
-        domesticShippingYuan: Double = 0.0
+        domesticShippingYuan: Double = 0.0,
+        orderDateMillis: Long = System.currentTimeMillis()
     ) {
         viewModelScope.launch {
             snackbarFlow.value = stockManager.addBusinessOrder(
                 product, supplier, quantity, priceYuan, resaleAr, category, carrier, variants,
-                freightAr, platform, referenceCode, family, uiState.value.cmupRate.toDouble(), domesticShippingYuan
+                freightAr, platform, referenceCode, family, uiState.value.cmupRate.toDouble(),
+                domesticShippingYuan, orderDateMillis
             )
         }
     }
@@ -427,13 +444,13 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         contact: String = "",
         chinaWarehouseAddress: String = "",
         isActive: Boolean = true,
-        rateApplicationDate: String = SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(Date()),
-        airLeadDays: String = "7 à 10 jours",
-        seaLeadDays: String = "30 à 45 jours",
+        rateApplicationDate: String = "",
+        airLeadDays: String = "",
+        seaLeadDays: String = "",
         internalNotes: String = "",
-        airFastRate: Long = 60000L,
-        airFastLeadDays: String = "3 à 5 jours",
-        goodsCategoryDelays: String = "Générale: Normal | Batterie: +2j | Poudre/Liquide: +3j | Téléphone: +2j"
+        airFastRate: Long = 0L,
+        airFastLeadDays: String = "",
+        goodsCategoryDelays: String = ""
     ) {
         viewModelScope.launch {
             snackbarFlow.value = transitaireManager.addCatalogueTransitaire(

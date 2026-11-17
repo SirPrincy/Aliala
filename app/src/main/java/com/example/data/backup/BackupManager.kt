@@ -23,6 +23,7 @@ import com.example.data.local.entity.LoanPaymentEntity
 import com.example.data.local.entity.SalePaymentEntity
 import com.example.data.local.entity.TaskEntity
 import com.example.data.local.entity.TransactionEntity
+import com.example.data.local.entity.TransitaireRateHistoryEntity
 import com.example.data.local.entity.WalletEntity
 import com.example.data.local.entity.YuanTransactionEntity
 import kotlinx.coroutines.Dispatchers
@@ -211,6 +212,9 @@ object BackupManager {
                 put("familyId", o.familyId)
                 put("supplierDispatchDelay", o.supplierDispatchDelay)
                 put("parcelDetailsJson", o.parcelDetailsJson)
+                put("warehouseArrivalDate", o.warehouseArrivalDate ?: JSONObject.NULL)
+                put("madaDispatchDate", o.madaDispatchDate ?: JSONObject.NULL)
+                put("madaArrivalDate", o.madaArrivalDate ?: JSONObject.NULL)
             })
         }
         root.put("businessOrders", orderArray)
@@ -350,6 +354,26 @@ object BackupManager {
             })
         }
         root.put("catalogueTransitaires", transitaireArray)
+
+        // Transitaire Rate History
+        val rateHistoryArray = JSONArray()
+        db.transitaireRateHistoryDao().getAllHistorySnapshot().forEach { h ->
+            rateHistoryArray.put(JSONObject().apply {
+                put("id", h.id)
+                put("transitaireId", h.transitaireId)
+                put("transitaireName", h.transitaireName)
+                put("mode", h.mode)
+                put("oldRateAr", h.oldRateAr)
+                put("newRateAr", h.newRateAr)
+                put("deltaAr", h.deltaAr)
+                put("deltaPercent", h.deltaPercent)
+                put("changedAtMillis", h.changedAtMillis)
+                put("effectiveDateLabel", h.effectiveDateLabel)
+                put("note", h.note)
+                put("isDemo", h.isDemo)
+            })
+        }
+        root.put("transitaireRateHistory", rateHistoryArray)
 
         // Business Accounts
         val accountArray = JSONArray()
@@ -698,7 +722,10 @@ object BackupManager {
                             domesticShippingYuan = obj.optDouble("domesticShippingYuan", 0.0),
                             familyId = obj.optLong("familyId", 0L),
                             supplierDispatchDelay = obj.optString("supplierDispatchDelay", ""),
-                            parcelDetailsJson = obj.optString("parcelDetailsJson", "")
+                            parcelDetailsJson = obj.optString("parcelDetailsJson", ""),
+                            warehouseArrivalDate = if (!obj.has("warehouseArrivalDate") || obj.isNull("warehouseArrivalDate")) null else obj.getLong("warehouseArrivalDate"),
+                            madaDispatchDate = if (!obj.has("madaDispatchDate") || obj.isNull("madaDispatchDate")) null else obj.getLong("madaDispatchDate"),
+                            madaArrivalDate = if (!obj.has("madaArrivalDate") || obj.isNull("madaArrivalDate")) null else obj.getLong("madaArrivalDate")
                         )
                     )
                 }
@@ -862,14 +889,39 @@ object BackupManager {
                             address = obj.optString("address", ""),
                             defaultTariffPerKg = obj.optLong("defaultTariffPerKg", 0L),
                             notes = obj.optString("notes", ""),
-                            airNormalRateAr = obj.optLong("airNormalRateAr", 45000L),
-                            airFastRateAr = obj.optLong("airFastRateAr", 60000L),
-                            seaRateAr = obj.optLong("seaRateAr", 18000L),
-                            airNormalLeadDays = obj.optString("airNormalLeadDays", "7 à 10 jours"),
-                            airFastLeadDays = obj.optString("airFastLeadDays", "3 à 5 jours"),
-                            seaNormalLeadDays = obj.optString("seaNormalLeadDays", "30 à 45 jours"),
+                            airNormalRateAr = obj.optLong("airNormalRateAr", 0L),
+                            airFastRateAr = obj.optLong("airFastRateAr", 0L),
+                            seaRateAr = obj.optLong("seaRateAr", 0L),
+                            airNormalLeadDays = obj.optString("airNormalLeadDays", ""),
+                            airFastLeadDays = obj.optString("airFastLeadDays", ""),
+                            seaNormalLeadDays = obj.optString("seaNormalLeadDays", ""),
                             goodsCategoryDelays = obj.optString("goodsCategoryDelays", ""),
                             rateApplicationDate = obj.optString("rateApplicationDate", "")
+                        )
+                    )
+                }
+            }
+
+            // Parse transitaire rate history
+            val rateHistoryEntries = mutableListOf<TransitaireRateHistoryEntity>()
+            if (root.has("transitaireRateHistory")) {
+                val array = root.getJSONArray("transitaireRateHistory")
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    rateHistoryEntries.add(
+                        TransitaireRateHistoryEntity(
+                            id = obj.optLong("id", 0L),
+                            transitaireId = obj.getLong("transitaireId"),
+                            transitaireName = obj.optString("transitaireName", ""),
+                            mode = obj.optString("mode", "AERIEN"),
+                            oldRateAr = obj.optLong("oldRateAr", 0L),
+                            newRateAr = obj.optLong("newRateAr", 0L),
+                            deltaAr = obj.optLong("deltaAr", 0L),
+                            deltaPercent = obj.optDouble("deltaPercent", 0.0),
+                            changedAtMillis = obj.optLong("changedAtMillis", System.currentTimeMillis()),
+                            effectiveDateLabel = obj.optString("effectiveDateLabel", ""),
+                            note = obj.optString("note", ""),
+                            isDemo = obj.optBoolean("isDemo", false)
                         )
                     )
                 }
@@ -1053,6 +1105,7 @@ object BackupManager {
             if (families.isNotEmpty()) db.catalogueFamilyDao().insertFamilies(families)
             if (platforms.isNotEmpty()) db.cataloguePlatformDao().insertPlatforms(platforms)
             if (transitaires.isNotEmpty()) db.catalogueTransitaireDao().insertTransitaires(transitaires)
+            if (rateHistoryEntries.isNotEmpty()) db.transitaireRateHistoryDao().insertHistories(rateHistoryEntries)
             if (businessAccounts.isNotEmpty()) db.businessAccountDao().insertAccounts(businessAccounts)
             if (businessTransactions.isNotEmpty()) db.businessTransactionDao().insertTransactions(businessTransactions)
             if (businessInvestments.isNotEmpty()) db.businessInvestmentDao().insertInvestments(businessInvestments)

@@ -17,6 +17,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cable
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.LocalShipping
@@ -30,14 +32,18 @@ import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,7 +52,9 @@ import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.ui.business.shared.rememberTransitaireColors
 import com.example.ui.theme.PlusJakartaSans
+import com.example.util.BordereauUtils
 import com.example.util.CurrencyFormatter
+import com.example.util.DateUtils
 
 @Composable
 internal fun PurchaseDetailedCard(
@@ -55,7 +63,9 @@ internal fun PurchaseDetailedCard(
     activeYuanNames: List<String>,
     onOrderClick: () -> Unit,
     onBuyYuansClick: () -> Unit,
-    onQualityControlClick: () -> Unit
+    onQualityControlClick: () -> Unit,
+    onEditClick: () -> Unit = {},
+    onDeleteClick: () -> Unit = {}
 ) {
     val colors = rememberTransitaireColors()
     val isDraft = order.status == "DRAFT"
@@ -170,7 +180,7 @@ internal fun PurchaseDetailedCard(
                     }
 
                     Text(
-                        text = "Réf: ${order.referenceCode.ifBlank { "LOT-${order.id}" }}",
+                        text = "Réf: ${order.referenceCode.ifBlank { "LOT-${order.id}" }} • ${DateUtils.formatShortDate(order.orderDate)}",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -582,6 +592,24 @@ internal fun PurchaseDetailedCard(
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    val bordereauCode = BordereauUtils.resolveCodeOrNull(order)
+                    if (bordereauCode != null) {
+                        val isSea = BordereauUtils.isMaritime(order.freightMode)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSea) colors.cyanSoftBg else colors.violetSoftBg)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = bordereauCode,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                color = if (isSea) colors.cyanAccent else colors.violetAccent
+                            )
+                        }
+                    }
                 }
 
                 if (order.assignedClient.isNotBlank()) {
@@ -624,6 +652,82 @@ internal fun PurchaseDetailedCard(
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            HorizontalDivider(color = colors.border.copy(alpha = 0.6f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = colors.cyanSoftBg,
+                    modifier = Modifier
+                        .weight(1f)
+                        .minimumInteractiveComponentSize()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onEditClick() }
+                        .testTag("btn_edit_order_${order.id}")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Modifier ${order.product}",
+                            tint = colors.cyanAccent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Modifier",
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = colors.cyanAccent
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.65f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .minimumInteractiveComponentSize()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onDeleteClick() }
+                        .testTag("btn_delete_order_${order.id}")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "Supprimer ${order.product}",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Supprimer",
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             }
         }

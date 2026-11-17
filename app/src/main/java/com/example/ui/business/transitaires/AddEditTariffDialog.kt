@@ -19,8 +19,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -28,6 +35,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -51,13 +59,15 @@ import com.example.ui.business.shared.TransitaireColors
 import com.example.ui.theme.Inter
 import com.example.ui.theme.PlusJakartaSans
 import com.example.util.CurrencyFormatter
+import com.example.util.DateUtils
 import java.util.UUID
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 internal fun AddEditTariffDialog(
     initialItem: TariffItem?,
     defaultMode: String,
+    defaultEffectiveDate: String = "",
     colors: TransitaireColors,
     onDismiss: () -> Unit,
     onConfirm: (List<TariffItem>) -> Unit
@@ -108,6 +118,14 @@ internal fun AddEditTariffDialog(
     var minDays by remember { mutableIntStateOf(parsedMin) }
     var maxDays by remember { mutableIntStateOf(parsedMax) }
 
+    val initialDateText = remember(initialItem, defaultEffectiveDate) {
+        initialItem?.effectiveDate?.takeIf { it.isNotBlank() }
+            ?: defaultEffectiveDate.takeIf { it.isNotBlank() }
+            ?: DateUtils.getTodayFrenchDate()
+    }
+    var effectiveDateText by remember { mutableStateOf(initialDateText) }
+    var showDatePicker by remember { mutableStateOf(false) }
+
     val usdRate = usdRateText.toLongOrNull()?.coerceAtLeast(1L) ?: 4500L
     val unitUnitLabel = if (mode == "MARITIME") "CBM (m³)" else "kg"
 
@@ -139,6 +157,30 @@ internal fun AddEditTariffDialog(
     )
 
     val scrollState = rememberScrollState()
+
+    if (showDatePicker) {
+        val initialUtcMillis = DateUtils.frenchDateToUtcPickerMillis(effectiveDateText)
+            ?: DateUtils.frenchDateToUtcPickerMillis(DateUtils.getTodayFrenchDate())
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialUtcMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pickerState.selectedDateMillis?.let { picked ->
+                            effectiveDateText = DateUtils.utcPickerMillisToFrenchDate(picked)
+                        }
+                        showDatePicker = false
+                    }
+                ) { Text("OK", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Annuler") }
+            }
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -534,6 +576,41 @@ internal fun AddEditTariffDialog(
                             )
                         }
                     }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Date d'application du tarif",
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            color = colors.textPrimary
+                        )
+                        OutlinedTextField(
+                            value = effectiveDateText,
+                            onValueChange = { effectiveDateText = it },
+                            label = { Text("Date (jj/mm/aaaa)") },
+                            placeholder = { Text("ex: 15/03/2025") },
+                            trailingIcon = {
+                                IconButton(onClick = { showDatePicker = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.CalendarToday,
+                                        contentDescription = "Choisir dans le calendrier",
+                                        tint = colors.cyanAccent
+                                    )
+                                }
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = fieldColors,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            text = "Ce tarif reste actif à partir de cette date jusqu'au prochain changement daté.",
+                            fontFamily = Inter,
+                            fontSize = 11.sp,
+                            color = colors.textSecondary
+                        )
+                    }
                 }
 
                 Row(
@@ -562,6 +639,12 @@ internal fun AddEditTariffDialog(
                                 return@Button
                             }
 
+                            val cleanDate = effectiveDateText.trim()
+                            if (!DateUtils.isValidFrenchDate(cleanDate)) {
+                                Toast.makeText(context, "Date invalide (format attendu : jj/mm/aaaa)", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+
                             val formattedDays = TariffGridParser.formatLeadDays(minDays, maxDays)
                             val primaryItem = TariffItem(
                                 id = initialItem?.id ?: UUID.randomUUID().toString(),
@@ -572,7 +655,8 @@ internal fun AddEditTariffDialog(
                                 leadDays = formattedDays,
                                 conditionOp = if (condVal != null) conditionOp else "NONE",
                                 conditionValue = condVal,
-                                usdPrice = if (useUsd) rawVal else null
+                                usdPrice = if (useUsd) rawVal else null,
+                                effectiveDate = cleanDate
                             )
 
                             val resultList = mutableListOf(primaryItem)
@@ -594,7 +678,8 @@ internal fun AddEditTariffDialog(
                                         leadDays = formattedDays,
                                         conditionOp = TariffGridParser.oppositeOp(conditionOp),
                                         conditionValue = condVal,
-                                        usdPrice = if (useUsd) oppRaw else null
+                                        usdPrice = if (useUsd) oppRaw else null,
+                                        effectiveDate = cleanDate
                                     )
                                 )
                             }

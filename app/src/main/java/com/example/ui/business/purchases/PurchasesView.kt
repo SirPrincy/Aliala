@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,6 +23,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlightTakeoff
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -29,11 +33,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +55,7 @@ import com.example.ui.business.BusinessUiState
 import com.example.ui.business.shared.rememberTransitaireColors
 import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.PlusJakartaSans
+import com.example.util.BordereauUtils
 import com.example.util.CurrencyFormatter
 
 @Composable
@@ -61,6 +69,8 @@ fun PurchasesView(
     onBuyYuansClick: () -> Unit,
     onAdvanceQualityControl: (BusinessOrderEntity) -> Unit,
     onOrderClick: (BusinessOrderEntity) -> Unit,
+    onEditOrder: (BusinessOrderEntity) -> Unit = {},
+    onDeleteOrder: (BusinessOrderEntity) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = rememberTransitaireColors()
@@ -69,6 +79,19 @@ fun PurchasesView(
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var isSearchExpanded by remember { mutableStateOf(false) }
     var filterMenuExpanded by remember { mutableStateOf(false) }
+    var orderPendingDelete by remember { mutableStateOf<BusinessOrderEntity?>(null) }
+    var showBordereauxView by rememberSaveable { mutableStateOf(false) }
+    var bordereauModeFilter by rememberSaveable { mutableStateOf("TOUS") }
+    val allBordereauGroups = remember(uiState.filteredPurchases) {
+        BordereauUtils.groupOrders(uiState.filteredPurchases)
+    }
+    val visibleBordereauGroups = remember(allBordereauGroups, bordereauModeFilter) {
+        when (bordereauModeFilter) {
+            "TC" -> allBordereauGroups.filter { it.isMaritime }
+            "AR" -> allBordereauGroups.filter { !it.isMaritime }
+            else -> allBordereauGroups
+        }
+    }
     val activeYuanNames = remember(uiState.businessAccounts) {
         uiState.businessAccounts.filter { it.isYuanAccount && it.isActive }.map { it.name.trim() }.filter { it.isNotBlank() }
     }
@@ -208,7 +231,7 @@ fun PurchasesView(
             OutlinedTextField(
                 value = uiState.purchasesSearchQuery,
                 onValueChange = onSearchQueryChanged,
-                placeholder = { Text("Rechercher produit, SKU, lot, transitaire...", fontSize = 13.sp) },
+                placeholder = { Text("Rechercher produit, TC-1510, AR-1510, transitaire...", fontSize = 13.sp) },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = CyanPrimary, modifier = Modifier.size(18.dp)) },
                 trailingIcon = {
                     if (uiState.purchasesSearchQuery.isNotBlank()) {
@@ -549,11 +572,132 @@ fun PurchasesView(
             }
         }
 
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = if (!showBordereauxView) CyanPrimary else Color.Transparent,
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { showBordereauxView = false }
+                    .testTag("purchases_mode_articles")
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
+                    Text(
+                        text = "Articles (${uiState.filteredPurchases.size})",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = if (!showBordereauxView) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = if (showBordereauxView) colors.violetSolidBg else Color.Transparent,
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { showBordereauxView = true }
+                    .testTag("purchases_mode_bordereaux")
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
+                    Text(
+                        text = "TC & AR (${allBordereauGroups.size})",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = if (showBordereauxView) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        if (showBordereauxView) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val tcCount = allBordereauGroups.count { it.isMaritime }
+                val arCount = allBordereauGroups.count { !it.isMaritime }
+                listOf(
+                    "TOUS" to "Tous (${allBordereauGroups.size})",
+                    "TC" to "TC Maritime ($tcCount)",
+                    "AR" to "AR Aérien ($arCount)"
+                ).forEach { (key, label) ->
+                    val selected = bordereauModeFilter == key
+                    val chipBg = when {
+                        selected && key == "TC" -> colors.cyanAccent
+                        selected && key == "AR" -> colors.violetSolidBg
+                        selected -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.surface
+                    }
+                    Surface(
+                        shape = CircleShape,
+                        color = chipBg,
+                        modifier = Modifier
+                            .heightIn(min = 36.dp)
+                            .clip(CircleShape)
+                            .clickable { bordereauModeFilter = key }
+                            .testTag("bordereau_filter_$key")
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = label,
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 11.sp,
+                                color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (uiState.filteredPurchases.isEmpty()) {
+            if (showBordereauxView) {
+                if (visibleBordereauGroups.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Aucun bordereau TC ou AR pour le moment",
+                            fontFamily = PlusJakartaSans,
+                            fontSize = 13.sp,
+                            color = colors.textSecondary
+                        )
+                    }
+                } else {
+                    visibleBordereauGroups.forEach { group ->
+                        BordereauGroupCard(
+                            group = group,
+                            onOrderClick = onOrderClick
+                        )
+                    }
+                }
+            } else if (uiState.filteredPurchases.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -577,10 +721,62 @@ fun PurchasesView(
                         activeYuanNames = activeYuanNames,
                         onOrderClick = { onOrderClick(order) },
                         onBuyYuansClick = onBuyYuansClick,
-                        onQualityControlClick = { onAdvanceQualityControl(order) }
+                        onQualityControlClick = { onAdvanceQualityControl(order) },
+                        onEditClick = { onEditOrder(order) },
+                        onDeleteClick = { orderPendingDelete = order }
                     )
                 }
             }
         }
+    }
+
+    orderPendingDelete?.let { target ->
+        AlertDialog(
+            onDismissRequest = { orderPendingDelete = null },
+            title = {
+                Text(
+                    text = "Supprimer cet achat ?",
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                val paidYuan = if (target.yuanDebited) {
+                    val base = if (target.yuanDebitedAmount > 0.0) target.yuanDebitedAmount else (target.priceYuan * target.quantityBought) + target.domesticShippingYuan
+                    (base - target.refundYuan).coerceAtLeast(0.0)
+                } else 0.0
+                val yuanInfo = if (paidYuan > 0.0) {
+                    val fmt = if (paidYuan % 1.0 == 0.0) "${paidYuan.toInt()}" else String.format(java.util.Locale.US, "%.2f", paidYuan)
+                    " Les ¥ $fmt débités seront restitués sur votre compte Yuan."
+                } else ""
+                Text(
+                    text = "Voulez-vous vraiment supprimer « ${target.product} » (${target.quantityBought} pcs) ?$yuanInfo Cette action est irréversible.",
+                    fontFamily = PlusJakartaSans,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteOrder(target)
+                        orderPendingDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    ),
+                    modifier = Modifier.testTag("btn_confirm_delete_order")
+                ) {
+                    Text("Supprimer")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { orderPendingDelete = null }) {
+                    Text("Annuler")
+                }
+            }
+        )
     }
 }

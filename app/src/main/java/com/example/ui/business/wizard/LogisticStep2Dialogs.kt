@@ -57,7 +57,7 @@ internal fun Step2AddParcelDialog(
     onDismiss: () -> Unit,
     onAdd: (DomesticParcelItem) -> Unit
 ) {
-    var carrierInput by remember { mutableStateOf("SF Express") }
+    var carrierInput by remember { mutableStateOf("") }
     var trackingInput by remember { mutableStateOf("") }
     var contentInput by remember {
         mutableStateOf(
@@ -121,6 +121,7 @@ internal fun Step2AddParcelDialog(
                     value = carrierInput,
                     onValueChange = { carrierInput = it },
                     label = { Text("Nom du transporteur") },
+                    placeholder = { Text("Ex: SF Express, ZTO, YTO...") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -428,7 +429,7 @@ internal fun Step2EditEtaDialog(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf(1, 2, 3, 5, 7, 15, 30, 45).forEach { presetDays ->
+                    listOf(1, 2, 3, 5, 7, 15, 30, 45, 60, 90).forEach { presetDays ->
                         val active = daysInput == presetDays.toString()
                         Surface(
                             shape = RoundedCornerShape(8.dp),

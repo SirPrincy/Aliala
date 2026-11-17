@@ -61,7 +61,9 @@ internal fun LeadTimeCard(
     minDays: Int,
     maxDays: Int,
     presets: List<Pair<Int, Int>>,
-    onDaysChange: (min: Int, max: Int) -> Unit
+    onDaysChange: (min: Int, max: Int) -> Unit,
+    isDefined: Boolean = minDays > 0,
+    onClear: (() -> Unit)? = null
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -136,58 +138,64 @@ internal fun LeadTimeCard(
 
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = solidColor
+                    color = if (isDefined) solidColor else colors.badgeNeutralBg
                 ) {
                     Text(
-                        text = if (minDays == maxDays) "$minDays j" else "$minDays–$maxDays j",
+                        text = when {
+                            !isDefined -> "Non défini"
+                            minDays == maxDays -> "$minDays j"
+                            else -> "$minDays–$maxDays j"
+                        },
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 12.sp,
-                        color = Color.White,
+                        color = if (isDefined) Color.White else colors.textSecondary,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                     )
                 }
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(12.dp)
-                        .clip(RoundedCornerShape(9999.dp))
-                        .background(colors.badgeNeutralBg)
-                ) {
-                    val startFraction = (minDays.toFloat() / scaleMaxDays.toFloat()).coerceIn(0f, 0.92f)
-                    val endFraction = (maxDays.toFloat() / scaleMaxDays.toFloat()).coerceIn(startFraction + 0.06f, 1f)
-                    val offsetDp = maxWidth * startFraction
-                    val barWidthDp = maxWidth * (endFraction - startFraction)
-
-                    Box(
+            if (isDefined) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    BoxWithConstraints(
                         modifier = Modifier
-                            .offset(x = offsetDp)
-                            .width(barWidthDp)
+                            .fillMaxWidth()
                             .height(12.dp)
                             .clip(RoundedCornerShape(9999.dp))
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(accentColor.copy(alpha = 0.78f), accentColor)
+                            .background(colors.badgeNeutralBg)
+                    ) {
+                        val startFraction = (minDays.toFloat() / scaleMaxDays.toFloat()).coerceIn(0f, 0.92f)
+                        val endFraction = (maxDays.toFloat() / scaleMaxDays.toFloat()).coerceIn(startFraction + 0.06f, 1f)
+                        val offsetDp = maxWidth * startFraction
+                        val barWidthDp = maxWidth * (endFraction - startFraction)
+
+                        Box(
+                            modifier = Modifier
+                                .offset(x = offsetDp)
+                                .width(barWidthDp)
+                                .height(12.dp)
+                                .clip(RoundedCornerShape(9999.dp))
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(accentColor.copy(alpha = 0.78f), accentColor)
+                                    )
                                 )
-                            )
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Départ (J0)", fontFamily = Inter, fontSize = 10.sp, color = colors.textSecondary)
-                    Text(
-                        text = "Arrivée estimée : ${TariffGridParser.formatLeadDays(minDays, maxDays)}",
-                        fontFamily = PlusJakartaSans,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 10.sp,
-                        color = accentColor
-                    )
-                    Text("${scaleMaxDays}j", fontFamily = Inter, fontSize = 10.sp, color = colors.textSecondary)
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Départ (J0)", fontFamily = Inter, fontSize = 10.sp, color = colors.textSecondary)
+                        Text(
+                            text = "Arrivée estimée : ${TariffGridParser.formatLeadDays(minDays, maxDays)}",
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 10.sp,
+                            color = accentColor
+                        )
+                        Text("${scaleMaxDays}j", fontFamily = Inter, fontSize = 10.sp, color = colors.textSecondary)
+                    }
                 }
             }
 
@@ -220,8 +228,9 @@ internal fun LeadTimeCard(
                     label = "Max. arrivé",
                     value = maxDays,
                     onValueChange = { newMax ->
-                        val validMax = newMax.coerceAtLeast(minDays)
-                        onDaysChange(minDays, validMax)
+                        val baseMin = if (minDays > 0) minDays else 1
+                        val validMax = newMax.coerceAtLeast(baseMin)
+                        onDaysChange(baseMin, validMax)
                     },
                     modifier = Modifier.weight(1f)
                 )
@@ -232,7 +241,7 @@ internal fun LeadTimeCard(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 presets.forEach { (pMin, pMax) ->
-                    val isSelected = minDays == pMin && maxDays == pMax
+                    val isSelected = isDefined && minDays == pMin && maxDays == pMax
                     Surface(
                         shape = RoundedCornerShape(9999.dp),
                         color = if (isSelected) solidColor else colors.cardBg,
@@ -250,6 +259,25 @@ internal fun LeadTimeCard(
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                             fontSize = 11.sp,
                             color = if (isSelected) Color.White else colors.textPrimary,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
+                }
+                if (isDefined && onClear != null) {
+                    Surface(
+                        shape = RoundedCornerShape(9999.dp),
+                        color = colors.cardBg,
+                        border = BorderStroke(1.dp, colors.border),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(9999.dp))
+                            .clickable { onClear() }
+                    ) {
+                        Text(
+                            text = "Effacer",
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 11.sp,
+                            color = colors.textSecondary,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                         )
                     }

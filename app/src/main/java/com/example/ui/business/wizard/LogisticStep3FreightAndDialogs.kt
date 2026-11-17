@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.ui.business.CatalogueTransitaireSummaryUi
+import com.example.ui.business.shared.rememberTransitaireColors
 import com.example.ui.theme.Inter
 import com.example.ui.theme.PlusJakartaSans
 import com.example.util.CurrencyFormatter
@@ -61,10 +62,12 @@ internal fun Step3FreightCalculationCard(
     volumeDouble: Double,
     calculatedFreightCostAr: Long
 ) {
+    val colors = rememberTransitaireColors()
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 1.dp
     ) {
         Column(
@@ -86,33 +89,33 @@ internal fun Step3FreightCalculationCard(
                         modifier = Modifier
                             .size(32.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF00687A).copy(alpha = 0.10f)),
+                            .background(colors.cyanSoftBg),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Calculate, contentDescription = null, tint = Color(0xFF00687A), modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Calculate, contentDescription = null, tint = colors.cyanAccent, modifier = Modifier.size(18.dp))
                     }
                     Text(
                         text = if (isAirFreight) "Calcul du Fret Aérien" else "Calcul du Fret Maritime",
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,
-                        color = Color(0xFF131B2E)
+                        color = colors.textPrimary
                     )
                 }
 
-                Surface(shape = RoundedCornerShape(9999.dp), color = Color(0xFFEAEDFF)) {
+                Surface(shape = RoundedCornerShape(9999.dp), color = colors.badgeNeutralBg) {
                     Text(
                         text = "Barème actif",
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Medium,
                         fontSize = 10.sp,
-                        color = Color(0xFF3D494C),
+                        color = colors.textSecondary,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                     )
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = Color(0xFFF2F3FF)) {
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = colors.innerCardBg) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -124,13 +127,13 @@ internal fun Step3FreightCalculationCard(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Tarif unitaire applicable :", fontFamily = Inter, fontSize = 12.sp, color = Color(0xFF3D494C))
+                        Text("Tarif unitaire applicable :", fontFamily = Inter, fontSize = 12.sp, color = colors.textSecondary)
                         Text(
                             text = if (isAirFreight) "${CurrencyFormatter.formatAriary(airRatePerKg)} / kg" else "${CurrencyFormatter.formatAriary(seaRatePerM3)} / m³",
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 12.sp,
-                            color = Color(0xFF131B2E)
+                            color = colors.textPrimary
                         )
                     }
 
@@ -140,18 +143,18 @@ internal fun Step3FreightCalculationCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (isAirFreight) "${String.format(Locale.US, "%.1f", weightDouble)} kg × ${CurrencyFormatter.formatAriary(airRatePerKg)}" else "${String.format(Locale.US, "%.3f", volumeDouble)} m³ × ${CurrencyFormatter.formatAriary(seaRatePerM3)}",
+                            text = if (isAirFreight) "${String.format(Locale.US, "%.1f", weightDouble)} kg × ${CurrencyFormatter.formatAriary(airRatePerKg)}" else "${String.format(Locale.FRENCH, "%.5f", volumeDouble)} m³ × ${CurrencyFormatter.formatAriary(seaRatePerM3)}",
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
-                            color = Color(0xFF131B2E)
+                            color = colors.textPrimary
                         )
                         Text(
                             text = CurrencyFormatter.formatAriary(calculatedFreightCostAr),
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
-                            color = Color(0xFF712AE2)
+                            color = colors.violetAccent
                         )
                     }
                 }
@@ -163,20 +166,20 @@ internal fun Step3FreightCalculationCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Montant final facturé", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0xFF131B2E))
-                    Surface(shape = RoundedCornerShape(9999.dp), color = Color(0xFFACEDFF).copy(alpha = 0.40f)) {
+                    Text("Montant final facturé", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = colors.textPrimary)
+                    Surface(shape = RoundedCornerShape(9999.dp), color = colors.cyanSoftBg) {
                         Row(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF00687A), modifier = Modifier.size(12.dp))
-                            Text("Conforme au barème", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color(0xFF00687A))
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = colors.cyanAccent, modifier = Modifier.size(12.dp))
+                            Text("Conforme au barème", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 10.sp, color = colors.cyanAccent)
                         }
                     }
                 }
 
-                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = Color(0xFFF2F3FF)) {
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = colors.innerCardBg) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -189,16 +192,16 @@ internal fun Step3FreightCalculationCard(
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 24.sp,
-                            color = Color(0xFF131B2E)
+                            color = colors.textPrimary
                         )
-                        Text("MGA", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF3D494C))
+                        Text("MGA", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = colors.textSecondary)
                     }
                 }
             }
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF3D494C), modifier = Modifier.size(16.dp))
-                Text("Le transitaire émet sa facture globale après pesée et contrôle.", fontFamily = Inter, fontSize = 11.sp, color = Color(0xFF3D494C))
+                Icon(Icons.Default.Info, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
+                Text("Le transitaire émet sa facture globale après pesée et contrôle.", fontFamily = Inter, fontSize = 11.sp, color = colors.textSecondary)
             }
         }
     }
@@ -208,12 +211,16 @@ internal fun Step3FreightCalculationCard(
 internal fun Step3MutualisationCard(
     order: BusinessOrderEntity,
     totalQty: Int,
-    weightDouble: Double
+    isAirFreight: Boolean,
+    weightDouble: Double,
+    volumeDouble: Double
 ) {
+    val colors = rememberTransitaireColors()
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 1.dp
     ) {
         Column(
@@ -232,15 +239,15 @@ internal fun Step3MutualisationCard(
                         modifier = Modifier
                             .size(32.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFEADDFF).copy(alpha = 0.50f)),
+                            .background(colors.violetSoftBg),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.ShareLocation, contentDescription = null, tint = Color(0xFF712AE2), modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.ShareLocation, contentDescription = null, tint = colors.violetAccent, modifier = Modifier.size(18.dp))
                     }
-                    Text("Mutualisation de Fret", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF131B2E))
+                    Text("Mutualisation de Fret", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.textPrimary)
                 }
 
-                Surface(shape = RoundedCornerShape(9999.dp), color = Color(0xFF712AE2)) {
+                Surface(shape = RoundedCornerShape(9999.dp), color = colors.violetSolidBg) {
                     Text(
                         text = order.lotNumber.ifBlank { order.referenceCode.ifBlank { "Lot #${order.id}" } },
                         fontFamily = PlusJakartaSans,
@@ -252,7 +259,7 @@ internal fun Step3MutualisationCard(
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = Color(0xFFF2F3FF)) {
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = colors.innerCardBg) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -264,18 +271,23 @@ internal fun Step3MutualisationCard(
                         modifier = Modifier
                             .size(48.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF00687A).copy(alpha = 0.12f)),
+                            .background(colors.cyanSoftBg),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Headphones, contentDescription = null, tint = Color(0xFF00687A), modifier = Modifier.size(24.dp))
+                        Icon(Icons.Default.Headphones, contentDescription = null, tint = colors.cyanAccent, modifier = Modifier.size(24.dp))
                     }
 
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("${order.product.ifEmpty { "Article #${order.id}" }} ($totalQty pcs)", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Color(0xFF131B2E))
-                        Text("Poids attribué : $weightDouble kg (100% de ce colis)", fontFamily = Inter, fontSize = 11.sp, color = Color(0xFF3D494C))
+                        Text("${order.product.ifEmpty { "Article #${order.id}" }} ($totalQty pcs)", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = colors.textPrimary)
+                        val measureText = when {
+                            isAirFreight && weightDouble > 0.0 -> "Poids attribué : ${String.format(Locale.US, "%.1f", weightDouble)} kg (100% de ce colis)"
+                            !isAirFreight && volumeDouble > 0.0 -> "Volume attribué : ${String.format(Locale.FRENCH, "%.5f", volumeDouble)} m³ (100% de ce colis)"
+                            else -> "Mesure en attente de saisie"
+                        }
+                        Text(measureText, fontFamily = Inter, fontSize = 11.sp, color = colors.textSecondary)
                     }
 
-                    Icon(Icons.Default.Tune, contentDescription = "Ajuster la répartition", tint = Color(0xFF3D494C), modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Tune, contentDescription = "Répartition", tint = colors.textSecondary, modifier = Modifier.size(20.dp))
                 }
             }
 
@@ -284,8 +296,8 @@ internal fun Step3MutualisationCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Clé de répartition au prorata :", fontFamily = Inter, fontSize = 12.sp, color = Color(0xFF3D494C))
-                Text("Monocolis (100%)", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color(0xFF131B2E))
+                Text("Clé de répartition au prorata :", fontFamily = Inter, fontSize = 12.sp, color = colors.textSecondary)
+                Text("Monocolis (100%)", fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = colors.textPrimary)
             }
         }
     }
@@ -309,12 +321,13 @@ internal fun Step3BudgetSynthesisCard(
     unitCostAr: Long,
     projectedGrossMarginPercent: String
 ) {
+    val colors = rememberTransitaireColors()
     val chevronRotation by animateFloatAsState(targetValue = if (isBudgetExpanded) 180f else 0f, label = "rot")
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 1.dp
     ) {
         Column(
@@ -335,20 +348,20 @@ internal fun Step3BudgetSynthesisCard(
                         modifier = Modifier
                             .size(32.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFACEDFF).copy(alpha = 0.40f)),
+                            .background(colors.cyanSoftBg),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, tint = Color(0xFF00687A), modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, tint = colors.cyanAccent, modifier = Modifier.size(18.dp))
                     }
                     Column {
-                        Text("SYNTHÈSE BUDGÉTAIRE", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = Color(0xFF3D494C), letterSpacing = 0.5.sp)
-                        Text("Coût de Revient Estimé", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF131B2E))
+                        Text("SYNTHÈSE BUDGÉTAIRE", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = colors.textSecondary, letterSpacing = 0.5.sp)
+                        Text("Coût de Revient Estimé", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.textPrimary)
                     }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(CurrencyFormatter.formatAriary(totalCostOfGoodsAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF00687A))
-                    Icon(Icons.Default.ExpandMore, contentDescription = null, tint = Color(0xFF00687A), modifier = Modifier.size(20.dp).rotate(chevronRotation))
+                    Text(CurrencyFormatter.formatAriary(totalCostOfGoodsAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.cyanAccent)
+                    Icon(Icons.Default.ExpandMore, contentDescription = null, tint = colors.cyanAccent, modifier = Modifier.size(20.dp).rotate(chevronRotation))
                 }
             }
 
@@ -360,26 +373,26 @@ internal fun Step3BudgetSynthesisCard(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Marchandise ($totalQty pcs · ¥ ${(unitPriceYuan * totalQty).toInt()}) :", fontFamily = Inter, fontSize = 12.sp, color = Color(0xFF3D494C))
-                        Text(CurrencyFormatter.formatAriary(merchandiseTotalAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color(0xFF131B2E))
+                        Text("Marchandise ($totalQty pcs · ¥ ${(unitPriceYuan * totalQty).toInt()}) :", fontFamily = Inter, fontSize = 12.sp, color = colors.textSecondary)
+                        Text(CurrencyFormatter.formatAriary(merchandiseTotalAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = colors.textPrimary)
                     }
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Port Chine domestique (¥ ${String.format(Locale.US, "%.2f", domesticShippingYuan)}) :", fontFamily = Inter, fontSize = 12.sp, color = Color(0xFF3D494C))
-                        Text(CurrencyFormatter.formatAriary(domesticPortAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color(0xFF131B2E))
+                        Text("Port Chine domestique (¥ ${String.format(Locale.US, "%.2f", domesticShippingYuan)}) :", fontFamily = Inter, fontSize = 12.sp, color = colors.textSecondary)
+                        Text(CurrencyFormatter.formatAriary(domesticPortAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = colors.textPrimary)
                     }
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(
-                            text = if (isAirFreight) "Fret $selectedForwarder (${String.format(Locale.US, "%.1f", weightDouble)} kg) :" else "Fret $selectedForwarder (${String.format(Locale.US, "%.3f", volumeDouble)} m³) :",
+                            text = if (isAirFreight) "Fret $selectedForwarder (${String.format(Locale.US, "%.1f", weightDouble)} kg) :" else "Fret $selectedForwarder (${String.format(Locale.FRENCH, "%.5f", volumeDouble)} m³) :",
                             fontFamily = Inter,
                             fontSize = 12.sp,
-                            color = Color(0xFF3D494C)
+                            color = colors.textSecondary
                         )
-                        Text(CurrencyFormatter.formatAriary(calculatedFreightCostAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF712AE2))
+                        Text(CurrencyFormatter.formatAriary(calculatedFreightCostAr), fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = colors.violetAccent)
                     }
 
-                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = Color(0xFFF2F3FF)) {
+                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = colors.innerCardBg) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -388,18 +401,18 @@ internal fun Step3BudgetSynthesisCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column {
-                                Text("COÛT UNITAIRE ESTIMÉ", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = Color(0xFF3D494C))
-                                Text("${CurrencyFormatter.formatAriary(unitCostAr)} / unité", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF00687A))
+                                Text("COÛT UNITAIRE ESTIMÉ", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = colors.textSecondary)
+                                Text("${CurrencyFormatter.formatAriary(unitCostAr)} / unité", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.cyanAccent)
                             }
 
                             Column(horizontalAlignment = Alignment.End) {
-                                Text("MARGE BRUTE PROJETÉE", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = Color(0xFF3D494C))
+                                Text("MARGE BRUTE PROJETÉE", fontFamily = PlusJakartaSans, fontSize = 10.sp, color = colors.textSecondary)
                                 Text(
                                     text = if (projectedGrossMarginPercent == "—") "Non défini" else "$projectedGrossMarginPercent%",
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 15.sp,
-                                    color = if (projectedGrossMarginPercent.startsWith("-")) Color(0xFFBA1A1A) else Color(0xFF131B2E)
+                                    color = if (projectedGrossMarginPercent.startsWith("-")) colors.dangerAccent else colors.textPrimary
                                 )
                             }
                         }
@@ -417,10 +430,12 @@ internal fun Step3BottomActionsCard(
     onValidateArrivalClick: () -> Unit,
     onPreviousStep: () -> Unit
 ) {
+    val colors = rememberTransitaireColors()
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
+        color = colors.cardBg,
         shadowElevation = 2.dp
     ) {
         Column(
@@ -438,7 +453,9 @@ internal fun Step3BottomActionsCard(
                     .testTag("btn_validate_warehouse_arrival"),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
-                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                    contentColor = Color.White,
+                    disabledContainerColor = colors.badgeNeutralBg,
+                    disabledContentColor = colors.textSecondary
                 ),
                 shape = RoundedCornerShape(14.dp)
             ) {
@@ -452,7 +469,7 @@ internal fun Step3BottomActionsCard(
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp
                     )
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
                 }
             }
 
@@ -460,50 +477,16 @@ internal fun Step3BottomActionsCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onPreviousStep)
-                    .padding(vertical = 4.dp),
+                    .padding(vertical = 8.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = Color(0xFF3D494C), modifier = Modifier.size(16.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Revenir à l'étape 2 (Livraison Chine)", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0xFF3D494C))
+                Text("Revenir à l'étape 2 (Livraison Chine)", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = colors.textSecondary)
             }
         }
     }
-}
-
-@Composable
-internal fun Step3AddPhotoDialog(
-    onDismiss: () -> Unit,
-    onConfirmPhoto: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text("Ajouter une photo de pesée", fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        },
-        text = {
-            Text(
-                "Une photo du colis sur la balance numérique ou de l'étiquette scellée peut être ajoutée en tant que preuve de réception.",
-                fontFamily = Inter,
-                fontSize = 13.sp,
-                color = Color(0xFF3D494C)
-            )
-        },
-        confirmButton = {
-            Button(
-                onClick = onConfirmPhoto,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00687A))
-            ) {
-                Text("Prendre une photo", color = Color.White)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Annuler")
-            }
-        }
-    )
 }
 
 @Composable
@@ -514,6 +497,8 @@ internal fun Step3ChangeForwarderDialog(
     onDismiss: () -> Unit,
     onSelectForwarder: (CatalogueTransitaireSummaryUi) -> Unit
 ) {
+    val colors = rememberTransitaireColors()
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -529,23 +514,23 @@ internal fun Step3ChangeForwarderDialog(
                         text = "Aucun transitaire configuré dans le catalogue. Vous pouvez en créer un dans l'onglet Catalogue.",
                         fontFamily = Inter,
                         fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = colors.textSecondary
                     )
                 } else {
                     transitaires.forEach { fwd ->
                         val isSelected = fwd.name.equals(selectedForwarder, ignoreCase = true)
                         val rateLabel = if (isAirFreight) {
-                            "${CurrencyFormatter.formatAriary(fwd.airRateAr)} / kg"
+                            if (fwd.airRateAr > 0L) "${CurrencyFormatter.formatAriary(fwd.airRateAr)} / kg" else "Tarif aérien non défini"
                         } else {
-                            "${CurrencyFormatter.formatAriary(fwd.seaRateAr)} / m³"
+                            if (fwd.seaRateAr > 0L) "${CurrencyFormatter.formatAriary(fwd.seaRateAr)} / m³" else "Tarif maritime non défini"
                         }
-                        val hubLabel = fwd.chinaWarehouseAddress.ifBlank { fwd.routeHub.ifBlank { "Guangzhou" } }
+                        val hubLabel = fwd.chinaWarehouseAddress.ifBlank { fwd.routeHub.ifBlank { "Entrepôt non renseigné" } }
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onSelectForwarder(fwd) },
                             shape = RoundedCornerShape(10.dp),
-                            color = if (isSelected) Color(0xFFEADDFF).copy(alpha = 0.5f) else Color(0xFFF2F3FF)
+                            color = if (isSelected) colors.violetSoftBg else colors.innerCardBg
                         ) {
                             Column(
                                 modifier = Modifier
@@ -563,17 +548,17 @@ internal fun Step3ChangeForwarderDialog(
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
                                         fontSize = 13.sp,
-                                        color = if (isSelected) Color(0xFF712AE2) else Color(0xFF131B2E)
+                                        color = if (isSelected) colors.violetAccent else colors.textPrimary
                                     )
                                     Text(
                                         text = rateLabel,
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
-                                        color = Color(0xFF00687A)
+                                        color = colors.cyanAccent
                                     )
                                 }
-                                Text(hubLabel, fontFamily = Inter, fontSize = 11.sp, color = Color(0xFF3D494C))
+                                Text(hubLabel, fontFamily = Inter, fontSize = 11.sp, color = colors.textSecondary)
                             }
                         }
                     }

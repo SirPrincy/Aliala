@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsBoat
 import androidx.compose.material.icons.filled.Edit
@@ -68,7 +69,8 @@ fun TransitaireTariffGridSection(
     onTariffItemsChanged: (List<TariffItem>) -> Unit,
     modifier: Modifier = Modifier,
     headerTitle: String = "Grille Tarifaire",
-    headerBadge: String? = null
+    headerBadge: String? = null,
+    defaultEffectiveDate: String = ""
 ) {
     val colors = rememberTransitaireColors()
     var selectedMode by remember { mutableStateOf("AÉRIEN") }
@@ -328,6 +330,7 @@ fun TransitaireTariffGridSection(
         AddEditTariffDialog(
             initialItem = editingItem,
             defaultMode = selectedMode,
+            defaultEffectiveDate = defaultEffectiveDate,
             colors = colors,
             onDismiss = { showAddDialog = false },
             onConfirm = { newItems ->
@@ -449,6 +452,34 @@ private fun TariffGridItemCard(
                                 fontWeight = FontWeight.Medium,
                                 fontSize = 11.sp,
                                 color = colors.textSecondary
+                            )
+                        }
+                    }
+                }
+
+                if (item.effectiveDate.isNotBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = colors.cardBg,
+                        border = BorderStroke(1.dp, colors.border)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CalendarToday,
+                                contentDescription = null,
+                                tint = accentColor,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Text(
+                                text = "Depuis ${item.effectiveDate}",
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 11.sp,
+                                color = colors.textPrimary
                             )
                         }
                     }

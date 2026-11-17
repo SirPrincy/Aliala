@@ -27,6 +27,7 @@ import com.example.data.local.entity.LoanPaymentEntity
 import com.example.data.local.entity.SalePaymentEntity
 import com.example.data.local.entity.TaskEntity
 import com.example.data.local.entity.TransactionEntity
+import com.example.data.local.entity.TransitaireRateHistoryEntity
 import com.example.data.local.entity.WalletEntity
 import com.example.data.local.entity.YuanTransactionEntity
 import com.example.util.DateUtils
@@ -56,6 +57,7 @@ class AppRepository(
     val cataloguePlatforms: Flow<List<CataloguePlatformEntity>> = db.cataloguePlatformDao().getAllPlatforms()
     val clients: Flow<List<ClientEntity>> = db.clientDao().getAllClients()
     val catalogueTransitaires: Flow<List<CatalogueTransitaireEntity>> = db.catalogueTransitaireDao().getAllTransitaires()
+    val transitaireRateHistory: Flow<List<TransitaireRateHistoryEntity>> = db.transitaireRateHistoryDao().getAllHistory()
     val salePayments: Flow<List<SalePaymentEntity>> = db.salePaymentDao().getAllPayments()
     val healthEntries: Flow<List<HealthEntryEntity>> = db.healthDao().getAllEntries()
     val latestWeight: Flow<HealthEntryEntity?> = db.healthDao().getLatestWeightEntry()
@@ -331,6 +333,7 @@ class AppRepository(
     suspend fun updateBusinessOrder(order: BusinessOrderEntity) = db.businessOrderDao().updateOrder(order)
     suspend fun deleteBusinessOrder(orderId: Long) = db.businessOrderDao().deleteOrderById(orderId)
 
+    suspend fun getYuanTransactionsSnapshot(): List<YuanTransactionEntity> = db.yuanTransactionDao().getAllTransactionsSnapshot()
     suspend fun insertYuanTransaction(tx: YuanTransactionEntity): Long = db.yuanTransactionDao().insertTransaction(tx)
     suspend fun deleteYuanTransaction(id: Long) = db.yuanTransactionDao().deleteById(id)
 
@@ -362,6 +365,10 @@ class AppRepository(
     suspend fun updateCatalogueTransitaire(transitaire: CatalogueTransitaireEntity) = db.catalogueTransitaireDao().updateTransitaire(transitaire)
     suspend fun deleteCatalogueTransitaire(id: Long) = db.catalogueTransitaireDao().deleteTransitaireById(id)
     suspend fun getAllCatalogueTransitairesSnapshot(): List<CatalogueTransitaireEntity> = db.catalogueTransitaireDao().getAllTransitairesSnapshot()
+    suspend fun insertTransitaireRateHistory(entry: TransitaireRateHistoryEntity): Long = db.transitaireRateHistoryDao().insertHistory(entry)
+    suspend fun insertTransitaireRateHistories(entries: List<TransitaireRateHistoryEntity>) = db.transitaireRateHistoryDao().insertHistories(entries)
+    suspend fun getTransitaireRateHistorySnapshot(transitaireId: Long): List<TransitaireRateHistoryEntity> = db.transitaireRateHistoryDao().getHistoryForTransitaireSnapshot(transitaireId)
+    suspend fun deleteTransitaireRateHistoryFor(transitaireId: Long) = db.transitaireRateHistoryDao().deleteByTransitaireId(transitaireId)
 
     // Sale Payments
     suspend fun insertSalePayment(payment: SalePaymentEntity): Long = db.salePaymentDao().insertPayment(payment)

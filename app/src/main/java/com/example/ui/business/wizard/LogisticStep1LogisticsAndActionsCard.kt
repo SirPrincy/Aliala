@@ -277,9 +277,11 @@ internal fun Step1SupplierLogisticsCard(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 val rateStr = if (isMaritime) {
-                                    "${CurrencyFormatter.formatAriary(selectedTransitaire.seaRateAr)}/m³ · ${selectedTransitaire.seaLeadDays}"
+                                    val rateTxt = if (selectedTransitaire.seaRateAr > 0L) "${CurrencyFormatter.formatAriary(selectedTransitaire.seaRateAr)}/m³" else "Tarif maritime non défini"
+                                    if (selectedTransitaire.seaLeadDays.isNotBlank()) "$rateTxt · ${selectedTransitaire.seaLeadDays}" else rateTxt
                                 } else {
-                                    "${CurrencyFormatter.formatAriary(selectedTransitaire.airRateAr)}/kg · ${selectedTransitaire.airLeadDays}"
+                                    val rateTxt = if (selectedTransitaire.airRateAr > 0L) "${CurrencyFormatter.formatAriary(selectedTransitaire.airRateAr)}/kg" else "Tarif aérien non défini"
+                                    if (selectedTransitaire.airLeadDays.isNotBlank()) "$rateTxt · ${selectedTransitaire.airLeadDays}" else rateTxt
                                 }
                                 Text(
                                     text = rateStr,

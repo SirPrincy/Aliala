@@ -9,6 +9,7 @@ import com.example.data.local.entity.CataloguePlatformEntity
 import com.example.data.local.entity.CatalogueTransitaireEntity
 import com.example.data.local.entity.ClientEntity
 import com.example.data.local.entity.SalePaymentEntity
+import com.example.data.local.entity.TransitaireRateHistoryEntity
 import com.example.data.local.entity.YuanTransactionEntity
 import com.example.data.repository.AppRepository
 import kotlinx.coroutines.flow.Flow
@@ -24,7 +25,8 @@ internal data class BusinessRawData(
     val transitaires: List<CatalogueTransitaireEntity>,
     val businessTransactions: List<BusinessTransactionEntity> = emptyList(),
     val salePayments: List<SalePaymentEntity> = emptyList(),
-    val accounts: List<BusinessAccountEntity> = emptyList()
+    val accounts: List<BusinessAccountEntity> = emptyList(),
+    val transitaireRateHistory: List<TransitaireRateHistoryEntity> = emptyList()
 )
 
 internal data class PurchasesFilters(
@@ -81,8 +83,9 @@ internal fun buildBusinessRawDataFlow(repository: AppRepository): Flow<BusinessR
         repository.clients,
         repository.catalogueTransitaires,
         repository.allBusinessTransactions,
-        repository.allBusinessAccounts
-    ) { c, t, tx, acc -> listOf(c, t, tx, acc) }
+        repository.allBusinessAccounts,
+        repository.transitaireRateHistory
+    ) { c, t, tx, acc, hist -> listOf(c, t, tx, acc, hist) }
 ) { orders, yuanTxs, sales, famPlatPay, other ->
     @Suppress("UNCHECKED_CAST")
     BusinessRawData(
@@ -95,6 +98,7 @@ internal fun buildBusinessRawDataFlow(repository: AppRepository): Flow<BusinessR
         transitaires = other[1] as List<CatalogueTransitaireEntity>,
         businessTransactions = other[2] as List<BusinessTransactionEntity>,
         salePayments = famPlatPay.third,
-        accounts = other[3] as List<BusinessAccountEntity>
+        accounts = other[3] as List<BusinessAccountEntity>,
+        transitaireRateHistory = other[4] as List<TransitaireRateHistoryEntity>
     )
 }

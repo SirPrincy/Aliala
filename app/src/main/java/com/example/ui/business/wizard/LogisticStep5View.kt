@@ -6,9 +6,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -18,22 +18,60 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.data.model.OrderStatus
+import com.example.ui.business.CatalogueTransitaireSummaryUi
 import com.example.ui.business.model.DomesticParcelStorage
+import com.example.ui.business.shared.MilestoneDateCard
+import com.example.ui.business.shared.rememberTransitaireColors
 import com.example.util.LotCostCalculator
+import com.example.util.TransitStatsCalculator
 
 @Composable
 fun LogisticStep5View(
     order: BusinessOrderEntity,
     cmupRate: Long,
+    transitaires: List<CatalogueTransitaireSummaryUi> = emptyList(),
     onUpdateOrder: (updatedOrder: BusinessOrderEntity) -> Unit = {},
     onAdvanceToQualityControl: (updatedOrder: BusinessOrderEntity) -> Unit,
     onPreviousStep: () -> Unit
 ) {
     val context = LocalContext.current
+    val colors = rememberTransitaireColors()
 
-    val breakdown = remember(order, cmupRate) {
-        LotCostCalculator.calculate(order, cmupRate)
+    val selectedTransitaire = remember(transitaires, order.carrier) {
+        if (order.carrier.isBlank()) null
+        else transitaires.firstOrNull {
+            it.name.equals(order.carrier, ignoreCase = true) ||
+                order.carrier.contains(it.name, ignoreCase = true)
+        }
     }
+    val resolvedAirRate = if (order.freightMode.equals("EXPRESS", ignoreCase = true) && (selectedTransitaire?.airFastRateAr ?: 0L) > 0L) {
+        selectedTransitaire?.airFastRateAr
+    } else {
+        selectedTransitaire?.airRateAr
+    }
+
+    var customsTaxInput by rememberSaveable(order.id) {
+        mutableStateOf(if (order.customsTaxAr > 0L) order.customsTaxAr.toString() else "")
+    }
+    LaunchedEffect(order.id, order.customsTaxAr) {
+        if (order.customsTaxAr > 0L && customsTaxInput.isBlank()) {
+            customsTaxInput = order.customsTaxAr.toString()
+        }
+    }
+    val customsTaxAr = customsTaxInput.filter { it.isDigit() }.toLongOrNull() ?: 0L
+
+    val breakdown = remember(order, cmupRate, customsTaxAr, selectedTransitaire) {
+        LotCostCalculator.calculate(
+            order = order,
+            cmupRate = cmupRate,
+            customsTaxArInput = customsTaxAr,
+            transitaireAirRateAr = resolvedAirRate,
+            transitaireSeaRateAr = selectedTransitaire?.seaRateAr
+        )
+    }
+    val isMaritime = breakdown.isMaritime
+    val arrivalPortName = if (isMaritime) "Port de Toamasina" else "Aéroport d'Ivato"
+    val arrivalShortName = if (isMaritime) "Toamasina" else "Ivato"
     val totalQty = breakdown.quantity
     val merchandiseTotalAr = breakdown.merchandiseTotalAr
     val domesticPortAr = breakdown.domesticPortAr
@@ -45,20 +83,30 @@ fun LogisticStep5View(
         DomesticParcelStorage.parse(order)
     }
     val expectedParcels = if (parcels.isNotEmpty()) parcels.size else 1
-    var receivedParcelsCount by rememberSaveable {
+    var receivedParcelsCount by rememberSaveable(order.id) {
         mutableIntStateOf(if (order.receivedParcelsCount > 0) order.receivedParcelsCount else expectedParcels)
     }
-    var isPartialReceptionChecked by rememberSaveable {
+    var isPartialReceptionChecked by rememberSaveable(order.id) {
         mutableStateOf(receivedParcelsCount < expectedParcels)
     }
 
-    var showAddPhotoDialog by remember { mutableStateOf(false) }
     var showIncidentDialog by remember { mutableStateOf(false) }
-    var incidentDescription by rememberSaveable { mutableStateOf(order.incidentReport) }
-    var showColis2DetailsDialog by remember { mutableStateOf(false) }
+    var incidentDescription by rememberSaveable(order.id) { mutableStateOf(order.incidentReport) }
+    var showColisDetailsDialog by remember { mutableStateOf(false) }
 
-    val photoList = remember {
-        mutableStateListOf("Ivato Hub #1" to "Reçu au tarmac cargo")
+    var madaArrivalDateMillis by rememberSaveable(order.id) {
+        mutableStateOf(order.madaArrivalDate)
+    }
+
+    val transitDurationLabel = remember(order.orderDate, order.madaDispatchDate, madaArrivalDateMillis) {
+        val fretDays = TransitStatsCalculator.daysBetween(order.madaDispatchDate, madaArrivalDateMillis)
+        val totalDays = TransitStatsCalculator.daysBetween(order.orderDate, madaArrivalDateMillis)
+        when {
+            fretDays != null && totalDays != null -> "${TransitStatsCalculator.formatDaysExact(fretDays)} fret · ${TransitStatsCalculator.formatDaysExact(totalDays)} total"
+            fretDays != null -> "${TransitStatsCalculator.formatDaysExact(fretDays)} de trajet"
+            totalDays != null -> "${TransitStatsCalculator.formatDaysExact(totalDays)} total"
+            else -> null
+        }
     }
 
     Column(
@@ -67,10 +115,14 @@ fun LogisticStep5View(
             .padding(bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Step5StepperCard()
+        Step5StepperCard(isMaritime = isMaritime)
 
-        Step5IvatoPointingCard(
+        Step5ArrivalPointingCard(
             order = order,
+            isMaritime = isMaritime,
+            arrivalShortName = arrivalShortName,
+            arrivalPortName = arrivalPortName,
+            madaArrivalDateMillis = madaArrivalDateMillis,
             receivedParcelsCount = receivedParcelsCount,
             expectedParcels = expectedParcels,
             isPartialReceptionChecked = isPartialReceptionChecked,
@@ -96,27 +148,60 @@ fun LogisticStep5View(
             }
         )
 
+        MilestoneDateCard(
+            title = "Date d'arrivée à Madagascar",
+            subtitle = "Date réelle de réception ($arrivalShortName)",
+            currentDateMillis = madaArrivalDateMillis,
+            referenceEarlierMillis = order.madaDispatchDate ?: order.warehouseArrivalDate ?: order.orderDate,
+            referenceLabel = when {
+                order.madaDispatchDate != null -> "l'envoi vers Madagascar"
+                order.warehouseArrivalDate != null -> "l'arrivée au dépôt Chine"
+                else -> "la date d'achat"
+            },
+            durationLabel = transitDurationLabel,
+            colors = colors,
+            testTagPrefix = "step5_mada_arrival_date",
+            onDateSelected = { newDate ->
+                madaArrivalDateMillis = newDate
+                onUpdateOrder(order.copy(madaArrivalDate = newDate))
+            }
+        )
+
         Step5UnloadingStateCard(
             order = order,
+            isMaritime = isMaritime,
             parcels = parcels,
             receivedParcelsCount = receivedParcelsCount,
             expectedParcels = expectedParcels,
             totalQty = totalQty,
             weightKg = weightKg,
-            onShowColisDetails = { showColis2DetailsDialog = true },
-            onAddPhoto = { showAddPhotoDialog = true }
+            onShowColisDetails = { showColisDetailsDialog = true }
         )
 
         Step5SecurityAndInvoiceCard(
             carrier = order.carrier,
-            freightCostAr = freightCostAr
+            freightCostAr = freightCostAr,
+            isFreightPaid = order.isFreightPaid
+        )
+
+        Step5CustomsTaxCard(
+            customsTaxInput = customsTaxInput,
+            onCustomsTaxInputChange = { customsTaxInput = it },
+            customsTaxAr = customsTaxAr,
+            savedCustomsTaxAr = order.customsTaxAr,
+            onSaveCustomsTax = {
+                onUpdateOrder(order.copy(customsTaxAr = customsTaxAr))
+                Toast.makeText(context, "Frais de douane enregistrés.", Toast.LENGTH_SHORT).show()
+            }
         )
 
         Step5LiveCostCard(
+            arrivalShortName = arrivalShortName,
             totalDisbursedAr = totalDisbursedAr,
             merchandiseTotalAr = merchandiseTotalAr,
             domesticPortAr = domesticPortAr,
-            freightCostAr = freightCostAr
+            freightCostAr = freightCostAr,
+            customsTaxAr = customsTaxAr
         )
 
         Step5BottomActionsCard(
@@ -128,11 +213,14 @@ fun LogisticStep5View(
                 } else {
                     totalQty
                 }
+                val resolvedMadaArrival = madaArrivalDateMillis ?: order.madaArrivalDate ?: System.currentTimeMillis()
                 val updated = order.copy(
                     status = OrderStatus.QUALITY_CONTROL.code,
                     receivedParcelsCount = receivedParcelsCount,
                     receivedUnitsCount = unitsReceived,
                     freightCostAr = freightCostAr,
+                    customsTaxAr = customsTaxAr,
+                    madaArrivalDate = resolvedMadaArrival,
                     incidentReport = if (incidentDescription.isNotBlank()) incidentDescription else order.incidentReport
                 )
                 onAdvanceToQualityControl(updated)
@@ -142,34 +230,30 @@ fun LogisticStep5View(
                     Toast.LENGTH_SHORT
                 ).show()
             },
-            onOpenIncidentDialog = { showIncidentDialog = true }
+            onOpenIncidentDialog = { showIncidentDialog = true },
+            onPreviousStep = onPreviousStep
         )
     }
 
     Step5Dialogs(
         order = order,
+        isMaritime = isMaritime,
+        arrivalPortName = arrivalPortName,
         expectedParcels = expectedParcels,
         weightKg = weightKg,
-        showAddPhotoDialog = showAddPhotoDialog,
         showIncidentDialog = showIncidentDialog,
         incidentDescription = incidentDescription,
-        showColisDetailsDialog = showColis2DetailsDialog,
-        onDismissAddPhoto = { showAddPhotoDialog = false },
-        onConfirmAddPhoto = {
-            photoList.add("Ivato Hub #${photoList.size + 1}" to "Photo certifiée")
-            showAddPhotoDialog = false
-            Toast.makeText(context, "Photo enregistrée !", Toast.LENGTH_SHORT).show()
-        },
+        showColisDetailsDialog = showColisDetailsDialog,
         onDismissIncident = { showIncidentDialog = false },
         onIncidentDescriptionChange = { incidentDescription = it },
         onConfirmIncident = {
             val updated = order.copy(
-                incidentReport = if (incidentDescription.isNotBlank()) incidentDescription else order.incidentReport
+                incidentReport = incidentDescription.trim()
             )
             onUpdateOrder(updated)
             showIncidentDialog = false
-            Toast.makeText(context, "Signalement enregistré sur le bordereau d'Ivato.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Signalement enregistré ($arrivalShortName).", Toast.LENGTH_SHORT).show()
         },
-        onDismissColisDetails = { showColis2DetailsDialog = false }
+        onDismissColisDetails = { showColisDetailsDialog = false }
     )
 }

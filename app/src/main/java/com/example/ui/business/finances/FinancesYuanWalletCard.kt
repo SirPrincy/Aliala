@@ -257,7 +257,7 @@ fun FinancesYuanWalletCard(
                 uiState.yuanTransactions
                     .filter { it.type == "BUY" }
                     .sortedByDescending { it.date }
-                    .take(6)
+                    .take(10)
             }
             val yuanDateFmt = remember { SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE) }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -316,7 +316,8 @@ fun FinancesYuanWalletCard(
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "à ${yuanTx.exchangeRate.toInt()} Ar",
+                                        text = "à ${yuanTx.exchangeRate.toInt()} Ar" +
+                                            if (yuanTx.platform.isNotBlank()) " (${yuanTx.platform})" else "",
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )

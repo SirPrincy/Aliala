@@ -97,4 +97,40 @@ object DateUtils {
         val dayOfWeek = LocalDate.now().dayOfWeek.value // 1 (Mon) to 7 (Sun)
         return dayOfWeek - 1
     }
+
+    private val frenchDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.FRANCE)
+
+    fun getTodayFrenchDate(): String = LocalDate.now().format(frenchDateFormatter)
+
+    fun parseFrenchDateToLocalDate(dateStr: String): LocalDate? {
+        val trimmed = dateStr.trim()
+        if (trimmed.isBlank()) return null
+        return try {
+            LocalDate.parse(trimmed, frenchDateFormatter)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun isValidFrenchDate(dateStr: String): Boolean = parseFrenchDateToLocalDate(dateStr) != null
+
+    fun frenchDateToUtcPickerMillis(dateStr: String): Long? {
+        val localDate = parseFrenchDateToLocalDate(dateStr) ?: return null
+        return localDate.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+    }
+
+    fun utcPickerMillisToFrenchDate(utcMillis: Long): String {
+        val localDate = java.time.Instant.ofEpochMilli(utcMillis).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+        return localDate.format(frenchDateFormatter)
+    }
+
+    fun frenchDateToEpochMillis(dateStr: String): Long {
+        val localDate = parseFrenchDateToLocalDate(dateStr) ?: return System.currentTimeMillis()
+        val now = java.time.ZonedDateTime.now(ZoneId.systemDefault())
+        return if (localDate == now.toLocalDate()) {
+            now.toInstant().toEpochMilli()
+        } else {
+            localDate.atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        }
+    }
 }

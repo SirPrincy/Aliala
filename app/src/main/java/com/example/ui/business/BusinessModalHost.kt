@@ -34,6 +34,7 @@ internal class BusinessModalState {
     var showQuickCreateYuanAccountDialog by mutableStateOf(false)
     var showPayPlatformDialog by mutableStateOf(false)
     var showAddOrderDialog by mutableStateOf(false)
+    var orderToEdit by mutableStateOf<BusinessOrderEntity?>(null)
     var showNewActionMenuSheet by mutableStateOf(false)
     var showWhatsAppRelanceDialog by mutableStateOf(false)
     var orderToAdjust by mutableStateOf<BusinessOrderEntity?>(null)
@@ -114,8 +115,8 @@ internal fun BusinessModalHost(
             accounts = businessAccounts,
             defaultRate = uiState.cmupRate,
             onDismiss = { modalState.showBuyYuansDialog = false },
-            onConfirm = { amountYuan, rateAr, platform, sourceAccountName ->
-                viewModel.buyYuans(amountYuan, rateAr, platform, sourceAccountName)
+            onConfirm = { amountYuan, rateAr, platform, sourceAccountName, purchaseDateMillis ->
+                viewModel.buyYuans(amountYuan, rateAr, platform, sourceAccountName, purchaseDateMillis)
             },
             onCreateAccountClick = { modalState.showQuickCreateYuanAccountDialog = true }
         )
@@ -196,25 +197,6 @@ internal fun BusinessModalHost(
         )
     }
 
-    if (modalState.showAddOrderDialog) {
-        AddOrderDialog(
-            cmupRate = uiState.cmupRate,
-            availableYuans = uiState.availableYuans,
-            availableArticles = uiState.orders,
-            initialArticle = modalState.initialArticleForOrder ?: primaryOrderFallback,
-            transitaires = uiState.catalogueTransitaires.filter { !it.isArchived }.map { it.name },
-            onDismiss = {
-                modalState.showAddOrderDialog = false
-                modalState.initialArticleForOrder = null
-            },
-            onConfirm = { prod, supp, q, pY, rAr, cat, carr, varStr, fAr, plat, refCode, fam, domYuan ->
-                viewModel.addBusinessOrder(prod, supp, q, pY, rAr, cat, carr, varStr, fAr, plat, refCode, fam, domYuan)
-                modalState.showAddOrderDialog = false
-                modalState.initialArticleForOrder = null
-            }
-        )
-    }
-
     if (modalState.showWhatsAppRelanceDialog) {
         WhatsAppRelanceDialog(onDismiss = { modalState.showWhatsAppRelanceDialog = false })
     }
@@ -285,6 +267,13 @@ internal fun BusinessModalHost(
             sale = sale,
             accounts = businessAccounts,
             onDismiss = { modalState.saleToRecordPayment = null },
+            onUpdateSaleDate = { newSaleDateMillis ->
+                viewModel.updateSaleDate(sale, newSaleDateMillis)
+                modalState.saleToRecordPayment = sale.copy(
+                    saleDate = newSaleDateMillis,
+                    dueDate = newSaleDateMillis + 15 * 86400000L
+                )
+            },
             onConfirmPayment = { additionalPayment, accountName ->
                 viewModel.recordSalePayment(sale, additionalPayment, accountName = accountName)
                 modalState.saleToRecordPayment = null
@@ -298,15 +287,18 @@ internal fun BusinessModalHost(
 
     if (modalState.showAddSaleDialog) {
         AddSaleDialog(
-            availableStockOrders = uiState.visibleStockOrders,
+            availableStockOrders = uiState.orders
+                .filter { !it.isHidden && it.product.isNotBlank() }
+                .sortedWith(compareByDescending<BusinessOrderEntity> { it.stockCount }.thenBy { it.product.lowercase() }),
+            availableClients = uiState.allClients,
             initialArticle = modalState.initialArticleForSale ?: primaryOrderFallback,
             accounts = businessAccounts,
             onDismiss = {
                 modalState.showAddSaleDialog = false
                 modalState.initialArticleForSale = null
             },
-            onConfirm = { prod, client, phone, q, price, cost, paid, source, dom, linkedOrderId, accountName ->
-                viewModel.addNewSale(prod, client, phone, q, price, cost, paid, source, dom, linkedOrderId, accountName)
+            onConfirm = { prod, client, phone, q, price, cost, paid, source, dom, linkedOrderId, accountName, saleDateMillis ->
+                viewModel.addNewSale(prod, client, phone, q, price, cost, paid, source, dom, linkedOrderId, accountName, saleDateMillis)
                 modalState.showAddSaleDialog = false
                 modalState.initialArticleForSale = null
             }
@@ -327,13 +319,14 @@ internal fun BusinessModalHost(
             onRefundYuans = { amount, rate, yuanAccountName, note ->
                 viewModel.refundYuans(amount, rate, yuanAccountName, note, orderId = order.id)
             },
-            onBuyYuans = { amount, rate, platform, sourceAccountName ->
-                viewModel.buyYuans(amount, rate, platform, sourceAccountName)
+            onBuyYuans = { amount, rate, platform, sourceAccountName, purchaseDateMillis ->
+                viewModel.buyYuans(amount, rate, platform, sourceAccountName, purchaseDateMillis)
             },
             onPayOrderFreight = { ord, amountAr, accName ->
                 viewModel.payOrderFreight(ord, amountAr, accName)
             },
             onDismiss = { modalState.selectedOrderId = null },
+            onEditOrder = { modalState.orderToEdit = it },
             onDeleteOrder = {
                 viewModel.deleteStockOrder(it)
                 modalState.selectedOrderId = null
@@ -353,6 +346,49 @@ internal fun BusinessModalHost(
                 viewModel.onSelectSubTab("Achats")
                 modalState.selectedOrderId = null
                 modalState.selectedArticleKey = null
+            }
+        )
+    }
+
+    val editingOrderTarget = modalState.orderToEdit
+    if (modalState.showAddOrderDialog || editingOrderTarget != null) {
+        AddOrderDialog(
+            cmupRate = uiState.cmupRate,
+            availableYuans = uiState.availableYuans,
+            availableArticles = uiState.orders,
+            initialArticle = if (editingOrderTarget == null) (modalState.initialArticleForOrder ?: primaryOrderFallback) else null,
+            editingOrder = editingOrderTarget,
+            transitaires = uiState.catalogueTransitaires.filter { !it.isArchived }.map { it.name },
+            onDismiss = {
+                modalState.showAddOrderDialog = false
+                modalState.initialArticleForOrder = null
+                modalState.orderToEdit = null
+            },
+            onConfirm = { prod, supp, q, pY, rAr, cat, carr, varStr, fAr, plat, refCode, fam, domYuan, orderDateMillis ->
+                if (editingOrderTarget != null) {
+                    viewModel.updateBusinessOrder(
+                        editingOrderTarget.copy(
+                            product = prod,
+                            supplier = supp,
+                            quantityBought = q,
+                            priceYuan = pY,
+                            resalePriceAr = rAr,
+                            category = cat,
+                            carrier = carr,
+                            variants = varStr,
+                            platform = plat,
+                            referenceCode = refCode,
+                            family = fam,
+                            domesticShippingYuan = domYuan,
+                            orderDate = orderDateMillis
+                        )
+                    )
+                } else {
+                    viewModel.addBusinessOrder(prod, supp, q, pY, rAr, cat, carr, varStr, fAr, plat, refCode, fam, domYuan, orderDateMillis)
+                }
+                modalState.showAddOrderDialog = false
+                modalState.initialArticleForOrder = null
+                modalState.orderToEdit = null
             }
         )
     }

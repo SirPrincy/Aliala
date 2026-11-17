@@ -27,8 +27,10 @@ import com.example.ui.business.CatalogueFamilySummaryUi
 import com.example.ui.business.CatalogueTransitaireSummaryUi
 import com.example.ui.business.model.DomesticParcelItem
 import com.example.ui.business.model.DomesticParcelStorage
+import com.example.ui.business.shared.MilestoneDateCard
 import com.example.ui.business.shared.rememberTransitaireColors
 import com.example.util.LotCostCalculator
+import com.example.util.TransitStatsCalculator
 
 @Composable
 fun LogisticStep2View(
@@ -101,6 +103,14 @@ fun LogisticStep2View(
     var showSelectTransitaireDialog by remember { mutableStateOf(false) }
     var showEditEtaDialog by remember { mutableStateOf(false) }
     var showPartialProceedConfirm by remember { mutableStateOf(false) }
+    var warehouseArrivalDateMillis by androidx.compose.runtime.saveable.rememberSaveable(order.id) {
+        mutableStateOf(order.warehouseArrivalDate)
+    }
+
+    val chinaDurationLabel = remember(order.orderDate, warehouseArrivalDateMillis) {
+        TransitStatsCalculator.daysBetween(order.orderDate, warehouseArrivalDateMillis)
+            ?.let { "${TransitStatsCalculator.formatDaysExact(it)} depuis achat" }
+    }
 
     fun copyToClipboard(label: String, text: String, toastMsg: String) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -162,8 +172,10 @@ fun LogisticStep2View(
         if (deliveredParcelsCount < parcels.size) {
             showPartialProceedConfirm = true
         } else {
+            val resolvedWarehouseDate = warehouseArrivalDateMillis ?: order.warehouseArrivalDate ?: System.currentTimeMillis()
             val syncedOrder = DomesticParcelStorage.applyToOrder(order, parcels).copy(
-                status = OrderStatus.GUANGZHOU.code
+                status = OrderStatus.GUANGZHOU.code,
+                warehouseArrivalDate = resolvedWarehouseDate
             )
             onAdvanceToWeighing(syncedOrder)
             Toast.makeText(
@@ -225,6 +237,20 @@ fun LogisticStep2View(
                             onSelectTransitaire = { showSelectTransitaireDialog = true },
                             onCopyText = ::copyToClipboard
                         )
+                        MilestoneDateCard(
+                            title = "Date d'arrivée au dépôt Chine",
+                            subtitle = "Date réelle de réception chez le transitaire",
+                            currentDateMillis = warehouseArrivalDateMillis,
+                            referenceEarlierMillis = order.orderDate,
+                            referenceLabel = "la date d'achat",
+                            durationLabel = chinaDurationLabel,
+                            colors = colors,
+                            testTagPrefix = "step2_warehouse_date",
+                            onDateSelected = { newDate ->
+                                warehouseArrivalDateMillis = newDate
+                                onUpdateOrder(order.copy(warehouseArrivalDate = newDate))
+                            }
+                        )
                         Step2BottomActionsCard(
                             parcelsCount = parcels.size,
                             deliveredParcelsCount = deliveredParcelsCount,
@@ -285,6 +311,20 @@ fun LogisticStep2View(
                     colors = colors,
                     onSelectTransitaire = { showSelectTransitaireDialog = true },
                     onCopyText = ::copyToClipboard
+                )
+                MilestoneDateCard(
+                    title = "Date d'arrivée au dépôt Chine",
+                    subtitle = "Date réelle de réception chez le transitaire",
+                    currentDateMillis = warehouseArrivalDateMillis,
+                    referenceEarlierMillis = order.orderDate,
+                    referenceLabel = "la date d'achat",
+                    durationLabel = chinaDurationLabel,
+                    colors = colors,
+                    testTagPrefix = "step2_warehouse_date",
+                    onDateSelected = { newDate ->
+                        warehouseArrivalDateMillis = newDate
+                        onUpdateOrder(order.copy(warehouseArrivalDate = newDate))
+                    }
                 )
                 Step2BottomActionsCard(
                     parcelsCount = parcels.size,
@@ -373,8 +413,10 @@ fun LogisticStep2View(
             onDismiss = { showPartialProceedConfirm = false },
             onConfirmProceed = {
                 showPartialProceedConfirm = false
+                val resolvedWarehouseDate = warehouseArrivalDateMillis ?: order.warehouseArrivalDate ?: System.currentTimeMillis()
                 val syncedOrder = DomesticParcelStorage.applyToOrder(order, parcels).copy(
-                    status = OrderStatus.GUANGZHOU.code
+                    status = OrderStatus.GUANGZHOU.code,
+                    warehouseArrivalDate = resolvedWarehouseDate
                 )
                 onAdvanceToWeighing(syncedOrder)
                 Toast.makeText(

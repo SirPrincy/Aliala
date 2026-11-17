@@ -2,14 +2,53 @@ package com.example.ui.business.managers
 
 import com.example.data.local.entity.BusinessTransactionEntity
 import com.example.data.local.entity.CatalogueTransitaireEntity
+import com.example.data.local.entity.TransitaireRateHistoryEntity
 import com.example.data.repository.AppRepository
 import com.example.util.CurrencyFormatter
+import com.example.util.DateUtils
 import kotlinx.coroutines.flow.firstOrNull
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class TransitaireManager(private val repository: AppRepository) {
+
+    private fun todayDateStr(): String = DateUtils.getTodayFrenchDate()
+
+    private fun buildHistoryEntry(
+        transitaireId: Long,
+        transitaireName: String,
+        mode: String,
+        oldRateAr: Long,
+        newRateAr: Long,
+        dateLabel: String,
+        isInitial: Boolean = false
+    ): TransitaireRateHistoryEntity {
+        val resolvedDateLabel = dateLabel.trim().ifBlank { todayDateStr() }
+        val resolvedMillis = DateUtils.frenchDateToEpochMillis(resolvedDateLabel)
+        val deltaAr = if (!isInitial && oldRateAr > 0L && newRateAr > 0L) newRateAr - oldRateAr else 0L
+        val deltaPct = if (!isInitial && oldRateAr > 0L && newRateAr > 0L) {
+            ((newRateAr - oldRateAr).toDouble() / oldRateAr.toDouble()) * 100.0
+        } else 0.0
+        val note = when {
+            isInitial -> "Tarif initial"
+            oldRateAr == 0L && newRateAr > 0L -> "Tarif défini"
+            oldRateAr > 0L && newRateAr == 0L -> "Tarif retiré"
+            deltaAr > 0L -> "Hausse tarifaire"
+            deltaAr < 0L -> "Baisse tarifaire"
+            else -> "Révision tarifaire"
+        }
+        return TransitaireRateHistoryEntity(
+            transitaireId = transitaireId,
+            transitaireName = transitaireName,
+            mode = mode,
+            oldRateAr = oldRateAr,
+            newRateAr = newRateAr,
+            deltaAr = deltaAr,
+            deltaPercent = deltaPct,
+            changedAtMillis = resolvedMillis,
+            effectiveDateLabel = resolvedDateLabel,
+            note = note,
+            isDemo = false
+        )
+    }
 
     suspend fun addCatalogueTransitaire(
         name: String,
@@ -19,35 +58,56 @@ class TransitaireManager(private val repository: AppRepository) {
         contact: String = "",
         chinaWarehouseAddress: String = "",
         isActive: Boolean = true,
-        rateApplicationDate: String = SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(Date()),
-        airLeadDays: String = "7 à 10 jours",
-        seaLeadDays: String = "30 à 45 jours",
+        rateApplicationDate: String = "",
+        airLeadDays: String = "",
+        seaLeadDays: String = "",
         internalNotes: String = "",
-        airFastRate: Long = 60000L,
-        airFastLeadDays: String = "3 à 5 jours",
+        airFastRate: Long = 0L,
+        airFastLeadDays: String = "",
         goodsCategoryDelays: String = ""
     ): String {
-        val effectiveDate = rateApplicationDate.ifBlank {
-            SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(Date())
+        val cleanName = name.trim()
+        val hasAnyRate = airRate > 0L || airFastRate > 0L || seaRate > 0L
+        val effectiveDate = when {
+            !hasAnyRate -> ""
+            rateApplicationDate.isNotBlank() -> rateApplicationDate.trim()
+            else -> todayDateStr()
         }
-        repository.insertCatalogueTransitaire(
-            CatalogueTransitaireEntity(
-                name = name.trim(),
-                contact = contact.trim(),
-                address = chinaWarehouseAddress.trim(),
-                defaultTariffPerKg = airRate,
-                airNormalRateAr = airRate,
-                airFastRateAr = airFastRate,
-                seaRateAr = seaRate,
-                airNormalLeadDays = airLeadDays.ifBlank { "7 à 10 jours" },
-                airFastLeadDays = airFastLeadDays.ifBlank { "3 à 5 jours" },
-                seaNormalLeadDays = seaLeadDays.ifBlank { "30 à 45 jours" },
-                goodsCategoryDelays = goodsCategoryDelays,
-                notes = internalNotes.trim(),
-                rateApplicationDate = effectiveDate
+        val finalNotes = if (!isActive) "[ARCHIVED] ${internalNotes.trim()}".trim() else internalNotes.trim()
+
+        repository.runInTransaction {
+            val newId = repository.insertCatalogueTransitaire(
+                CatalogueTransitaireEntity(
+                    name = cleanName,
+                    contact = contact.trim(),
+                    address = chinaWarehouseAddress.trim(),
+                    defaultTariffPerKg = airRate.coerceAtLeast(0L),
+                    airNormalRateAr = airRate.coerceAtLeast(0L),
+                    airFastRateAr = airFastRate.coerceAtLeast(0L),
+                    seaRateAr = seaRate.coerceAtLeast(0L),
+                    airNormalLeadDays = airLeadDays.trim(),
+                    airFastLeadDays = airFastLeadDays.trim(),
+                    seaNormalLeadDays = seaLeadDays.trim(),
+                    goodsCategoryDelays = goodsCategoryDelays,
+                    notes = finalNotes,
+                    rateApplicationDate = effectiveDate
+                )
             )
-        )
-        return "Transitaire « $name » ajouté"
+            val initialLogs = mutableListOf<TransitaireRateHistoryEntity>()
+            if (airRate > 0L) {
+                initialLogs.add(buildHistoryEntry(newId, cleanName, "AERIEN", 0L, airRate, effectiveDate, isInitial = true))
+            }
+            if (airFastRate > 0L) {
+                initialLogs.add(buildHistoryEntry(newId, cleanName, "AERIEN_FAST", 0L, airFastRate, effectiveDate, isInitial = true))
+            }
+            if (seaRate > 0L) {
+                initialLogs.add(buildHistoryEntry(newId, cleanName, "MARITIME", 0L, seaRate, effectiveDate, isInitial = true))
+            }
+            if (initialLogs.isNotEmpty()) {
+                repository.insertTransitaireRateHistories(initialLogs)
+            }
+        }
+        return "Transitaire « $cleanName » ajouté"
     }
 
     suspend fun updateCatalogueTransitaire(
@@ -67,55 +127,114 @@ class TransitaireManager(private val repository: AppRepository) {
         airFastLeadDays: String,
         goodsCategoryDelays: String
     ): String? {
-        val list = repository.getAllCatalogueTransitairesSnapshot()
-        val existing = list.firstOrNull { it.id == id }
-        return if (existing != null) {
-            val effectiveDate = rateApplicationDate.ifBlank {
-                existing.rateApplicationDate.ifBlank {
-                    SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(Date())
-                }
+        val cleanName = name.trim()
+        var updated = false
+        repository.runInTransaction {
+            val list = repository.getAllCatalogueTransitairesSnapshot()
+            val existing = list.firstOrNull { it.id == id } ?: return@runInTransaction
+
+            val sanitizedAir = airRate.coerceAtLeast(0L)
+            val sanitizedAirFast = airFastRate.coerceAtLeast(0L)
+            val sanitizedSea = seaRate.coerceAtLeast(0L)
+
+            val airChanged = existing.airNormalRateAr != sanitizedAir
+            val fastChanged = existing.airFastRateAr != sanitizedAirFast
+            val seaChanged = existing.seaRateAr != sanitizedSea
+            val hasAnyNewRate = sanitizedAir > 0L || sanitizedAirFast > 0L || sanitizedSea > 0L
+            val today = todayDateStr()
+
+            val effectiveDate = when {
+                !hasAnyNewRate -> ""
+                rateApplicationDate.isNotBlank() -> rateApplicationDate.trim()
+                else -> existing.rateApplicationDate.ifBlank { today }
             }
+
+            val cleanNotes = internalNotes.removePrefix("[ARCHIVED]").trim()
+            val finalNotes = if (!isActive) "[ARCHIVED] $cleanNotes".trim() else cleanNotes
+
             repository.updateCatalogueTransitaire(
                 existing.copy(
-                    name = name.trim(),
+                    name = cleanName,
                     contact = contact.trim(),
                     address = chinaWarehouseAddress.trim(),
-                    defaultTariffPerKg = airRate,
-                    airNormalRateAr = airRate,
-                    airFastRateAr = airFastRate,
-                    seaRateAr = seaRate,
-                    airNormalLeadDays = airLeadDays.ifBlank { "7 à 10 jours" },
-                    airFastLeadDays = airFastLeadDays.ifBlank { "3 à 5 jours" },
-                    seaNormalLeadDays = seaLeadDays.ifBlank { "30 à 45 jours" },
+                    defaultTariffPerKg = sanitizedAir,
+                    airNormalRateAr = sanitizedAir,
+                    airFastRateAr = sanitizedAirFast,
+                    seaRateAr = sanitizedSea,
+                    airNormalLeadDays = airLeadDays.trim(),
+                    airFastLeadDays = airFastLeadDays.trim(),
+                    seaNormalLeadDays = seaLeadDays.trim(),
                     goodsCategoryDelays = goodsCategoryDelays,
-                    notes = internalNotes.trim(),
+                    notes = finalNotes,
                     rateApplicationDate = effectiveDate
                 )
             )
-            "Transitaire « $name » modifié"
-        } else null
+
+            val dateLabel = effectiveDate.ifBlank { today }
+            val changeLogs = mutableListOf<TransitaireRateHistoryEntity>()
+            if (airChanged && (existing.airNormalRateAr > 0L || sanitizedAir > 0L)) {
+                changeLogs.add(buildHistoryEntry(id, cleanName, "AERIEN", existing.airNormalRateAr, sanitizedAir, dateLabel))
+            }
+            if (fastChanged && (existing.airFastRateAr > 0L || sanitizedAirFast > 0L)) {
+                changeLogs.add(buildHistoryEntry(id, cleanName, "AERIEN_FAST", existing.airFastRateAr, sanitizedAirFast, dateLabel))
+            }
+            if (seaChanged && (existing.seaRateAr > 0L || sanitizedSea > 0L)) {
+                changeLogs.add(buildHistoryEntry(id, cleanName, "MARITIME", existing.seaRateAr, sanitizedSea, dateLabel))
+            }
+            if (changeLogs.isNotEmpty()) {
+                repository.insertTransitaireRateHistories(changeLogs)
+            }
+            updated = true
+        }
+        return if (updated) "Transitaire « $cleanName » modifié" else null
     }
 
     suspend fun deleteCatalogueTransitaire(id: Long): String {
-        repository.deleteCatalogueTransitaire(id)
+        repository.runInTransaction {
+            repository.deleteTransitaireRateHistoryFor(id)
+            repository.deleteCatalogueTransitaire(id)
+        }
         return "Transitaire supprimé"
     }
 
     suspend fun updateTransitaireRates(id: Long, airRate: Long, seaRate: Long, date: String? = null): String? {
-        val list = repository.getAllCatalogueTransitairesSnapshot()
-        val existing = list.firstOrNull { it.id == id }
-        return if (existing != null) {
-            val appDate = if (!date.isNullOrBlank()) date else SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(Date())
+        var updated = false
+        repository.runInTransaction {
+            val list = repository.getAllCatalogueTransitairesSnapshot()
+            val existing = list.firstOrNull { it.id == id } ?: return@runInTransaction
+
+            val sanitizedAir = airRate.coerceAtLeast(0L)
+            val sanitizedSea = seaRate.coerceAtLeast(0L)
+            val hasAnyRate = sanitizedAir > 0L || existing.airFastRateAr > 0L || sanitizedSea > 0L
+            val appDate = when {
+                !hasAnyRate -> ""
+                !date.isNullOrBlank() -> date.trim()
+                else -> todayDateStr()
+            }
+
             repository.updateCatalogueTransitaire(
                 existing.copy(
-                    defaultTariffPerKg = airRate,
-                    airNormalRateAr = airRate,
-                    seaRateAr = seaRate,
+                    defaultTariffPerKg = sanitizedAir,
+                    airNormalRateAr = sanitizedAir,
+                    seaRateAr = sanitizedSea,
                     rateApplicationDate = appDate
                 )
             )
-            "Tarifs mis à jour"
-        } else null
+
+            val dateLabel = appDate.ifBlank { todayDateStr() }
+            val logs = mutableListOf<TransitaireRateHistoryEntity>()
+            if (existing.airNormalRateAr != sanitizedAir && (existing.airNormalRateAr > 0L || sanitizedAir > 0L)) {
+                logs.add(buildHistoryEntry(id, existing.name, "AERIEN", existing.airNormalRateAr, sanitizedAir, dateLabel))
+            }
+            if (existing.seaRateAr != sanitizedSea && (existing.seaRateAr > 0L || sanitizedSea > 0L)) {
+                logs.add(buildHistoryEntry(id, existing.name, "MARITIME", existing.seaRateAr, sanitizedSea, dateLabel))
+            }
+            if (logs.isNotEmpty()) {
+                repository.insertTransitaireRateHistories(logs)
+            }
+            updated = true
+        }
+        return if (updated) "Tarifs mis à jour" else null
     }
 
     suspend fun toggleTransitaireArchived(id: Long): String? {

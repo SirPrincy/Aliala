@@ -39,33 +39,22 @@ object LotCostCalculator {
 
         val isMaritime = order.freightMode.equals("MARITIME", ignoreCase = true) || order.freightMode.equals("SEA", ignoreCase = true)
 
-        val airRate = transitaireAirRateAr ?: when {
-            order.carrier.contains("MadaAir", ignoreCase = true) -> 36_500L
-            order.carrier.contains("QuickMada", ignoreCase = true) -> 42_000L
-            order.carrier.contains("Oceanic", ignoreCase = true) -> 39_000L
-            else -> 38_000L
-        }
-        val seaRate = transitaireSeaRateAr ?: when {
-            order.carrier.contains("MadaAir", ignoreCase = true) -> 1_280_000L
-            order.carrier.contains("QuickMada", ignoreCase = true) -> 1_150_000L
-            order.carrier.contains("Oceanic", ignoreCase = true) -> 1_100_000L
-            else -> 1_200_000L
-        }
-
+        val airRate = (transitaireAirRateAr ?: 0L).coerceAtLeast(0L)
+        val seaRate = (transitaireSeaRateAr ?: 0L).coerceAtLeast(0L)
         val freightRate = if (isMaritime) seaRate else airRate
 
-        val calculatedFreightCostAr = if (order.freightCostAr > 0) {
+        val calculatedFreightCostAr = if (order.freightCostAr > 0L) {
             order.freightCostAr
-        } else if (isMaritime && order.volumeM3 != null && order.volumeM3 > 0.0) {
+        } else if (isMaritime && order.volumeM3 != null && order.volumeM3 > 0.0 && seaRate > 0L) {
             (order.volumeM3 * seaRate).toLong()
-        } else if (!isMaritime && order.weightKg != null && order.weightKg > 0.0) {
+        } else if (!isMaritime && order.weightKg != null && order.weightKg > 0.0 && airRate > 0L) {
             (order.weightKg * airRate).toLong()
         } else {
             0L
         }
 
-        val customsTaxAr = customsTaxArInput ?: order.customsTaxAr
-        val refundYuan = customRefundYuan ?: order.refundYuan
+        val customsTaxAr = (customsTaxArInput ?: order.customsTaxAr).coerceAtLeast(0L)
+        val refundYuan = (customRefundYuan ?: order.refundYuan).coerceAtLeast(0.0)
         val refundAr = if (effectiveRate > 0.0) (refundYuan * effectiveRate).toLong() else 0L
 
         val totalDisbursed = merchandiseTotalAr + domesticPortAr + calculatedFreightCostAr + customsTaxAr

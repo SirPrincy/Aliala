@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.local.entity.BusinessOrderEntity
+import com.example.data.local.entity.TransitaireRateHistoryEntity
 import com.example.ui.business.CatalogueTransitaireSummaryUi
 import com.example.ui.business.shared.rememberTransitaireColors
 import com.example.ui.theme.PlusJakartaSans
@@ -64,16 +65,17 @@ internal fun buildRateSummaryTooltip(
     mode: String
 ): String {
     val unitLabel = if (mode == "AERIEN") "kg" else "m³"
+    val ratedList = sortedList.filter { (if (mode == "AERIEN") it.airRateAr else it.seaRateAr) > 0L }
     return when {
-        sortedList.isEmpty() -> "Aucun transitaire actif enregistré pour comparer les tarifs."
-        sortedList.size == 1 -> {
-            val t = sortedList.first()
+        ratedList.isEmpty() -> "Aucun transitaire actif avec un tarif ${if (mode == "AERIEN") "aérien" else "maritime"} défini."
+        ratedList.size == 1 -> {
+            val t = ratedList.first()
             val rate = if (mode == "AERIEN") t.airRateAr else t.seaRateAr
             "${t.name} : ${CurrencyFormatter.formatAriary(rate)}/$unitLabel."
         }
         else -> {
-            val cheapest = sortedList.first()
-            val priciest = sortedList.last()
+            val cheapest = ratedList.first()
+            val priciest = ratedList.last()
             val minRate = if (mode == "AERIEN") cheapest.airRateAr else cheapest.seaRateAr
             val maxRate = if (mode == "AERIEN") priciest.airRateAr else priciest.seaRateAr
             val diff = (maxRate - minRate).coerceAtLeast(0L)
@@ -86,6 +88,7 @@ internal fun buildRateSummaryTooltip(
 fun TransitairePriceComparisonDialog(
     transitaires: List<CatalogueTransitaireSummaryUi> = emptyList(),
     orders: List<BusinessOrderEntity> = emptyList(),
+    rateHistory: List<TransitaireRateHistoryEntity> = emptyList(),
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -105,7 +108,9 @@ fun TransitairePriceComparisonDialog(
         transitaires.filter { !it.isArchived }
     }
     val sortedByRate = remember(activeTransitaires, selectedFretMode) {
-        activeTransitaires.sortedBy { if (selectedFretMode == "AERIEN") it.airRateAr else it.seaRateAr }
+        activeTransitaires
+            .filter { (if (selectedFretMode == "AERIEN") it.airRateAr else it.seaRateAr) > 0L }
+            .sortedBy { if (selectedFretMode == "AERIEN") it.airRateAr else it.seaRateAr }
     }
     var activeTooltipText by remember(sortedByRate, selectedFretMode) {
         mutableStateOf(buildRateSummaryTooltip(sortedByRate, selectedFretMode))
@@ -256,7 +261,13 @@ fun TransitairePriceComparisonDialog(
                                     appendLine("Transitaire;Aerien_Normal_Ar_kg;Aerien_Express_Ar_kg;Maritime_Ar_m3;Delai_Aerien;Delai_Maritime;Date_Application;Statut")
                                     transitaires.forEach { t ->
                                         val st = if (t.isArchived) "Archivé" else "Actif"
-                                        appendLine("${t.name};${t.airRateAr};${t.airFastRateAr};${t.seaRateAr};${t.airLeadDays};${t.seaLeadDays};${t.rateApplicationDate};$st")
+                                        val airStr = if (t.airRateAr > 0L) t.airRateAr.toString() else "Non défini"
+                                        val fastStr = if (t.airFastRateAr > 0L) t.airFastRateAr.toString() else "Non défini"
+                                        val seaStr = if (t.seaRateAr > 0L) t.seaRateAr.toString() else "Non défini"
+                                        val airLead = t.airLeadDays.ifBlank { "Non défini" }
+                                        val seaLead = t.seaLeadDays.ifBlank { "Non défini" }
+                                        val appDate = t.rateApplicationDate.ifBlank { "Non définie" }
+                                        appendLine("${t.name};$airStr;$fastStr;$seaStr;$airLead;$seaLead;$appDate;$st")
                                     }
                                 }
                                 runCatching {
@@ -319,7 +330,7 @@ fun TransitairePriceComparisonDialog(
                                         .background(if (selectedFretMode == "AERIEN") colors.cardBg else Color.Transparent)
                                         .clickable {
                                             selectedFretMode = "AERIEN"
-                                            val sortedAir = activeTransitaires.sortedBy { it.airRateAr }
+                                            val sortedAir = activeTransitaires.filter { it.airRateAr > 0L }.sortedBy { it.airRateAr }
                                             activeTooltipText = buildRateSummaryTooltip(sortedAir, "AERIEN")
                                         },
                                     contentAlignment = Alignment.Center
@@ -352,7 +363,7 @@ fun TransitairePriceComparisonDialog(
                                         .background(if (selectedFretMode == "MARITIME") colors.cardBg else Color.Transparent)
                                         .clickable {
                                             selectedFretMode = "MARITIME"
-                                            val sortedSea = activeTransitaires.sortedBy { it.seaRateAr }
+                                            val sortedSea = activeTransitaires.filter { it.seaRateAr > 0L }.sortedBy { it.seaRateAr }
                                             activeTooltipText = buildRateSummaryTooltip(sortedSea, "MARITIME")
                                         },
                                     contentAlignment = Alignment.Center
@@ -454,6 +465,9 @@ fun TransitairePriceComparisonDialog(
 
                     TransitaireDeclaredGridsCard(
                         transitaires = transitaires,
+                        rateHistory = rateHistory,
+                        selectedFretMode = selectedFretMode,
+                        selectedPeriod = selectedPeriod,
                         selectedProviderFilter = selectedProviderFilter,
                         onProviderFilterChange = { selectedProviderFilter = it },
                         colors = colors

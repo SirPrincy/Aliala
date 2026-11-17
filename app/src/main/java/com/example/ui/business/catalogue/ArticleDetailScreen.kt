@@ -136,9 +136,9 @@ fun ArticleDetailScreen(
     val weightGrams = if (weightKg > 0.0) (weightKg * 1000.0).toInt() else 0
     val volumeM3Str = when {
         primaryOrder.volumeM3 != null && primaryOrder.volumeM3 > 0.0 ->
-            String.format(Locale.US, "%.4f", primaryOrder.volumeM3)
+            String.format(Locale.FRENCH, "%.5f", primaryOrder.volumeM3)
         weightKg > 0.0 ->
-            String.format(Locale.US, "%.4f", weightKg * 0.0067)
+            String.format(Locale.FRENCH, "%.5f", weightKg * 0.0067)
         else -> "—"
     }
     val unitFreightRealAr = if (primaryOrder.freightCostAr > 0L && primaryOrder.quantityBought > 0) {

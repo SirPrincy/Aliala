@@ -47,9 +47,7 @@ import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.Inter
 import com.example.ui.theme.PlusJakartaSans
 import com.example.util.CurrencyFormatter
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.example.util.DateUtils
 
 @Composable
 internal fun SaleInvoiceCard(
@@ -151,7 +149,7 @@ internal fun SaleInvoiceCard(
                             }
                         }
 
-                        val dateStr = SimpleDateFormat("dd MMM yyyy", Locale.FRENCH).format(Date(sale.saleDate))
+                        val dateStr = DateUtils.formatShortDate(sale.saleDate)
                         Text(
                             text = "$dateStr • ${sale.productName}",
                             fontFamily = Inter,

@@ -55,5 +55,8 @@ data class BusinessOrderEntity(
     val domesticShippingYuan: Double = 0.0, // Frais de port interne Chine en Yuans
     val familyId: Long = 0L, // ID unique de la famille dans CatalogueFamilyEntity
     val supplierDispatchDelay: String = "", // Délai d'expédition usine choisi
-    val parcelDetailsJson: String = "" // Métadonnées JSON des colis (transporteur, contenu, étapes, horodatage)
+    val parcelDetailsJson: String = "", // Métadonnées JSON des colis (transporteur, contenu, étapes, horodatage)
+    val warehouseArrivalDate: Long? = null, // Date d'arrivée au dépôt transitaire en Chine
+    val madaDispatchDate: Long? = null, // Date d'envoi du Hub Chine vers Madagascar
+    val madaArrivalDate: Long? = null // Date d'arrivée réelle à Madagascar
 )

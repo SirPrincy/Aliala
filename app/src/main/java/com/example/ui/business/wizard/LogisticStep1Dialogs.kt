@@ -12,13 +12,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,7 +45,9 @@ import com.example.ui.business.model.DomesticParcelStorage
 import com.example.ui.business.shared.TransitaireColors
 import com.example.ui.theme.Inter
 import com.example.ui.theme.PlusJakartaSans
+import com.example.util.DateUtils
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun Step1EditOrderDialog(
     order: BusinessOrderEntity,
@@ -52,6 +62,34 @@ internal fun Step1EditOrderDialog(
     var qtyInput by remember { mutableStateOf(if (order.quantityBought > 0) order.quantityBought.toString() else "") }
     var priceYuanInput by remember { mutableStateOf(if (order.priceYuan > 0.0) formatYuanCompact(order.priceYuan) else "") }
     var domesticYuanInput by remember { mutableStateOf(formatYuanCompact(order.domesticShippingYuan)) }
+    var orderDateInput by remember { mutableStateOf(DateUtils.formatShortDate(order.orderDate)) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var errorText by remember { mutableStateOf<String?>(null) }
+
+    if (showDatePicker) {
+        val initialUtcMillis = DateUtils.frenchDateToUtcPickerMillis(orderDateInput)
+            ?: DateUtils.frenchDateToUtcPickerMillis(DateUtils.getTodayFrenchDate())
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialUtcMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pickerState.selectedDateMillis?.let { picked ->
+                            orderDateInput = DateUtils.utcPickerMillisToFrenchDate(picked)
+                            errorText = null
+                        }
+                        showDatePicker = false
+                    }
+                ) { Text("OK", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Annuler") }
+            }
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -67,6 +105,26 @@ internal fun Step1EditOrderDialog(
                     value = prodInput,
                     onValueChange = { prodInput = it },
                     label = { Text("Nom de l'article") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = orderDateInput,
+                    onValueChange = {
+                        orderDateInput = it
+                        errorText = null
+                    },
+                    label = { Text("Date d'achat (jj/mm/aaaa)") },
+                    placeholder = { Text("ex. 15/03/2025") },
+                    trailingIcon = {
+                        IconButton(onClick = { showDatePicker = true }) {
+                            Icon(
+                                imageVector = Icons.Default.CalendarToday,
+                                contentDescription = "Choisir la date d'achat",
+                                tint = colors.cyanAccent
+                            )
+                        }
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -119,25 +177,33 @@ internal fun Step1EditOrderDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                errorText?.let { msg ->
+                    Text(text = msg, fontFamily = Inter, fontSize = 12.sp, color = colors.dangerAccent)
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val newQty = qtyInput.toIntOrNull()?.coerceAtLeast(1) ?: order.quantityBought
-                    val newPrice = priceYuanInput.toDoubleOrNull()?.coerceAtLeast(0.0) ?: order.priceYuan
-                    val newDomestic = domesticYuanInput.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
-                    onSave(
-                        order.copy(
-                            product = prodInput.trim().ifBlank { order.product },
-                            referenceCode = refInput.trim(),
-                            platform = platformInput.trim(),
-                            supplier = supplierInput.trim(),
-                            quantityBought = newQty,
-                            priceYuan = newPrice,
-                            domesticShippingYuan = newDomestic
+                    if (!DateUtils.isValidFrenchDate(orderDateInput)) {
+                        errorText = "Date invalide (format attendu : jj/mm/aaaa)"
+                    } else {
+                        val newQty = qtyInput.toIntOrNull()?.coerceAtLeast(1) ?: order.quantityBought
+                        val newPrice = priceYuanInput.toDoubleOrNull()?.coerceAtLeast(0.0) ?: order.priceYuan
+                        val newDomestic = domesticYuanInput.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
+                        onSave(
+                            order.copy(
+                                product = prodInput.trim().ifBlank { order.product },
+                                referenceCode = refInput.trim(),
+                                platform = platformInput.trim(),
+                                supplier = supplierInput.trim(),
+                                quantityBought = newQty,
+                                priceYuan = newPrice,
+                                domesticShippingYuan = newDomestic,
+                                orderDate = DateUtils.frenchDateToEpochMillis(orderDateInput)
+                            )
                         )
-                    )
+                    }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = colors.cyanAccent)
             ) {
