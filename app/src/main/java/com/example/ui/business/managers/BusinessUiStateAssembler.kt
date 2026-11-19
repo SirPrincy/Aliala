@@ -12,27 +12,39 @@ internal fun buildBusinessUiState(
     clientsFilters: ClientsFiltersState
 ): BusinessUiState {
     val nowMs = System.currentTimeMillis()
-    val overview = mapBusinessOverviewMetrics(raw = raw, monthOffset = ctrl.monthOffset, nowMs = nowMs)
-    val purchases = mapPurchasesSection(raw = raw, pFilters = pFilters, overview = overview)
-    val stock = mapStockSection(orders = raw.orders, sFilters = sFilters)
+    val spendByOrderId = raw.yuanTxs
+        .filter { it.type == "SPEND" && it.orderId != null }
+        .associateBy { it.orderId!! }
+    val normalizedOrders = raw.orders.map { order ->
+        val spendTx = spendByOrderId[order.id]
+        if (!order.yuanDebited && spendTx != null) {
+            order.copy(
+                yuanDebited = true,
+                yuanDebitedAmount = if (order.yuanDebitedAmount > 0.0) order.yuanDebitedAmount else spendTx.amountYuan
+            )
+        } else order
+    }
+    val syncedRaw = if (normalizedOrders === raw.orders) raw else raw.copy(orders = normalizedOrders)
+    val overview = mapBusinessOverviewMetrics(raw = syncedRaw, monthOffset = ctrl.monthOffset, nowMs = nowMs)
+    val purchases = mapPurchasesSection(raw = syncedRaw, pFilters = pFilters, overview = overview)
+    val stock = mapStockSection(orders = syncedRaw.orders, sFilters = sFilters)
     val sales = mapSalesSection(
-        raw = raw,
+        raw = syncedRaw,
         salesFilters = salesFilters,
         overview = overview,
         exchangeGainAr = purchases.exchangeGainAr
     )
     val catalogue = mapCatalogueSection(
-        raw = raw,
+        raw = syncedRaw,
         cFilters = cFilters,
         cmupRate = overview.cmupRate,
         transitaireDueMap = overview.transitaireDueMap
     )
-    val clients = mapClientsSection(raw = raw, clientsFilters = clientsFilters, nowMs = nowMs)
-    val dynamicNotifications = buildDynamicNotifications(orders = raw.orders, overview = overview)
+    val clients = mapClientsSection(raw = syncedRaw, clientsFilters = clientsFilters, nowMs = nowMs)
+    val dynamicNotifications = buildDynamicNotifications(orders = syncedRaw.orders, overview = overview)
 
     return BusinessUiState(
         isLoading = false,
-        selectedContext = ctrl.contextChoice,
         selectedSubTab = ctrl.subTab,
         purchasesCount = raw.orders.size,
         stockCount = stock.availableStockPieces,
@@ -147,9 +159,9 @@ internal fun buildBusinessUiState(
         clientsList = clients.filteredClients,
         allClients = clients.mergedClients.sortedBy { it.name.lowercase() },
 
-        orders = raw.orders,
-        yuanTransactions = raw.yuanTxs,
-        sales = raw.sales,
+        orders = syncedRaw.orders,
+        yuanTransactions = syncedRaw.yuanTxs,
+        sales = syncedRaw.sales,
         businessNotifications = dynamicNotifications,
         snackbarMessage = ctrl.snackbarMsg
     )

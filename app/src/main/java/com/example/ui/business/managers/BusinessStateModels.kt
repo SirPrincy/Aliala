@@ -67,7 +67,6 @@ internal data class ClientsFiltersState(
 )
 
 internal data class BusinessControlState(
-    val contextChoice: String,
     val subTab: String,
     val monthOffset: Int,
     val insightIndex: Int,

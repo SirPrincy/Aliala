@@ -13,6 +13,7 @@ data class BusinessTransactionEntity(
     val accountName: String,
     val destinationAccount: String = "",
     val yuanTransactionId: Long? = null,
+    val categoryId: Long? = null,
     val referenceTag: String = "",
     val dateMillis: Long = System.currentTimeMillis()
 )

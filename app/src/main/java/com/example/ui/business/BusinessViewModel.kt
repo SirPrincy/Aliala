@@ -6,12 +6,14 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.datastore.SettingsDataStore
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.BusinessAccountEntity
+import com.example.data.local.entity.BusinessCategoryEntity
 import com.example.data.local.entity.BusinessDebtEntity
 import com.example.data.local.entity.BusinessDebtPaymentEntity
 import com.example.data.local.entity.BusinessInvestmentEntity
 import com.example.data.local.entity.BusinessOrderEntity
 import com.example.data.local.entity.BusinessSaleEntity
 import com.example.data.local.entity.BusinessTransactionEntity
+import com.example.data.local.entity.YuanTransactionEntity
 import com.example.data.repository.AppRepository
 import com.example.ui.business.managers.BusinessControlState
 import com.example.ui.business.managers.CatalogueFilters
@@ -45,7 +47,6 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     val transitaireManager = TransitaireManager(repository)
     val financialReporter = FinancialReporter(repository)
 
-    private val selectedContextFlow = MutableStateFlow("Business")
     private val selectedSubTabFlow = MutableStateFlow("Aperçu")
     private val monthOffsetFlow = MutableStateFlow(0)
     private val insightIndexFlow = MutableStateFlow(1)
@@ -81,6 +82,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     init {
         viewModelScope.launch { repository.seedDefaultCatalogueTablesIfEmpty() }
         viewModelScope.launch { repository.seedDefaultBusinessAccountsIfEmpty() }
+        viewModelScope.launch { repository.seedDefaultBusinessCategoriesIfEmpty() }
     }
 
     private val purchasesFiltersFlow = combine(
@@ -109,8 +111,8 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     ) { salesF, catF, clientsF -> Triple(salesF, catF, clientsF) }
 
     private val controlStateFlow = combine(
-        selectedContextFlow, selectedSubTabFlow, monthOffsetFlow, insightIndexFlow, snackbarFlow
-    ) { ctx, tab, offset, insightIdx, snackbar -> BusinessControlState(ctx, tab, offset, insightIdx, snackbar) }
+        selectedSubTabFlow, monthOffsetFlow, insightIndexFlow, snackbarFlow
+    ) { tab, offset, insightIdx, snackbar -> BusinessControlState(tab, offset, insightIdx, snackbar) }
 
     val uiState: StateFlow<BusinessUiState> = combine(
         buildBusinessRawDataFlow(repository), controlStateFlow, purchasesFiltersFlow, stockFiltersFlow, secondaryFiltersFlow
@@ -133,17 +135,20 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     val businessDebtPayments: StateFlow<List<BusinessDebtPaymentEntity>> = repository.allBusinessDebtPayments
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun onSelectContext(choice: String) { selectedContextFlow.value = choice }
+    val businessCategories: StateFlow<List<BusinessCategoryEntity>> = repository.allBusinessCategories
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     fun onSelectSubTab(tab: String) { selectedSubTabFlow.value = tab }
     fun onPrevMonth() { monthOffsetFlow.value -= 1 }
     fun onNextMonth() { monthOffsetFlow.value += 1 }
     fun onResetCurrentMonth() { monthOffsetFlow.value = 0 }
     fun onNextInsight() { insightIndexFlow.value = if (insightIndexFlow.value >= 3) 1 else insightIndexFlow.value + 1 }
 
-    // Catalogue
+    // Catalogue (unifié dans l'onglet Stock)
     fun openCatalogue(showHidden: Boolean = false) {
-        catalogueShowHiddenFlow.value = showHidden
-        isCatalogueOpenFlow.value = true
+        selectedSubTabFlow.value = "Stock"
+        stockSegmentFlow.value = "Catalogue"
+        showHiddenStockFlow.value = showHidden
     }
 
     fun closeCatalogue() { isCatalogueOpenFlow.value = false }
@@ -163,7 +168,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         priceYuan: Double,
         resaleAr: Long,
         stockCount: Int,
-        weightKg: Double = 0.2,
+        weightKg: Double? = null,
         platform: String = "1688",
         imageUrl: String = "",
         freightMode: String = "AÉRIEN",
@@ -175,18 +180,6 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 product, family, referenceCode, variants, priceYuan, resaleAr, stockCount, weightKg,
                 platform, uiState.value.cmupRate.toDouble(), imageUrl, freightMode, notes, estimatedFreightPerKgAr
             )
-        }
-    }
-
-    fun updateCatalogueArticle(
-        order: BusinessOrderEntity,
-        newPriceYuan: Double,
-        newResaleAr: Long,
-        newVariants: String,
-        isHidden: Boolean
-    ) {
-        viewModelScope.launch {
-            snackbarFlow.value = stockManager.updateCatalogueArticle(order, newPriceYuan, newResaleAr, newVariants, isHidden)
         }
     }
 
@@ -309,28 +302,8 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun addBusinessSale(
-        clientName: String,
-        clientPhone: String,
-        productName: String,
-        quantity: Int,
-        unitResalePriceAr: Long,
-        unitCostAr: Long,
-        paidAmountAr: Long
-    ) {
-        viewModelScope.launch {
-            snackbarFlow.value = salesManager.addBusinessSale(
-                clientName, clientPhone, productName, quantity, unitResalePriceAr, unitCostAr, paidAmountAr
-            )
-        }
-    }
-
     fun deleteSale(sale: BusinessSaleEntity) {
         viewModelScope.launch { snackbarFlow.value = salesManager.deleteSale(sale) }
-    }
-
-    fun onAdvanceQualityControl(order: BusinessOrderEntity) {
-        viewModelScope.launch { snackbarFlow.value = stockManager.onAdvanceQualityControl(order) }
     }
 
     fun buyYuans(
@@ -361,11 +334,12 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         note: String,
         orderId: Long? = null,
         skipBalanceCheck: Boolean = false,
+        debitDateMillis: Long = System.currentTimeMillis(),
         onResult: ((Boolean, String) -> Unit)? = null
     ) {
         viewModelScope.launch {
             val res = financialReporter.spendYuans(
-                amountYuan, rateAr, platform, note, orderId, uiState.value.availableYuans, skipBalanceCheck
+                amountYuan, rateAr, platform, note, orderId, uiState.value.availableYuans, skipBalanceCheck, debitDateMillis
             )
             if (res.message.isNotBlank()) snackbarFlow.value = res.message
             onResult?.invoke(res.success, res.message)
@@ -395,10 +369,6 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 domesticShippingYuan, orderDateMillis
             )
         }
-    }
-
-    fun advanceOrderStatus(order: BusinessOrderEntity) {
-        viewModelScope.launch { snackbarFlow.value = stockManager.advanceOrderStatus(order) }
     }
 
     fun updateBusinessOrder(order: BusinessOrderEntity) {
@@ -501,12 +471,32 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun recordTransitairePayment(id: Long, amountAr: Long, accountName: String = "") {
-        viewModelScope.launch { snackbarFlow.value = transitaireManager.recordTransitairePayment(id, amountAr, accountName) }
+    fun resetAllTransitaireRateHistories() {
+        viewModelScope.launch {
+            snackbarFlow.value = transitaireManager.resetAllRateHistories()
+        }
     }
 
-    fun payOrderFreight(order: BusinessOrderEntity, amountAr: Long, accountName: String = "") {
-        viewModelScope.launch { snackbarFlow.value = transitaireManager.payOrderFreight(order, amountAr, accountName) }
+    fun recordTransitairePayment(
+        id: Long,
+        amountAr: Long,
+        accountName: String = "",
+        paymentDateMillis: Long = System.currentTimeMillis()
+    ) {
+        viewModelScope.launch {
+            snackbarFlow.value = transitaireManager.recordTransitairePayment(id, amountAr, accountName, paymentDateMillis)
+        }
+    }
+
+    fun payOrderFreight(
+        order: BusinessOrderEntity,
+        amountAr: Long,
+        accountName: String = "",
+        paymentDateMillis: Long = System.currentTimeMillis()
+    ) {
+        viewModelScope.launch {
+            snackbarFlow.value = transitaireManager.payOrderFreight(order, amountAr, accountName, paymentDateMillis)
+        }
     }
 
     fun onClientsFilterSelected(filter: String) { clientsFilterFlow.value = filter }
@@ -514,12 +504,6 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
 
     fun addClient(name: String, category: String, phone: String, initialPurchaseAr: Long) {
         viewModelScope.launch { snackbarFlow.value = salesManager.addClient(name, category, phone, initialPurchaseAr) }
-    }
-
-    fun recordClientPayment(clientId: Long, amountAr: Long) {
-        viewModelScope.launch {
-            salesManager.recordClientPayment(clientId = clientId, amountAr = amountAr)?.let { snackbarFlow.value = it }
-        }
     }
 
     fun recordClientPayment(client: BusinessClientUi, amountAr: Long, accountName: String = "") {
@@ -533,10 +517,6 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 category = client.category
             )?.let { snackbarFlow.value = it }
         }
-    }
-
-    fun sendWhatsAppRelance(client: BusinessClientUi) {
-        snackbarFlow.value = "Relance WhatsApp générée pour ${client.name}"
     }
 
     fun clearSnackbar() { snackbarFlow.value = null }
@@ -575,15 +555,38 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         amountAr: Long,
         accountName: String,
         referenceTag: String = "",
-        destinationAccount: String = ""
+        destinationAccount: String = "",
+        categoryId: Long? = null
     ) {
         viewModelScope.launch {
-            snackbarFlow.value = financialReporter.addBusinessTransaction(title, type, amountAr, accountName, referenceTag, destinationAccount)
+            snackbarFlow.value = financialReporter.addBusinessTransaction(title, type, amountAr, accountName, referenceTag, destinationAccount, categoryId)
+        }
+    }
+
+    fun addBusinessCategory(name: String, type: String, iconKey: String, colorKey: String) {
+        viewModelScope.launch {
+            snackbarFlow.value = financialReporter.addBusinessCategory(name, type, iconKey, colorKey)
+        }
+    }
+
+    fun updateBusinessCategory(existing: BusinessCategoryEntity, name: String, type: String, iconKey: String, colorKey: String) {
+        viewModelScope.launch {
+            snackbarFlow.value = financialReporter.updateBusinessCategory(existing, name, type, iconKey, colorKey)
+        }
+    }
+
+    fun deleteBusinessCategory(category: BusinessCategoryEntity) {
+        viewModelScope.launch {
+            snackbarFlow.value = financialReporter.deleteBusinessCategory(category)
         }
     }
 
     fun deleteBusinessTransaction(tx: BusinessTransactionEntity) {
         viewModelScope.launch { snackbarFlow.value = financialReporter.deleteBusinessTransaction(tx) }
+    }
+
+    fun deleteYuanTransaction(ytx: YuanTransactionEntity) {
+        viewModelScope.launch { snackbarFlow.value = financialReporter.deleteYuanTransaction(ytx) }
     }
 
     fun recordCapitalMovement(
@@ -598,6 +601,23 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             snackbarFlow.value = financialReporter.recordCapitalMovement(
                 title, isContribution, amountAr, accountName, note, affectAccount, dateMillis
+            )
+        }
+    }
+
+    fun updateCapitalMovement(
+        existing: BusinessTransactionEntity,
+        title: String,
+        isContribution: Boolean,
+        amountAr: Long,
+        accountName: String,
+        note: String = "",
+        affectAccount: Boolean = true,
+        dateMillis: Long = existing.dateMillis
+    ) {
+        viewModelScope.launch {
+            snackbarFlow.value = financialReporter.updateCapitalMovement(
+                existing, title, isContribution, amountAr, accountName, note, affectAccount, dateMillis
             )
         }
     }

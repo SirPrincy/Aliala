@@ -12,29 +12,22 @@ class TransitaireManager(private val repository: AppRepository) {
 
     private fun todayDateStr(): String = DateUtils.getTodayFrenchDate()
 
-    private fun buildHistoryEntry(
+    private fun buildPeriodEntry(
         transitaireId: Long,
         transitaireName: String,
         mode: String,
         oldRateAr: Long,
         newRateAr: Long,
-        dateLabel: String,
-        isInitial: Boolean = false
+        startDateLabel: String,
+        endDateLabel: String = "",
+        note: String = "Tarif en cours"
     ): TransitaireRateHistoryEntity {
-        val resolvedDateLabel = dateLabel.trim().ifBlank { todayDateStr() }
+        val resolvedDateLabel = startDateLabel.trim().ifBlank { todayDateStr() }
         val resolvedMillis = DateUtils.frenchDateToEpochMillis(resolvedDateLabel)
-        val deltaAr = if (!isInitial && oldRateAr > 0L && newRateAr > 0L) newRateAr - oldRateAr else 0L
-        val deltaPct = if (!isInitial && oldRateAr > 0L && newRateAr > 0L) {
+        val deltaAr = if (oldRateAr > 0L && newRateAr > 0L) newRateAr - oldRateAr else 0L
+        val deltaPct = if (oldRateAr > 0L && newRateAr > 0L) {
             ((newRateAr - oldRateAr).toDouble() / oldRateAr.toDouble()) * 100.0
         } else 0.0
-        val note = when {
-            isInitial -> "Tarif initial"
-            oldRateAr == 0L && newRateAr > 0L -> "Tarif défini"
-            oldRateAr > 0L && newRateAr == 0L -> "Tarif retiré"
-            deltaAr > 0L -> "Hausse tarifaire"
-            deltaAr < 0L -> "Baisse tarifaire"
-            else -> "Révision tarifaire"
-        }
         return TransitaireRateHistoryEntity(
             transitaireId = transitaireId,
             transitaireName = transitaireName,
@@ -45,9 +38,48 @@ class TransitaireManager(private val repository: AppRepository) {
             deltaPercent = deltaPct,
             changedAtMillis = resolvedMillis,
             effectiveDateLabel = resolvedDateLabel,
+            endDateLabel = endDateLabel,
             note = note,
             isDemo = false
         )
+    }
+
+    private suspend fun recordModeRateChange(
+        transitaireId: Long,
+        transitaireName: String,
+        mode: String,
+        previousRateAr: Long,
+        newRateAr: Long,
+        effectiveDateLabel: String
+    ) {
+        val existingHistory = repository.getTransitaireRateHistorySnapshot(transitaireId)
+            .filter { it.mode == mode }
+        val openPeriods = existingHistory.filter { it.endDateLabel.isBlank() }
+
+        for (openEntry in openPeriods) {
+            val closedEnd = DateUtils.previousDayFrenchDate(effectiveDateLabel, openEntry.effectiveDateLabel)
+            repository.updateTransitaireRateHistory(
+                openEntry.copy(
+                    endDateLabel = closedEnd,
+                    note = "Ancien tarif"
+                )
+            )
+        }
+
+        if (newRateAr > 0L) {
+            repository.insertTransitaireRateHistory(
+                buildPeriodEntry(
+                    transitaireId = transitaireId,
+                    transitaireName = transitaireName,
+                    mode = mode,
+                    oldRateAr = previousRateAr,
+                    newRateAr = newRateAr,
+                    startDateLabel = effectiveDateLabel,
+                    endDateLabel = "",
+                    note = "Tarif en cours"
+                )
+            )
+        }
     }
 
     suspend fun addCatalogueTransitaire(
@@ -94,14 +126,12 @@ class TransitaireManager(private val repository: AppRepository) {
                 )
             )
             val initialLogs = mutableListOf<TransitaireRateHistoryEntity>()
+            val dateLabel = effectiveDate.ifBlank { todayDateStr() }
             if (airRate > 0L) {
-                initialLogs.add(buildHistoryEntry(newId, cleanName, "AERIEN", 0L, airRate, effectiveDate, isInitial = true))
-            }
-            if (airFastRate > 0L) {
-                initialLogs.add(buildHistoryEntry(newId, cleanName, "AERIEN_FAST", 0L, airFastRate, effectiveDate, isInitial = true))
+                initialLogs.add(buildPeriodEntry(newId, cleanName, "AERIEN", 0L, airRate, dateLabel))
             }
             if (seaRate > 0L) {
-                initialLogs.add(buildHistoryEntry(newId, cleanName, "MARITIME", 0L, seaRate, effectiveDate, isInitial = true))
+                initialLogs.add(buildPeriodEntry(newId, cleanName, "MARITIME", 0L, seaRate, dateLabel))
             }
             if (initialLogs.isNotEmpty()) {
                 repository.insertTransitaireRateHistories(initialLogs)
@@ -133,19 +163,21 @@ class TransitaireManager(private val repository: AppRepository) {
             val list = repository.getAllCatalogueTransitairesSnapshot()
             val existing = list.firstOrNull { it.id == id } ?: return@runInTransaction
 
+            val oldAir = if (existing.airNormalRateAr > 0L) existing.airNormalRateAr else existing.defaultTariffPerKg.coerceAtLeast(0L)
+            val oldSea = existing.seaRateAr.coerceAtLeast(0L)
             val sanitizedAir = airRate.coerceAtLeast(0L)
             val sanitizedAirFast = airFastRate.coerceAtLeast(0L)
             val sanitizedSea = seaRate.coerceAtLeast(0L)
 
-            val airChanged = existing.airNormalRateAr != sanitizedAir
-            val fastChanged = existing.airFastRateAr != sanitizedAirFast
-            val seaChanged = existing.seaRateAr != sanitizedSea
+            val airChanged = oldAir != sanitizedAir
+            val seaChanged = oldSea != sanitizedSea
             val hasAnyNewRate = sanitizedAir > 0L || sanitizedAirFast > 0L || sanitizedSea > 0L
             val today = todayDateStr()
 
             val effectiveDate = when {
                 !hasAnyNewRate -> ""
                 rateApplicationDate.isNotBlank() -> rateApplicationDate.trim()
+                airChanged || seaChanged -> today
                 else -> existing.rateApplicationDate.ifBlank { today }
             }
 
@@ -171,18 +203,11 @@ class TransitaireManager(private val repository: AppRepository) {
             )
 
             val dateLabel = effectiveDate.ifBlank { today }
-            val changeLogs = mutableListOf<TransitaireRateHistoryEntity>()
-            if (airChanged && (existing.airNormalRateAr > 0L || sanitizedAir > 0L)) {
-                changeLogs.add(buildHistoryEntry(id, cleanName, "AERIEN", existing.airNormalRateAr, sanitizedAir, dateLabel))
+            if (airChanged && (oldAir > 0L || sanitizedAir > 0L)) {
+                recordModeRateChange(id, cleanName, "AERIEN", oldAir, sanitizedAir, dateLabel)
             }
-            if (fastChanged && (existing.airFastRateAr > 0L || sanitizedAirFast > 0L)) {
-                changeLogs.add(buildHistoryEntry(id, cleanName, "AERIEN_FAST", existing.airFastRateAr, sanitizedAirFast, dateLabel))
-            }
-            if (seaChanged && (existing.seaRateAr > 0L || sanitizedSea > 0L)) {
-                changeLogs.add(buildHistoryEntry(id, cleanName, "MARITIME", existing.seaRateAr, sanitizedSea, dateLabel))
-            }
-            if (changeLogs.isNotEmpty()) {
-                repository.insertTransitaireRateHistories(changeLogs)
+            if (seaChanged && (oldSea > 0L || sanitizedSea > 0L)) {
+                recordModeRateChange(id, cleanName, "MARITIME", oldSea, sanitizedSea, dateLabel)
             }
             updated = true
         }
@@ -203,6 +228,8 @@ class TransitaireManager(private val repository: AppRepository) {
             val list = repository.getAllCatalogueTransitairesSnapshot()
             val existing = list.firstOrNull { it.id == id } ?: return@runInTransaction
 
+            val oldAir = if (existing.airNormalRateAr > 0L) existing.airNormalRateAr else existing.defaultTariffPerKg.coerceAtLeast(0L)
+            val oldSea = existing.seaRateAr.coerceAtLeast(0L)
             val sanitizedAir = airRate.coerceAtLeast(0L)
             val sanitizedSea = seaRate.coerceAtLeast(0L)
             val hasAnyRate = sanitizedAir > 0L || existing.airFastRateAr > 0L || sanitizedSea > 0L
@@ -222,19 +249,39 @@ class TransitaireManager(private val repository: AppRepository) {
             )
 
             val dateLabel = appDate.ifBlank { todayDateStr() }
-            val logs = mutableListOf<TransitaireRateHistoryEntity>()
-            if (existing.airNormalRateAr != sanitizedAir && (existing.airNormalRateAr > 0L || sanitizedAir > 0L)) {
-                logs.add(buildHistoryEntry(id, existing.name, "AERIEN", existing.airNormalRateAr, sanitizedAir, dateLabel))
+            if (oldAir != sanitizedAir && (oldAir > 0L || sanitizedAir > 0L)) {
+                recordModeRateChange(id, existing.name, "AERIEN", oldAir, sanitizedAir, dateLabel)
             }
-            if (existing.seaRateAr != sanitizedSea && (existing.seaRateAr > 0L || sanitizedSea > 0L)) {
-                logs.add(buildHistoryEntry(id, existing.name, "MARITIME", existing.seaRateAr, sanitizedSea, dateLabel))
-            }
-            if (logs.isNotEmpty()) {
-                repository.insertTransitaireRateHistories(logs)
+            if (oldSea != sanitizedSea && (oldSea > 0L || sanitizedSea > 0L)) {
+                recordModeRateChange(id, existing.name, "MARITIME", oldSea, sanitizedSea, dateLabel)
             }
             updated = true
         }
         return if (updated) "Tarifs mis à jour" else null
+    }
+
+    suspend fun resetAllRateHistories(): String {
+        repository.runInTransaction {
+            repository.clearAllTransitaireRateHistory()
+            val transitaires = repository.getAllCatalogueTransitairesSnapshot()
+            val today = todayDateStr()
+            val freshEntries = mutableListOf<TransitaireRateHistoryEntity>()
+            for (t in transitaires) {
+                val air = if (t.airNormalRateAr > 0L) t.airNormalRateAr else t.defaultTariffPerKg.coerceAtLeast(0L)
+                val sea = t.seaRateAr.coerceAtLeast(0L)
+                val startDate = t.rateApplicationDate.trim().ifBlank { today }
+                if (air > 0L) {
+                    freshEntries.add(buildPeriodEntry(t.id, t.name, "AERIEN", 0L, air, startDate))
+                }
+                if (sea > 0L) {
+                    freshEntries.add(buildPeriodEntry(t.id, t.name, "MARITIME", 0L, sea, startDate))
+                }
+            }
+            if (freshEntries.isNotEmpty()) {
+                repository.insertTransitaireRateHistories(freshEntries)
+            }
+        }
+        return "Anciens historiques supprimés et réinitialisés sur les tarifs actuels"
     }
 
     suspend fun toggleTransitaireArchived(id: Long): String? {
@@ -255,7 +302,8 @@ class TransitaireManager(private val repository: AppRepository) {
     suspend fun recordTransitairePayment(
         id: Long,
         amountAr: Long,
-        accountName: String = ""
+        accountName: String = "",
+        paymentDateMillis: Long = System.currentTimeMillis()
     ): String {
         if (amountAr <= 0L) return "Montant de règlement invalide"
         val ariaryAccounts = repository.getBusinessAccountsSnapshot()
@@ -293,7 +341,7 @@ class TransitaireManager(private val repository: AppRepository) {
                     amountAr = amountAr,
                     accountName = matchedAccount.name,
                     referenceTag = "TRANSITAIRE_$id",
-                    dateMillis = System.currentTimeMillis()
+                    dateMillis = paymentDateMillis
                 )
             )
 
@@ -318,7 +366,8 @@ class TransitaireManager(private val repository: AppRepository) {
     suspend fun payOrderFreight(
         order: com.example.data.local.entity.BusinessOrderEntity,
         amountAr: Long,
-        accountName: String = ""
+        accountName: String = "",
+        paymentDateMillis: Long = System.currentTimeMillis()
     ): String {
         val effectiveAmount = if (amountAr > 0L) amountAr else order.freightCostAr
         if (order.isFreightPaid) return "Cette facture fret est déjà réglée"
@@ -361,7 +410,7 @@ class TransitaireManager(private val repository: AppRepository) {
                     amountAr = effectiveAmount,
                     accountName = matchedAccount.name,
                     referenceTag = refTag,
-                    dateMillis = System.currentTimeMillis()
+                    dateMillis = paymentDateMillis
                 )
             )
             repository.updateBusinessOrder(

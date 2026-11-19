@@ -369,6 +369,7 @@ object BackupManager {
                 put("deltaPercent", h.deltaPercent)
                 put("changedAtMillis", h.changedAtMillis)
                 put("effectiveDateLabel", h.effectiveDateLabel)
+                put("endDateLabel", h.endDateLabel)
                 put("note", h.note)
                 put("isDemo", h.isDemo)
             })
@@ -920,6 +921,7 @@ object BackupManager {
                             deltaPercent = obj.optDouble("deltaPercent", 0.0),
                             changedAtMillis = obj.optLong("changedAtMillis", System.currentTimeMillis()),
                             effectiveDateLabel = obj.optString("effectiveDateLabel", ""),
+                            endDateLabel = obj.optString("endDateLabel", ""),
                             note = obj.optString("note", ""),
                             isDemo = obj.optBoolean("isDemo", false)
                         )

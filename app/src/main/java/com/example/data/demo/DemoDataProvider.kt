@@ -671,13 +671,28 @@ object DemoDataProvider {
                         transitaireId = sinoId,
                         transitaireName = "SinoExpress",
                         mode = "AERIEN",
+                        oldRateAr = 0L,
+                        newRateAr = 47_500L,
+                        deltaAr = 0L,
+                        deltaPercent = 0.0,
+                        changedAtMillis = now - 45 * 86400_000L,
+                        effectiveDateLabel = "01/09/2026",
+                        endDateLabel = "30/09/2026",
+                        note = "Ancien tarif",
+                        isDemo = true
+                    ),
+                    TransitaireRateHistoryEntity(
+                        transitaireId = sinoId,
+                        transitaireName = "SinoExpress",
+                        mode = "AERIEN",
                         oldRateAr = 47_500L,
                         newRateAr = 45_000L,
                         deltaAr = -2_500L,
                         deltaPercent = -5.26,
                         changedAtMillis = now - 15 * 86400_000L,
                         effectiveDateLabel = "01/10/2026",
-                        note = "Révision tarifaire",
+                        endDateLabel = "",
+                        note = "Tarif en cours",
                         isDemo = true
                     ),
                     TransitaireRateHistoryEntity(
@@ -690,7 +705,8 @@ object DemoDataProvider {
                         deltaPercent = -4.17,
                         changedAtMillis = now - 15 * 86400_000L,
                         effectiveDateLabel = "01/10/2026",
-                        note = "Révision maritime",
+                        endDateLabel = "",
+                        note = "Tarif en cours",
                         isDemo = true
                     ),
                     TransitaireRateHistoryEntity(
@@ -703,7 +719,8 @@ object DemoDataProvider {
                         deltaPercent = 4.35,
                         changedAtMillis = now - 10 * 86400_000L,
                         effectiveDateLabel = "05/10/2026",
-                        note = "Ajustement saisonnier",
+                        endDateLabel = "",
+                        note = "Tarif en cours",
                         isDemo = true
                     )
                 )

@@ -133,4 +133,15 @@ object DateUtils {
             localDate.atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         }
     }
+
+    fun previousDayFrenchDate(newStartDateStr: String, currentStartDateStr: String = ""): String {
+        val newStart = parseFrenchDateToLocalDate(newStartDateStr) ?: return getTodayFrenchDate()
+        val currentStart = parseFrenchDateToLocalDate(currentStartDateStr)
+        val closedDate = if (currentStart != null && !newStart.isAfter(currentStart)) {
+            currentStart
+        } else {
+            newStart.minusDays(1)
+        }
+        return closedDate.format(frenchDateFormatter)
+    }
 }

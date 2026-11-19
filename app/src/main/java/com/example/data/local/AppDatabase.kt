@@ -8,6 +8,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.local.dao.BudgetDao
 import com.example.data.local.dao.BusinessAccountDao
+import com.example.data.local.dao.BusinessCategoryDao
 import com.example.data.local.dao.BusinessDebtDao
 import com.example.data.local.dao.BusinessInvestmentDao
 import com.example.data.local.dao.BusinessOrderDao
@@ -29,6 +30,7 @@ import com.example.data.local.dao.WalletDao
 import com.example.data.local.dao.YuanTransactionDao
 import com.example.data.local.entity.BudgetEntity
 import com.example.data.local.entity.BusinessAccountEntity
+import com.example.data.local.entity.BusinessCategoryEntity
 import com.example.data.local.entity.BusinessDebtEntity
 import com.example.data.local.entity.BusinessDebtPaymentEntity
 import com.example.data.local.entity.BusinessInvestmentEntity
@@ -80,9 +82,10 @@ import kotlinx.coroutines.launch
         BusinessInvestmentEntity::class,
         BusinessDebtEntity::class,
         BusinessDebtPaymentEntity::class,
-        TransitaireRateHistoryEntity::class
+        TransitaireRateHistoryEntity::class,
+        BusinessCategoryEntity::class
     ],
-    version = 27,
+    version = 29,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -107,6 +110,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun businessTransactionDao(): BusinessTransactionDao
     abstract fun businessInvestmentDao(): BusinessInvestmentDao
     abstract fun businessDebtDao(): BusinessDebtDao
+    abstract fun businessCategoryDao(): BusinessCategoryDao
 
     companion object {
         @Volatile
@@ -276,13 +280,92 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_27_28 = object : Migration(27, 28) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `transitaire_rate_history` ADD COLUMN `endDateLabel` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("DELETE FROM `transitaire_rate_history`")
+
+                val todayLabel = com.example.util.DateUtils.getTodayFrenchDate()
+                val cursor = db.query(
+                    "SELECT id, name, airNormalRateAr, defaultTariffPerKg, seaRateAr, rateApplicationDate FROM `catalogue_transitaires`"
+                )
+                cursor.use { c ->
+                    while (c.moveToNext()) {
+                        val tId = c.getLong(0)
+                        val tName = c.getString(1) ?: "Transitaire"
+                        val airNorm = c.getLong(2)
+                        val defKg = c.getLong(3)
+                        val seaRate = c.getLong(4)
+                        val appDate = (c.getString(5) ?: "").trim().ifBlank { todayLabel }
+                        val resolvedAir = if (airNorm > 0L) airNorm else defKg
+                        val startMillis = com.example.util.DateUtils.frenchDateToEpochMillis(appDate)
+
+                        if (resolvedAir > 0L) {
+                            db.execSQL(
+                                """
+                                INSERT INTO `transitaire_rate_history`
+                                (`transitaireId`, `transitaireName`, `mode`, `oldRateAr`, `newRateAr`, `deltaAr`, `deltaPercent`, `changedAtMillis`, `effectiveDateLabel`, `endDateLabel`, `note`, `isDemo`)
+                                VALUES (?, ?, 'AERIEN', 0, ?, 0, 0.0, ?, ?, '', 'Tarif en cours', 0)
+                                """.trimIndent(),
+                                arrayOf<Any>(tId, tName, resolvedAir, startMillis, appDate)
+                            )
+                        }
+                        if (seaRate > 0L) {
+                            db.execSQL(
+                                """
+                                INSERT INTO `transitaire_rate_history`
+                                (`transitaireId`, `transitaireName`, `mode`, `oldRateAr`, `newRateAr`, `deltaAr`, `deltaPercent`, `changedAtMillis`, `effectiveDateLabel`, `endDateLabel`, `note`, `isDemo`)
+                                VALUES (?, ?, 'MARITIME', 0, ?, 0, 0.0, ?, ?, '', 'Tarif en cours', 0)
+                                """.trimIndent(),
+                                arrayOf<Any>(tId, tName, seaRate, startMillis, appDate)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        val MIGRATION_28_29 = object : Migration(28, 29) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `business_categories` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `type` TEXT NOT NULL,
+                        `iconKey` TEXT NOT NULL,
+                        `colorKey` TEXT NOT NULL,
+                        `isDefault` INTEGER NOT NULL,
+                        `displayOrder` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("ALTER TABLE `business_transactions` ADD COLUMN `categoryId` INTEGER DEFAULT NULL")
+                db.execSQL(
+                    """
+                    INSERT INTO `business_categories` (`name`, `type`, `iconKey`, `colorKey`, `isDefault`, `displayOrder`) VALUES
+                    ('Ventes comptoir', 'IN', 'storefront', 'GREEN', 1, 1),
+                    ('Règlement client', 'IN', 'payments', 'CYAN', 1, 2),
+                    ('Remboursement', 'IN', 'replay', 'VIOLET', 1, 3),
+                    ('Autre entrée', 'IN', 'trending_up', 'BLUE', 1, 4),
+                    ('Fret & Douane', 'OUT', 'local_shipping', 'ORANGE', 1, 1),
+                    ('Livraison locale', 'OUT', 'directions_car', 'CYAN', 1, 2),
+                    ('Emballage & Stock', 'OUT', 'inventory_2', 'VIOLET', 1, 3),
+                    ('Marketing & Pub', 'OUT', 'campaign', 'ROSE', 1, 4),
+                    ('Loyer & Charges', 'OUT', 'bolt', 'ORANGE', 1, 5),
+                    ('Autre dépense', 'OUT', 'receipt_long', 'BLUE', 1, 6)
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "ma_vie_database.db"
-                ).addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27)
+                ).addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)

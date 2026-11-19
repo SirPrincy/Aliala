@@ -177,32 +177,6 @@ class SalesManager(private val repository: AppRepository) {
         return "Facture $newInvoiceNum créée pour $trimmedClientName$caisseSuffix"
     }
 
-    suspend fun addBusinessSale(
-        clientName: String,
-        clientPhone: String,
-        productName: String,
-        quantity: Int,
-        unitResalePriceAr: Long,
-        unitCostAr: Long,
-        paidAmountAr: Long
-    ): String {
-        val totalPrice = unitResalePriceAr * quantity
-        repository.insertBusinessSale(
-            BusinessSaleEntity(
-                productName = productName,
-                clientName = clientName,
-                clientPhone = clientPhone,
-                quantity = quantity,
-                unitResalePriceAr = unitResalePriceAr,
-                unitCostAr = unitCostAr,
-                totalPriceAr = totalPrice,
-                paidAmountAr = paidAmountAr,
-                isFullyPaid = paidAmountAr >= totalPrice
-            )
-        )
-        return "Vente enregistrée pour $clientName"
-    }
-
     suspend fun updateSaleDate(sale: BusinessSaleEntity, newSaleDateMillis: Long): String {
         val resolved = newSaleDateMillis.takeIf { it > 0L } ?: System.currentTimeMillis()
         repository.updateBusinessSale(

@@ -5,17 +5,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import com.example.ui.theme.CyanPrimary
+import com.example.ui.theme.DangerRed
+import com.example.ui.theme.SuccessGreen
+import com.example.ui.theme.VioletSecondary
+import com.example.ui.theme.WarningAmber
 
 internal data class TransitaireColors(
     val isDark: Boolean,
     val pageBg: Color,
     val cardBg: Color,
+    val elevatedCardBg: Color,
     val innerCardBg: Color,
     val subtleBg: Color,
     val inputBg: Color,
     val toggleTrackBg: Color,
     val badgeNeutralBg: Color,
     val border: Color,
+    val hairline: Color,
     val textPrimary: Color,
     val textSecondary: Color,
     val cyanAccent: Color,
@@ -31,7 +38,9 @@ internal data class TransitaireColors(
     val successAccent: Color,
     val successSoftBg: Color,
     val warningAccent: Color,
-    val warningSoftBg: Color
+    val warningSoftBg: Color,
+    val roseAccent: Color,
+    val roseSoftBg: Color
 )
 
 @Composable
@@ -43,28 +52,44 @@ internal fun rememberTransitaireColors(): TransitaireColors {
             isDark = isDark,
             pageBg = colorScheme.background,
             cardBg = colorScheme.surface,
-            innerCardBg = if (isDark) Color(0xFF263349) else Color(0xFFF2F3FF),
-            subtleBg = if (isDark) Color(0xFF0F172A) else Color(0xFFF8FAFC),
-            inputBg = if (isDark) Color(0xFF0F172A) else Color(0xFFF2F3FF),
-            toggleTrackBg = if (isDark) Color(0xFF0F172A) else Color(0xFFF1F5F9),
-            badgeNeutralBg = if (isDark) Color(0xFF334155) else Color(0xFFEAEDFF),
-            border = colorScheme.outline,
+            elevatedCardBg = if (isDark) Color(0xFF233046) else Color(0xFFFFFFFF),
+            innerCardBg = if (isDark) Color(0xFF263349) else Color(0xFFF3F6FA),
+            subtleBg = if (isDark) Color(0xFF141E30) else Color(0xFFF8FAFC),
+            inputBg = if (isDark) Color(0xFF172235) else Color(0xFFF1F5F9),
+            toggleTrackBg = if (isDark) Color(0xFF162032) else Color(0xFFEFF3F8),
+            badgeNeutralBg = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0),
+            border = if (isDark) Color(0xFF2E3C54) else Color(0xFFE5EAF2),
+            hairline = if (isDark) Color(0xFF2B384E) else Color(0xFFEEF2F7),
             textPrimary = colorScheme.onSurface,
             textSecondary = colorScheme.onSurfaceVariant,
-            cyanAccent = if (isDark) Color(0xFF22D3EE) else Color(0xFF00687A),
-            cyanSolidBg = Color(0xFF06B6D4),
-            cyanSoftBg = if (isDark) Color(0xFF083344) else Color(0xFFE0F7FA),
-            violetAccent = if (isDark) Color(0xFFA78BFA) else Color(0xFF712AE2),
-            violetSolidBg = if (isDark) Color(0xFF7C3AED) else Color(0xFF712AE2),
-            violetSoftBg = if (isDark) Color(0xFF3B0764) else Color(0xFFF3E8FF),
+            cyanAccent = if (isDark) Color(0xFF22D3EE) else Color(0xFF0891B2),
+            cyanSolidBg = CyanPrimary,
+            cyanSoftBg = if (isDark) Color(0xFF0B3646) else Color(0xFFE6FAFD),
+            violetAccent = if (isDark) Color(0xFFA78BFA) else VioletSecondary,
+            violetSolidBg = VioletSecondary,
+            violetSoftBg = if (isDark) Color(0xFF2E165C) else Color(0xFFF3EEFF),
             expressAccent = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7),
-            expressSoftBg = if (isDark) Color(0xFF0C4A6E) else Color(0xFFE0F2FE),
-            dangerAccent = if (isDark) Color(0xFFF87171) else Color(0xFFBA1A1A),
-            dangerSoftBg = if (isDark) Color(0xFF450A0A) else Color(0xFFFFDAD6),
-            successAccent = if (isDark) Color(0xFF4ADE80) else Color(0xFF15803D),
-            successSoftBg = if (isDark) Color(0xFF052E16) else Color(0xFFDCFCE7),
-            warningAccent = if (isDark) Color(0xFFFBBF24) else Color(0xFFB45309),
-            warningSoftBg = if (isDark) Color(0xFF451A03) else Color(0xFFFEF3C7)
+            expressSoftBg = if (isDark) Color(0xFF0E3E5E) else Color(0xFFE5F4FD),
+            dangerAccent = if (isDark) Color(0xFFF87171) else DangerRed,
+            dangerSoftBg = if (isDark) Color(0xFF47151A) else Color(0xFFFEECEE),
+            successAccent = if (isDark) Color(0xFF4ADE80) else Color(0xFF16A34A),
+            successSoftBg = if (isDark) Color(0xFF0B3520) else SuccessGreen.copy(alpha = 0.13f),
+            warningAccent = if (isDark) Color(0xFFFBBF24) else Color(0xFFD97706),
+            warningSoftBg = if (isDark) Color(0xFF432308) else WarningAmber.copy(alpha = 0.15f),
+            roseAccent = if (isDark) Color(0xFFF472B6) else Color(0xFFDB2777),
+            roseSoftBg = if (isDark) Color(0xFF47132E) else Color(0xFFFDF0F6)
         )
     }
+}
+
+internal fun pastelToneForKey(key: String, colors: TransitaireColors): Pair<Color, Color> {
+    val palette = listOf(
+        colors.cyanSoftBg to colors.cyanAccent,
+        colors.violetSoftBg to colors.violetAccent,
+        colors.expressSoftBg to colors.expressAccent,
+        colors.successSoftBg to colors.successAccent,
+        colors.roseSoftBg to colors.roseAccent
+    )
+    val idx = kotlin.math.abs(key.hashCode()) % palette.size
+    return palette[idx]
 }

@@ -161,8 +161,7 @@ data class CatalogueTransitaireSummaryUi(
 data class BusinessUiState(
     val isLoading: Boolean = true,
     val businessAccounts: List<com.example.data.local.entity.BusinessAccountEntity> = emptyList(),
-    val selectedContext: String = "Business", // "Business" ou "Tout"
-    val selectedSubTab: String = "Aperçu", // "Aperçu", "Achats", "Stock", "Ventes", "Clients"
+    val selectedSubTab: String = "Aperçu", // "Aperçu", "Achats", "Stock", "Ventes", "Clients", "Finances"
     val purchasesCount: Int = 0,
     val stockCount: Int = 0,
     val selectedMonthLabel: String = "",

@@ -1,6 +1,7 @@
 package com.example.ui.business.managers
 
 import com.example.data.local.entity.BusinessAccountEntity
+import com.example.data.local.entity.BusinessCategoryEntity
 import com.example.data.local.entity.BusinessDebtEntity
 import com.example.data.local.entity.BusinessDebtPaymentEntity
 import com.example.data.local.entity.BusinessInvestmentEntity
@@ -147,6 +148,14 @@ class FinancialReporter(private val repository: AppRepository) {
                 YuanOperationResult(true, "Remboursement déjà enregistré pour ce lot")
             } else {
                 repository.adjustYuanAccountBalance(amountYuan, resolvedAccountName)
+                if (orderId != null && orderId > 0L) {
+                    val targetOrder = repository.getBusinessOrdersSnapshot().firstOrNull { it.id == orderId }
+                    if (targetOrder != null) {
+                        repository.updateBusinessOrder(
+                            targetOrder.copy(refundYuan = targetOrder.refundYuan + amountYuan)
+                        )
+                    }
+                }
                 YuanOperationResult(true, "Remboursement usine de ¥ ${formatYuanAmount(amountYuan)} crédité sur $resolvedAccountName")
             }
         }
@@ -159,7 +168,8 @@ class FinancialReporter(private val repository: AppRepository) {
         note: String,
         orderId: Long? = null,
         availableYuans: Double = 0.0,
-        skipBalanceCheck: Boolean = false
+        skipBalanceCheck: Boolean = false,
+        debitDateMillis: Long = System.currentTimeMillis()
     ): YuanOperationResult {
         if (amountYuan <= 0.0) return YuanOperationResult(false, "Montant en Yuans invalide")
         val yuanAccounts = repository.getBusinessAccountsSnapshot().filter { it.isYuanAccount && it.isActive }
@@ -195,16 +205,32 @@ class FinancialReporter(private val repository: AppRepository) {
             }
         }
 
-        if (orderId != null && orderId > 0L) {
-            val existingTxs = repository.yuanTransactions.firstOrNull() ?: emptyList()
-            val alreadyDebited = existingTxs.any { it.orderId == orderId && it.type == "SPEND" }
-            if (alreadyDebited) {
-                return YuanOperationResult(true, "Paiement déjà effectué pour ce lot")
-            }
-        }
-
         val amountAr = (amountYuan * rateAr).roundToLong()
         return repository.runInTransaction {
+            val targetOrder = if (orderId != null && orderId > 0L) {
+                repository.getBusinessOrdersSnapshot().firstOrNull { it.id == orderId }
+            } else null
+
+            if (targetOrder != null && targetOrder.yuanDebited) {
+                return@runInTransaction YuanOperationResult(false, "Ce lot a déjà été débité en Yuans.")
+            }
+
+            if (orderId != null && orderId > 0L) {
+                val existingSpend = repository.getYuanTransactionsSnapshot()
+                    .firstOrNull { it.orderId == orderId && it.type == "SPEND" }
+                if (existingSpend != null) {
+                    if (targetOrder != null && !targetOrder.yuanDebited) {
+                        repository.updateBusinessOrder(
+                            targetOrder.copy(
+                                yuanDebited = true,
+                                yuanDebitedAmount = if (targetOrder.yuanDebitedAmount > 0.0) targetOrder.yuanDebitedAmount else existingSpend.amountYuan
+                            )
+                        )
+                    }
+                    return@runInTransaction YuanOperationResult(false, "Paiement déjà effectué pour ce lot")
+                }
+            }
+
             val insertedId = repository.insertYuanTransaction(
                 YuanTransactionEntity(
                     type = "SPEND",
@@ -212,17 +238,62 @@ class FinancialReporter(private val repository: AppRepository) {
                     exchangeRate = rateAr,
                     amountAr = amountAr,
                     platform = targetYuanAccount.name,
+                    date = debitDateMillis,
                     note = note,
                     orderId = orderId
                 )
             )
             if (insertedId == -1L) {
-                YuanOperationResult(true, "Paiement déjà effectué pour ce lot")
+                if (targetOrder != null && !targetOrder.yuanDebited) {
+                    repository.updateBusinessOrder(
+                        targetOrder.copy(yuanDebited = true, yuanDebitedAmount = amountYuan)
+                    )
+                }
+                YuanOperationResult(false, "Paiement déjà effectué pour ce lot")
             } else {
                 repository.adjustYuanAccountBalance(-amountYuan, targetYuanAccount.name)
+                if (targetOrder != null) {
+                    repository.updateBusinessOrder(
+                        targetOrder.copy(yuanDebited = true, yuanDebitedAmount = amountYuan)
+                    )
+                }
                 YuanOperationResult(true, "Paiement de ¥ ${formatYuanAmount(amountYuan)} débité de ${targetYuanAccount.name}")
             }
         }
+    }
+
+    suspend fun deleteYuanTransaction(ytx: YuanTransactionEntity): String {
+        repository.runInTransaction {
+            when (ytx.type) {
+                "SPEND" -> {
+                    repository.adjustYuanAccountBalance(ytx.amountYuan, ytx.platform)
+                    if (ytx.orderId != null && ytx.orderId > 0L) {
+                        val targetOrder = repository.getBusinessOrdersSnapshot().firstOrNull { it.id == ytx.orderId }
+                        if (targetOrder != null) {
+                            repository.updateBusinessOrder(
+                                targetOrder.copy(yuanDebited = false, yuanDebitedAmount = 0.0)
+                            )
+                        }
+                    }
+                }
+                "REFUND" -> {
+                    repository.adjustYuanAccountBalance(-ytx.amountYuan, ytx.platform)
+                    if (ytx.orderId != null && ytx.orderId > 0L) {
+                        val targetOrder = repository.getBusinessOrdersSnapshot().firstOrNull { it.id == ytx.orderId }
+                        if (targetOrder != null) {
+                            repository.updateBusinessOrder(
+                                targetOrder.copy(refundYuan = (targetOrder.refundYuan - ytx.amountYuan).coerceAtLeast(0.0))
+                            )
+                        }
+                    }
+                }
+                "BUY" -> {
+                    repository.adjustYuanAccountBalance(-ytx.amountYuan, ytx.platform)
+                }
+            }
+            repository.deleteYuanTransaction(ytx.id)
+        }
+        return "Opération ${ytx.platform} annulée (¥ ${formatYuanAmount(ytx.amountYuan)})"
     }
 
     suspend fun addBusinessAccount(
@@ -292,8 +363,19 @@ class FinancialReporter(private val repository: AppRepository) {
         amountAr: Long,
         accountName: String,
         referenceTag: String = "",
-        destinationAccount: String = ""
+        destinationAccount: String = "",
+        categoryId: Long? = null
     ): String {
+        val matchedCat = categoryId?.let { cid ->
+            repository.getBusinessCategoriesSnapshot().firstOrNull { it.id == cid }
+        }
+        val cleanNote = referenceTag.trim()
+        val effectiveTag = when {
+            matchedCat != null && cleanNote.isNotBlank() && !cleanNote.equals(matchedCat.name, ignoreCase = true) ->
+                "${matchedCat.name} · $cleanNote"
+            matchedCat != null -> matchedCat.name
+            else -> cleanNote
+        }
         repository.insertBusinessTransaction(
             BusinessTransactionEntity(
                 title = title.trim(),
@@ -301,10 +383,68 @@ class FinancialReporter(private val repository: AppRepository) {
                 amountAr = amountAr,
                 accountName = accountName.trim().ifBlank { "Espèces" },
                 destinationAccount = destinationAccount.trim(),
-                referenceTag = referenceTag.trim()
+                categoryId = matchedCat?.id ?: categoryId,
+                referenceTag = effectiveTag
             )
         )
-        return "Opération « $title » enregistrée"
+        return "Opération « ${title.trim()} » enregistrée"
+    }
+
+    suspend fun addBusinessCategory(
+        name: String,
+        type: String,
+        iconKey: String,
+        colorKey: String
+    ): String {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) return "Veuillez saisir un nom de catégorie"
+        val cleanType = if (type == "IN") "IN" else "OUT"
+        val existing = repository.getBusinessCategoriesSnapshot()
+        if (existing.any { it.type == cleanType && it.name.equals(cleanName, ignoreCase = true) }) {
+            return "La catégorie « $cleanName » existe déjà"
+        }
+        val nextOrder = (existing.filter { it.type == cleanType }.maxOfOrNull { it.displayOrder } ?: 0) + 1
+        repository.insertBusinessCategory(
+            BusinessCategoryEntity(
+                name = cleanName,
+                type = cleanType,
+                iconKey = iconKey.ifBlank { "receipt_long" },
+                colorKey = colorKey.ifBlank { "CYAN" },
+                isDefault = false,
+                displayOrder = nextOrder
+            )
+        )
+        return "Catégorie « $cleanName » ajoutée"
+    }
+
+    suspend fun updateBusinessCategory(
+        existing: BusinessCategoryEntity,
+        name: String,
+        type: String,
+        iconKey: String,
+        colorKey: String
+    ): String {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) return "Veuillez saisir un nom de catégorie"
+        val cleanType = if (type == "IN") "IN" else "OUT"
+        val all = repository.getBusinessCategoriesSnapshot()
+        if (all.any { it.id != existing.id && it.type == cleanType && it.name.equals(cleanName, ignoreCase = true) }) {
+            return "Une catégorie « $cleanName » existe déjà"
+        }
+        repository.updateBusinessCategory(
+            existing.copy(
+                name = cleanName,
+                type = cleanType,
+                iconKey = iconKey.ifBlank { existing.iconKey },
+                colorKey = colorKey.ifBlank { existing.colorKey }
+            )
+        )
+        return "Catégorie « $cleanName » mise à jour"
+    }
+
+    suspend fun deleteBusinessCategory(category: BusinessCategoryEntity): String {
+        repository.deleteBusinessCategory(category.id)
+        return "Catégorie « ${category.name} » supprimée"
     }
 
     suspend fun deleteBusinessTransaction(tx: BusinessTransactionEntity): String {
@@ -366,6 +506,62 @@ class FinancialReporter(private val repository: AppRepository) {
         )
         val actionLabel = if (isContribution) "Apport de capital" else "Retrait personnel"
         return "$actionLabel de ${CurrencyFormatter.formatAriary(amountAr)} enregistré"
+    }
+
+    suspend fun updateCapitalMovement(
+        existing: BusinessTransactionEntity,
+        title: String,
+        isContribution: Boolean,
+        amountAr: Long,
+        accountName: String,
+        note: String = "",
+        affectAccount: Boolean = true,
+        dateMillis: Long = existing.dateMillis
+    ): String {
+        if (amountAr <= 0L) return "Montant invalide"
+        val mustUseAccount = isContribution || affectAccount
+        val cleanAccount: String
+        if (mustUseAccount) {
+            val ariaryAccounts = repository.getBusinessAccountsSnapshot()
+                .filter { !it.isYuanAccount && it.isActive }
+            if (ariaryAccounts.isEmpty()) {
+                return "Modification bloquée : veuillez d'abord créer un compte Ariary (Espèces, Mvola...)."
+            }
+            val matched = ariaryAccounts.firstOrNull {
+                it.name.equals(accountName.trim(), ignoreCase = true)
+            } ?: return "Compte « ${accountName.trim()} » introuvable. Veuillez créer ou choisir un compte."
+            cleanAccount = matched.name
+        } else {
+            cleanAccount = "Hors caisse"
+        }
+
+        val cleanTitle = title.trim().ifBlank {
+            if (isContribution) "Apport de capital" else "Retrait personnel"
+        }
+        val txType = if (mustUseAccount) {
+            if (isContribution) "IN" else "OUT"
+        } else {
+            if (isContribution) "CAPITAL_IN" else "CAPITAL_OUT"
+        }
+        val tag = buildString {
+            append(if (isContribution) "Capital • Apport" else "Capital • Retrait perso")
+            if (!mustUseAccount) append(" (Hors caisse)")
+            if (note.isNotBlank()) {
+                append(" · ")
+                append(note.trim())
+            }
+        }
+        val updated = existing.copy(
+            title = cleanTitle,
+            type = txType,
+            amountAr = amountAr,
+            accountName = cleanAccount,
+            referenceTag = tag,
+            dateMillis = dateMillis
+        )
+        repository.updateBusinessTransaction(existing, updated)
+        val actionLabel = if (isContribution) "Apport de capital" else "Retrait personnel"
+        return "$actionLabel modifié (${CurrencyFormatter.formatAriary(amountAr)})"
     }
 
     suspend fun addBusinessInvestment(

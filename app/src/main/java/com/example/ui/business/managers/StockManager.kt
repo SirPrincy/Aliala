@@ -125,7 +125,7 @@ class StockManager(private val repository: AppRepository) {
         priceYuan: Double,
         resaleAr: Long,
         stockCount: Int,
-        weightKg: Double = 0.2,
+        weightKg: Double? = null,
         platform: String = "1688",
         cmupRate: Double = 650.0,
         imageUrl: String = "",
@@ -141,8 +141,9 @@ class StockManager(private val repository: AppRepository) {
         val matchedFamily = repository.getAllCatalogueFamiliesSnapshot().firstOrNull {
             it.name.equals(family.trim(), ignoreCase = true)
         }
-        val estUnitFreightAr = if (weightKg > 0.0 && estimatedFreightPerKgAr > 0L) {
-            kotlin.math.round(weightKg * estimatedFreightPerKgAr).toLong()
+        val effectiveWeight = weightKg?.takeIf { it > 0.0 }
+        val estUnitFreightAr = if (effectiveWeight != null && estimatedFreightPerKgAr > 0L) {
+            kotlin.math.round(effectiveWeight * estimatedFreightPerKgAr).toLong()
         } else 0L
         val estLandedUnitCostAr = kotlin.math.round(priceYuan * effectiveRate).toLong() + estUnitFreightAr
         val computedMargin = if (resaleAr > 0L && estLandedUnitCostAr > 0L) {
@@ -160,7 +161,7 @@ class StockManager(private val repository: AppRepository) {
                 exchangeRate = effectiveRate,
                 resalePriceAr = resaleAr.coerceAtLeast(0L),
                 stockCount = stockCount.coerceAtLeast(0),
-                weightKg = weightKg.takeIf { it > 0.0 },
+                weightKg = effectiveWeight,
                 status = if (stockCount > 0) "DELIVERY_READY" else "CATALOGUE",
                 category = "BUSINESS",
                 family = family.trim().ifBlank { "Divers" },
@@ -178,31 +179,6 @@ class StockManager(private val repository: AppRepository) {
             )
         )
         return "${product.trim()} ajouté au catalogue ($sku)"
-    }
-
-    suspend fun updateCatalogueArticle(
-        order: BusinessOrderEntity,
-        newPriceYuan: Double,
-        newResaleAr: Long,
-        newVariants: String,
-        isHidden: Boolean
-    ): String {
-        val effRate = if (order.exchangeRate > 0.0) order.exchangeRate else 650.0
-        val unitFreight = if (order.freightCostAr > 0L && order.quantityBought > 0) order.freightCostAr / order.quantityBought else 0L
-        val estCost = kotlin.math.round(newPriceYuan * effRate).toLong() + unitFreight
-        val computedMargin = if (newResaleAr > 0L && estCost > 0L) {
-            (((newResaleAr - estCost).toDouble() / newResaleAr.toDouble()) * 100).toInt()
-        } else order.marginPercent
-        repository.updateBusinessOrder(
-            order.copy(
-                priceYuan = newPriceYuan,
-                resalePriceAr = newResaleAr,
-                variants = newVariants,
-                isHidden = isHidden,
-                marginPercent = computedMargin
-            )
-        )
-        return "${order.product} mis à jour"
     }
 
     suspend fun updateCatalogueArticleFull(
@@ -266,6 +242,7 @@ class StockManager(private val repository: AppRepository) {
                         familyId = matchedFamily?.id ?: lot.familyId,
                         resalePriceAr = newResaleAr,
                         weightKg = newWeightKg ?: lot.weightKg,
+                        variants = if (newVariants.trim() != primary.variants.trim()) newVariants.trim() else lot.variants,
                         imageUrl = newImageUrl.trim(),
                         isHidden = isHidden
                     )
@@ -353,39 +330,6 @@ class StockManager(private val repository: AppRepository) {
             )
         )
         return "Nouvelle commande enregistrée"
-    }
-
-    suspend fun advanceOrderStatus(order: BusinessOrderEntity): String {
-        val nextStatus = when (order.status) {
-            "DRAFT" -> "ORDERED"
-            "ORDERED" -> "WAREHOUSE"
-            "WAREHOUSE" -> "GUANGZHOU"
-            "GUANGZHOU" -> "FLIGHT"
-            "FLIGHT" -> "CUSTOMS"
-            "CUSTOMS" -> "QUALITY_CONTROL"
-            "QUALITY_CONTROL" -> "DELIVERY_READY"
-            "DELIVERY_READY" -> "SOLD"
-            else -> "SOLD"
-        }
-        val statusLabelFr = when (nextStatus) {
-            "DRAFT" -> "Brouillon"
-            "ORDERED" -> "Commandé 1688"
-            "WAREHOUSE" -> "Reçu entrepôt Chine"
-            "GUANGZHOU" -> "Hub Guangzhou"
-            "FLIGHT" -> "En vol / Transit"
-            "CUSTOMS" -> "Dédouanement Mada"
-            "QUALITY_CONTROL" -> "Contrôle qualité"
-            "DELIVERY_READY" -> "Prêt à livrer / En stock"
-            "SOLD" -> "Vendu"
-            else -> nextStatus
-        }
-        repository.updateBusinessOrder(order.copy(status = nextStatus))
-        return "Statut mis à jour : $statusLabelFr"
-    }
-
-    suspend fun onAdvanceQualityControl(order: BusinessOrderEntity): String {
-        repository.updateBusinessOrder(order.copy(status = "DELIVERY_READY"))
-        return "Contrôle qualité validé pour ${order.product}"
     }
 
     suspend fun updateBusinessOrder(order: BusinessOrderEntity): String {

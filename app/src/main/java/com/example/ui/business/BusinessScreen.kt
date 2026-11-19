@@ -1,28 +1,79 @@
 package com.example.ui.business
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.ui.business.catalogue.ArticleDetailScreen
-import com.example.ui.business.catalogue.CatalogueView
+import com.example.ui.business.detail.LotDetailScreen
+import com.example.ui.business.detail.ProductDetailScreen
+import com.example.ui.business.detail.ReferentielScreen
+import com.example.ui.business.detail.TransitaireDetailScreen
+import com.example.ui.business.shared.BusinessResponsiveContainer
+import com.example.ui.business.shared.TransitaireColors
+import com.example.ui.business.shared.rememberTransitaireColors
+import com.example.ui.business.sheets.BusinessSheetHost
+import com.example.ui.business.tabs.ClientsTab
+import com.example.ui.business.tabs.FinancesTab
+import com.example.ui.business.tabs.OverviewTab
+import com.example.ui.business.tabs.PurchasesTab
+import com.example.ui.business.tabs.SalesTab
+import com.example.ui.business.tabs.StockTab
 import com.example.ui.navigation.AppBottomNavBar
+import com.example.ui.theme.CyanPrimary
+import com.example.ui.theme.Inter
+import com.example.ui.theme.PlusJakartaSans
+import com.example.ui.theme.VioletSecondary
+
+private val BUSINESS_SUB_TABS = listOf("Aperçu", "Achats", "Stock", "Ventes", "Clients", "Finances")
 
 @Composable
 fun BusinessScreen(
@@ -36,14 +87,12 @@ fun BusinessScreen(
     val businessTransactions by viewModel.businessTransactions.collectAsStateWithLifecycle()
     val businessInvestments by viewModel.businessInvestments.collectAsStateWithLifecycle()
     val businessDebts by viewModel.businessDebts.collectAsStateWithLifecycle()
-    val businessDebtPayments by viewModel.businessDebtPayments.collectAsStateWithLifecycle()
-    val scrollState = rememberScrollState()
-    val snackbarHostState = remember { SnackbarHostState() }
-    val modalState = rememberBusinessModalState()
+    val businessCategories by viewModel.businessCategories.collectAsStateWithLifecycle()
 
-    val selectedArticle = uiState.allCatalogueArticles.firstOrNull {
-        it.articleKey == modalState.selectedArticleKey
-    }
+    val colors = rememberTransitaireColors()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val navState = rememberBusinessNavigationState()
+    val scrollState = rememberScrollState()
 
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let { msg ->
@@ -52,147 +101,175 @@ fun BusinessScreen(
         }
     }
 
-    selectedArticle?.let { article ->
-        val primaryOrder = article.primaryOrder
-        BackHandler {
-            if (modalState.selectedOrderId != null) {
-                modalState.selectedOrderId = null
+    // Routage plat Level+1 (maximum 1 écran détail à la fois)
+    when (val dest = navState.detailDestination) {
+        is BusinessDetailDestination.LotDetail -> {
+            val order = uiState.orders.firstOrNull { it.id == dest.orderId }
+            if (order != null) {
+                LotDetailScreen(
+                    order = order,
+                    cmupRate = uiState.cmupRate,
+                    availableYuans = uiState.availableYuans,
+                    accounts = businessAccounts,
+                    transitaires = uiState.catalogueTransitaires,
+                    navState = navState,
+                    onBack = { navState.closeDetail() },
+                    onUpdateOrder = { viewModel.updateBusinessOrder(it) },
+                    onDeleteOrder = { viewModel.deleteStockOrder(it) },
+                    onSpendYuans = { amt, rate, plat, note, orderId, skip, debitDateMs, onResult ->
+                        viewModel.spendYuans(amt, rate, plat, note, orderId, skip, debitDateMs) { ok, _ ->
+                            onResult(ok)
+                        }
+                    },
+                    onRefundYuans = { amt, rate, plat, note, orderId ->
+                        viewModel.refundYuans(amt, rate, plat, note, orderId)
+                    }
+                )
+                BusinessSheetHost(
+                    navState = navState,
+                    viewModel = viewModel,
+                    uiState = uiState,
+                    businessAccounts = businessAccounts,
+                    businessCategories = businessCategories
+                )
+                return
             } else {
-                modalState.selectedArticleKey = null
+                LaunchedEffect(dest.orderId) { navState.closeDetail() }
             }
         }
-        ArticleDetailScreen(
-            article = article,
-            transitaires = uiState.catalogueTransitaires,
-            cmupRate = uiState.cmupRate,
-            onBackClick = { modalState.selectedArticleKey = null },
-            onBuyClick = { art ->
-                modalState.initialArticleForOrder = art
-                modalState.showAddOrderDialog = true
-            },
-            onSellClick = { art ->
-                modalState.initialArticleForSale = art
-                modalState.showAddSaleDialog = true
-            },
-            onAdjustStockClick = { art -> modalState.orderToAdjust = art },
-            onEditArticleClick = { art -> modalState.articleToEditInDialog = art },
-            onToggleHideArticle = { art -> viewModel.toggleHideCatalogueArticle(art) },
-            onDuplicateArticle = { art -> viewModel.duplicateBusinessOrder(art) },
-            onDeleteArticle = { art ->
-                viewModel.deleteCatalogueArticle(art)
-                modalState.selectedArticleKey = null
-            },
-            onUpdateVisual = { newVisual ->
-                viewModel.updateCatalogueArticleFull(
-                    article = article,
-                    newProduct = primaryOrder.product,
-                    newReferenceCode = primaryOrder.referenceCode,
-                    newFamily = primaryOrder.family,
-                    newPlatform = primaryOrder.platform,
-                    newPriceYuan = article.latestPriceYuan,
-                    newResaleAr = article.resalePriceAr,
-                    newWeightKg = primaryOrder.weightKg,
-                    newFreightMode = primaryOrder.freightMode,
-                    newVariants = primaryOrder.variants,
-                    newImageUrl = newVisual,
-                    newNotes = primaryOrder.receptionNotes,
-                    isHidden = article.isHidden
-                )
-            },
-            onUpdateVariants = { newVariants ->
-                viewModel.updateCatalogueArticleFull(
-                    article = article,
-                    newProduct = primaryOrder.product,
-                    newReferenceCode = primaryOrder.referenceCode,
-                    newFamily = primaryOrder.family,
-                    newPlatform = primaryOrder.platform,
-                    newPriceYuan = article.latestPriceYuan,
-                    newResaleAr = article.resalePriceAr,
-                    newWeightKg = primaryOrder.weightKg,
-                    newFreightMode = primaryOrder.freightMode,
-                    newVariants = newVariants,
-                    newImageUrl = primaryOrder.imageUrl,
-                    newNotes = primaryOrder.receptionNotes,
-                    isHidden = article.isHidden
-                )
-            },
-            onLotClick = { lot -> modalState.selectedOrderId = lot.id }
-        )
 
-        BusinessModalHost(
-            modalState = modalState,
-            viewModel = viewModel,
-            uiState = uiState,
-            businessAccounts = businessAccounts,
-            primaryOrderFallback = primaryOrder
-        )
-        return
-    }
-
-    if (uiState.isCatalogueOpen) {
-        BackHandler {
-            viewModel.closeCatalogue()
+        is BusinessDetailDestination.ProductDetail -> {
+            val article = uiState.allCatalogueArticles.firstOrNull { it.articleKey == dest.articleKey }
+            if (article != null) {
+                ProductDetailScreen(
+                    article = article,
+                    navState = navState,
+                    onBack = { navState.closeDetail() },
+                    onToggleHide = { viewModel.toggleHideCatalogueArticle(it) },
+                    onDeleteArticle = { viewModel.deleteCatalogueArticle(it) },
+                    onUpdatePhoto = { newPhoto ->
+                        val p = article.primaryOrder
+                        viewModel.updateCatalogueArticleFull(
+                            article = article,
+                            newProduct = p.product,
+                            newReferenceCode = p.referenceCode,
+                            newFamily = p.family,
+                            newPlatform = p.platform,
+                            newPriceYuan = article.latestPriceYuan,
+                            newResaleAr = article.resalePriceAr,
+                            newWeightKg = p.weightKg,
+                            newFreightMode = p.freightMode,
+                            newVariants = p.variants,
+                            newImageUrl = newPhoto,
+                            newNotes = p.receptionNotes,
+                            isHidden = article.isHidden
+                        )
+                    },
+                    onUpdateVariants = { newVariants ->
+                        val p = article.primaryOrder
+                        viewModel.updateCatalogueArticleFull(
+                            article = article,
+                            newProduct = p.product,
+                            newReferenceCode = p.referenceCode,
+                            newFamily = p.family,
+                            newPlatform = p.platform,
+                            newPriceYuan = article.latestPriceYuan,
+                            newResaleAr = article.resalePriceAr,
+                            newWeightKg = p.weightKg,
+                            newFreightMode = p.freightMode,
+                            newVariants = newVariants,
+                            newImageUrl = p.imageUrl,
+                            newNotes = p.receptionNotes,
+                            isHidden = article.isHidden
+                        )
+                    }
+                )
+                BusinessSheetHost(
+                    navState = navState,
+                    viewModel = viewModel,
+                    uiState = uiState,
+                    businessAccounts = businessAccounts,
+                    businessCategories = businessCategories
+                )
+                return
+            } else {
+                LaunchedEffect(dest.articleKey) { navState.closeDetail() }
+            }
         }
-        CatalogueView(
-            uiState = uiState,
-            onBackClick = { viewModel.closeCatalogue() },
-            onSubTabSelected = { viewModel.onCatalogueSubTabSelected(it) },
-            onSearchQueryChanged = { viewModel.onCatalogueSearchQueryChanged(it) },
-            onFamilyFilterSelected = { viewModel.onCatalogueFamilyFilterSelected(it) },
-            onStockFilterSelected = { viewModel.onCatalogueStockFilterSelected(it) },
-            onToggleShowHidden = { viewModel.onToggleCatalogueShowHidden() },
-            onSortChanged = { viewModel.onCatalogueSortChanged(it) },
-            onViewModeChanged = { viewModel.onCatalogueViewModeChanged(it) },
-            onArticleClick = { modalState.selectedArticleKey = it.articleKey },
-            onEditArticleClick = { modalState.articleToEditInDialog = it },
-            onQuickRestockArticle = { art ->
-                modalState.initialArticleForOrder = art.primaryOrder
-                modalState.showAddOrderDialog = true
-            },
-            onToggleHideArticle = { viewModel.toggleHideCatalogueArticle(it) },
-            onDeleteArticle = { viewModel.deleteCatalogueArticle(it) },
-            onNewArticleClick = { modalState.showAddCatalogueArticleDialog = true },
-            onNewFamilyClick = { modalState.showAddFamilyDialog = true },
-            onCreateFamily = { name, emoji, color -> viewModel.addCatalogueFamily(name, emoji, color) },
-            onTogglePlatformActive = { id, active -> viewModel.togglePlatformActive(id, active) },
-            onUpdatePlatformShippingTag = { id, tag -> viewModel.updatePlatformShippingTag(id, tag) },
-            onCreatePlatform = { name, sub, ship, sec, icon, color ->
-                viewModel.addCataloguePlatform(name, sub, ship, sec, icon, color)
-            },
-            onDeletePlatform = { id -> viewModel.deleteCataloguePlatform(id) },
-            onCreateTransitaire = { name, hub, airRate, seaRate, contact, address, isActive, dateApp, airLead, seaLead, notes, airFastRate, airFastLead, goodsDelays ->
-                viewModel.addCatalogueTransitaire(
-                    name, hub, airRate, seaRate, contact, address, isActive,
-                    dateApp, airLead, seaLead, notes, airFastRate, airFastLead, goodsDelays
-                )
-            },
-            onUpdateTransitaire = { id, name, hub, airRate, seaRate, contact, address, isActive, dateApp, airLead, seaLead, notes, airFastRate, airFastLead, goodsDelays ->
-                viewModel.updateCatalogueTransitaire(
-                    id, name, hub, airRate, seaRate, contact, address, isActive,
-                    dateApp, airLead, seaLead, notes, airFastRate, airFastLead, goodsDelays
-                )
-            },
-            onToggleTransitaireArchived = { id -> viewModel.toggleTransitaireArchived(id) },
-            onDeleteTransitaire = { id -> viewModel.deleteCatalogueTransitaire(id) },
-            onUpdateTransitaireRates = { id, air, sea -> viewModel.updateTransitaireRates(id, air, sea) },
-            onRecordTransitairePayment = { id, amount, accName ->
-                viewModel.recordTransitairePayment(id, amount, accName)
-            },
-            accounts = businessAccounts,
-            modifier = modifier
-        )
 
-        BusinessModalHost(
-            modalState = modalState,
-            viewModel = viewModel,
-            uiState = uiState,
-            businessAccounts = businessAccounts
-        )
-        return
+        is BusinessDetailDestination.Referentiel -> {
+            ReferentielScreen(
+                uiState = uiState,
+                initialTab = dest.initialTab,
+                navState = navState,
+                onBack = { navState.closeDetail() },
+                onTogglePlatformActive = { id, active -> viewModel.togglePlatformActive(id, active) },
+                onDeletePlatform = { id -> viewModel.deleteCataloguePlatform(id) },
+                onDeleteFamily = { fam -> viewModel.deleteCatalogueFamily(fam) },
+                onToggleTransitaireArchived = { id -> viewModel.toggleTransitaireArchived(id) },
+                onDeleteTransitaire = { id -> viewModel.deleteCatalogueTransitaire(id) }
+            )
+            BusinessSheetHost(
+                navState = navState,
+                viewModel = viewModel,
+                uiState = uiState,
+                businessAccounts = businessAccounts,
+                businessCategories = businessCategories
+            )
+            return
+        }
+
+        is BusinessDetailDestination.TransitaireDetail -> {
+            val transitaire = uiState.catalogueTransitaires.firstOrNull { it.id == dest.transitaireId }
+            if (transitaire != null) {
+                TransitaireDetailScreen(
+                    transitaire = transitaire,
+                    navState = navState,
+                    onBack = { navState.closeDetail() },
+                    onSaveGrid = { sync ->
+                        viewModel.updateCatalogueTransitaire(
+                            id = transitaire.id,
+                            name = transitaire.name,
+                            hub = transitaire.routeHub,
+                            airRate = sync.airRateAr,
+                            seaRate = sync.seaRateAr,
+                            contact = transitaire.contact,
+                            chinaWarehouseAddress = transitaire.chinaWarehouseAddress,
+                            isActive = !transitaire.isArchived,
+                            rateApplicationDate = sync.rateApplicationDate,
+                            airLeadDays = sync.airLeadDays,
+                            seaLeadDays = sync.seaLeadDays,
+                            internalNotes = transitaire.internalNotes,
+                            airFastRate = sync.airFastRateAr,
+                            airFastLeadDays = transitaire.airFastLeadDays,
+                            goodsCategoryDelays = sync.encodedGrid
+                        )
+                    },
+                    onResetHistory = { viewModel.resetAllTransitaireRateHistories() },
+                    onOpenLot = { orderId -> navState.openLot(orderId) }
+                )
+                BusinessSheetHost(
+                    navState = navState,
+                    viewModel = viewModel,
+                    uiState = uiState,
+                    businessAccounts = businessAccounts,
+                    businessCategories = businessCategories
+                )
+                return
+            } else {
+                LaunchedEffect(dest.transitaireId) { navState.closeDetail() }
+            }
+        }
+
+        BusinessDetailDestination.None -> Unit
     }
 
     BackHandler {
-        onNavigateBack()
+        if (navState.activeSheet != BusinessActiveSheet.None) {
+            navState.closeSheet()
+        } else {
+            onNavigateBack()
+        }
     }
 
     Scaffold(
@@ -203,7 +280,11 @@ fun BusinessScreen(
             AppBottomNavBar(selectedTab = 3, onTabSelected = onTabSelected)
         },
         floatingActionButton = {
-            BusinessScaffoldFab(uiState = uiState, modalState = modalState)
+            BusinessContextualFab(
+                selectedSubTab = uiState.selectedSubTab,
+                stockSegment = uiState.stockSegment,
+                navState = navState
+            )
         }
     ) { innerPadding ->
         Column(
@@ -211,40 +292,296 @@ fun BusinessScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(vertical = 8.dp)
         ) {
-            BusinessHeaderBar(
-                selectedSubTab = uiState.selectedSubTab,
-                notificationsCount = uiState.businessNotifications.size,
-                onOpenCatalogue = { viewModel.openCatalogue() },
-                onOpenNotifications = { modalState.showNotificationsDialog = true }
-            )
+            BusinessResponsiveContainer { _, _ ->
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    HumanBusinessHeader(
+                        uiState = uiState,
+                        colors = colors,
+                        onBack = onNavigateBack,
+                        onOpenReferentiel = { navState.openReferentiel() },
+                        onOpenNotifications = { navState.activeSheet = BusinessActiveSheet.Notifications }
+                    )
 
-            BusinessSubTabsRow(
-                selectedSubTab = uiState.selectedSubTab,
-                onSelectSubTab = { viewModel.onSelectSubTab(it) }
-            )
+                    BusinessSubTabsRow(
+                        selectedSubTab = uiState.selectedSubTab,
+                        colors = colors,
+                        onSelectSubTab = { viewModel.onSelectSubTab(it) }
+                    )
 
-            BusinessTabContent(
-                uiState = uiState,
-                viewModel = viewModel,
-                modalState = modalState,
-                businessAccounts = businessAccounts,
-                businessTransactions = businessTransactions,
-                businessInvestments = businessInvestments,
-                businessDebts = businessDebts,
-                businessDebtPayments = businessDebtPayments
-            )
+                    AnimatedContent(
+                        targetState = uiState.selectedSubTab,
+                        transitionSpec = { fadeIn() togetherWith fadeOut() },
+                        label = "businessTabContent"
+                    ) { tab ->
+                        when (tab) {
+                            "Achats" -> PurchasesTab(
+                                uiState = uiState,
+                                navState = navState,
+                                onSearchQueryChanged = { viewModel.onPurchasesSearchQueryChanged(it) }
+                            )
 
-            Spacer(modifier = Modifier.height(16.dp))
+                            "Stock" -> StockTab(
+                                uiState = uiState,
+                                navState = navState,
+                                onSegmentSelected = { viewModel.onStockSegmentSelected(it) },
+                                onSearchQueryChanged = { viewModel.onStockSearchQueryChanged(it) },
+                                onFamilyFilterSelected = { viewModel.onStockFamilyFilterSelected(it) },
+                                onToggleShowHidden = { viewModel.onToggleShowHiddenStock() }
+                            )
+
+                            "Ventes" -> SalesTab(
+                                uiState = uiState,
+                                navState = navState,
+                                onPrevMonth = { viewModel.onPrevMonth() },
+                                onNextMonth = { viewModel.onNextMonth() },
+                                onDomainSelected = { viewModel.onSalesDomainSelected(it) },
+                                onSearchQueryChanged = { viewModel.onSalesSearchQueryChanged(it) },
+                                onDeleteSale = { viewModel.deleteSale(it) }
+                            )
+
+                            "Clients" -> ClientsTab(
+                                uiState = uiState,
+                                navState = navState,
+                                onFilterSelected = { viewModel.onClientsFilterSelected(it) },
+                                onSearchQueryChanged = { viewModel.onClientsSearchQueryChanged(it) }
+                            )
+
+                            "Finances" -> FinancesTab(
+                                uiState = uiState,
+                                accounts = businessAccounts,
+                                transactions = businessTransactions,
+                                investments = businessInvestments,
+                                debts = businessDebts,
+                                categories = businessCategories,
+                                navState = navState,
+                                onDeleteInvestment = { viewModel.deleteBusinessInvestment(it) },
+                                onDeleteDebt = { viewModel.deleteBusinessDebt(it) }
+                            )
+
+                            else -> OverviewTab(
+                                uiState = uiState,
+                                navState = navState,
+                                onPrevMonth = { viewModel.onPrevMonth() },
+                                onNextMonth = { viewModel.onNextMonth() },
+                                onResetMonth = { viewModel.onResetCurrentMonth() },
+                                onSelectSubTab = { viewModel.onSelectSubTab(it) }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(76.dp))
+                }
+            }
         }
     }
 
-    BusinessModalHost(
-        modalState = modalState,
+    BusinessSheetHost(
+        navState = navState,
         viewModel = viewModel,
         uiState = uiState,
-        businessAccounts = businessAccounts
+        businessAccounts = businessAccounts,
+        businessCategories = businessCategories
+    )
+}
+
+@Composable
+private fun HumanBusinessHeader(
+    uiState: BusinessUiState,
+    colors: TransitaireColors,
+    onBack: () -> Unit,
+    onOpenReferentiel: () -> Unit,
+    onOpenNotifications: () -> Unit
+) {
+    val notifCount = uiState.businessNotifications.size
+    val subtitle = buildString {
+        append("${uiState.activeLotsCount} lot${if (uiState.activeLotsCount > 1) "s" else ""} actif${if (uiState.activeLotsCount > 1) "s" else ""}")
+        if (uiState.availableStockPieces > 0) {
+            append(" · ${uiState.availableStockPieces} pcs en stock")
+        }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .size(44.dp)
+                    .testTag("btn_business_back")
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Retour à l'accueil",
+                    tint = colors.textPrimary
+                )
+            }
+            Column {
+                Text(
+                    text = "Mon Business",
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 22.sp,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitle,
+                    fontFamily = Inter,
+                    fontSize = 12.sp,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Bouton Référentiel (Transitaires, Familles, Plateformes)
+            Surface(
+                shape = CircleShape,
+                color = colors.cardBg,
+                border = BorderStroke(1.dp, colors.border),
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onOpenReferentiel)
+                    .testTag("btn_open_referentiel")
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = "Référentiel transitaires et familles",
+                        tint = colors.textPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            // Bouton Rappels / Notifications
+            Surface(
+                shape = CircleShape,
+                color = if (notifCount > 0) colors.warningSoftBg else colors.cardBg,
+                border = BorderStroke(1.dp, if (notifCount > 0) colors.warningAccent.copy(alpha = 0.35f) else colors.border),
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onOpenNotifications)
+                    .testTag("btn_business_notifications")
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = "Rappels et alertes",
+                        tint = if (notifCount > 0) colors.warningAccent else colors.textPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    if (notifCount > 0) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 6.dp, end = 6.dp)
+                                .size(9.dp)
+                                .clip(CircleShape)
+                                .background(colors.dangerAccent)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BusinessSubTabsRow(
+    selectedSubTab: String,
+    colors: TransitaireColors,
+    onSelectSubTab: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        BUSINESS_SUB_TABS.forEach { tab ->
+            val selected = tab == selectedSubTab
+            val bg by animateColorAsState(
+                targetValue = if (selected) CyanPrimary else colors.cardBg,
+                label = "subTabBg"
+            )
+            Surface(
+                shape = CircleShape,
+                color = bg,
+                border = if (selected) null else BorderStroke(1.dp, colors.border),
+                modifier = Modifier
+                    .heightIn(min = 40.dp)
+                    .clip(CircleShape)
+                    .clickable { onSelectSubTab(tab) }
+                    .testTag("subtab_$tab")
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
+                ) {
+                    Text(
+                        text = tab,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        fontSize = 13.sp,
+                        color = if (selected) Color.White else colors.textSecondary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BusinessContextualFab(
+    selectedSubTab: String,
+    stockSegment: String,
+    navState: BusinessNavigationState
+) {
+    val (label, containerColor, targetSheet) = when (selectedSubTab) {
+        "Achats" -> Triple("Achat", CyanPrimary, BusinessActiveSheet.OrderForm())
+        "Stock" -> if (stockSegment == "Catalogue") {
+            Triple("Article", VioletSecondary, BusinessActiveSheet.AddArticle)
+        } else {
+            Triple("Achat", CyanPrimary, BusinessActiveSheet.OrderForm())
+        }
+        "Ventes" -> Triple("Vente", VioletSecondary, BusinessActiveSheet.AddSale())
+        "Clients" -> Triple("Client", CyanPrimary, BusinessActiveSheet.AddClient)
+        "Finances" -> Triple("Opération", VioletSecondary, BusinessActiveSheet.AddFinanceOperation())
+        else -> Triple("Vente", CyanPrimary, BusinessActiveSheet.AddSale())
+    }
+
+    ExtendedFloatingActionButton(
+        onClick = { navState.activeSheet = targetSheet },
+        shape = CircleShape,
+        containerColor = containerColor,
+        contentColor = Color.White,
+        icon = { Icon(Icons.Default.Add, contentDescription = null) },
+        text = {
+            Text(
+                text = label,
+                fontFamily = PlusJakartaSans,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+            )
+        },
+        modifier = Modifier.testTag("fab_business_contextual")
     )
 }

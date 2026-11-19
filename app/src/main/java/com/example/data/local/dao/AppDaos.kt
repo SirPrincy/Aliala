@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Update
 import com.example.data.local.entity.BudgetEntity
 import com.example.data.local.entity.BusinessAccountEntity
+import com.example.data.local.entity.BusinessCategoryEntity
 import com.example.data.local.entity.BusinessDebtEntity
 import com.example.data.local.entity.BusinessDebtPaymentEntity
 import com.example.data.local.entity.BusinessInvestmentEntity
@@ -501,6 +502,12 @@ interface TransitaireRateHistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHistories(entries: List<TransitaireRateHistoryEntity>)
 
+    @Update
+    suspend fun updateHistory(entry: TransitaireRateHistoryEntity)
+
+    @Query("DELETE FROM transitaire_rate_history WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
     @Query("DELETE FROM transitaire_rate_history WHERE transitaireId = :transitaireId")
     suspend fun deleteByTransitaireId(transitaireId: Long)
 
@@ -597,6 +604,9 @@ interface BusinessTransactionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTransactions(txs: List<BusinessTransactionEntity>)
 
+    @androidx.room.Update
+    suspend fun updateTransaction(tx: BusinessTransactionEntity)
+
     @Query("UPDATE business_transactions SET accountName = :newName WHERE LOWER(accountName) = LOWER(:oldName)")
     suspend fun renameAccountInTransactions(oldName: String, newName: String)
 
@@ -611,6 +621,9 @@ interface BusinessTransactionDao {
 
     @Query("DELETE FROM business_transactions WHERE referenceTag LIKE '[DEMO]%'")
     suspend fun deleteDemoTransactions()
+
+    @Query("UPDATE business_transactions SET categoryId = NULL WHERE categoryId = :categoryId")
+    suspend fun clearCategoryFromTransactions(categoryId: Long)
 
     @Query("DELETE FROM business_transactions")
     suspend fun clearAll()
@@ -699,6 +712,34 @@ interface BusinessDebtDao {
     @Query("DELETE FROM business_debt_payments")
     suspend fun clearDebtPayments()
 }
+
+@Dao
+interface BusinessCategoryDao {
+    @Query("SELECT * FROM business_categories ORDER BY type ASC, displayOrder ASC, name ASC")
+    fun getAllCategories(): Flow<List<BusinessCategoryEntity>>
+
+    @Query("SELECT * FROM business_categories ORDER BY type ASC, displayOrder ASC, name ASC")
+    suspend fun getAllCategoriesSnapshot(): List<BusinessCategoryEntity>
+
+    @Query("SELECT COUNT(*) FROM business_categories")
+    suspend fun getCategoryCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCategory(category: BusinessCategoryEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCategories(categories: List<BusinessCategoryEntity>)
+
+    @Update
+    suspend fun updateCategory(category: BusinessCategoryEntity)
+
+    @Query("DELETE FROM business_categories WHERE id = :id")
+    suspend fun deleteCategoryById(id: Long)
+
+    @Query("DELETE FROM business_categories")
+    suspend fun clearAll()
+}
+
 
 
 

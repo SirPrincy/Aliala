@@ -8,6 +8,7 @@ import com.example.data.demo.DemoDataProvider
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.BudgetEntity
 import com.example.data.local.entity.BusinessAccountEntity
+import com.example.data.local.entity.BusinessCategoryEntity
 import com.example.data.local.entity.BusinessDebtEntity
 import com.example.data.local.entity.BusinessDebtPaymentEntity
 import com.example.data.local.entity.BusinessInvestmentEntity
@@ -330,6 +331,7 @@ class AppRepository(
         addXp(15L)
     }
 
+    suspend fun getBusinessOrdersSnapshot(): List<BusinessOrderEntity> = db.businessOrderDao().getAllOrdersSnapshot()
     suspend fun updateBusinessOrder(order: BusinessOrderEntity) = db.businessOrderDao().updateOrder(order)
     suspend fun deleteBusinessOrder(orderId: Long) = db.businessOrderDao().deleteOrderById(orderId)
 
@@ -367,8 +369,10 @@ class AppRepository(
     suspend fun getAllCatalogueTransitairesSnapshot(): List<CatalogueTransitaireEntity> = db.catalogueTransitaireDao().getAllTransitairesSnapshot()
     suspend fun insertTransitaireRateHistory(entry: TransitaireRateHistoryEntity): Long = db.transitaireRateHistoryDao().insertHistory(entry)
     suspend fun insertTransitaireRateHistories(entries: List<TransitaireRateHistoryEntity>) = db.transitaireRateHistoryDao().insertHistories(entries)
+    suspend fun updateTransitaireRateHistory(entry: TransitaireRateHistoryEntity) = db.transitaireRateHistoryDao().updateHistory(entry)
     suspend fun getTransitaireRateHistorySnapshot(transitaireId: Long): List<TransitaireRateHistoryEntity> = db.transitaireRateHistoryDao().getHistoryForTransitaireSnapshot(transitaireId)
     suspend fun deleteTransitaireRateHistoryFor(transitaireId: Long) = db.transitaireRateHistoryDao().deleteByTransitaireId(transitaireId)
+    suspend fun clearAllTransitaireRateHistory() = db.transitaireRateHistoryDao().clearAll()
 
     // Sale Payments
     suspend fun insertSalePayment(payment: SalePaymentEntity): Long = db.salePaymentDao().insertPayment(payment)
@@ -510,52 +514,47 @@ class AppRepository(
 
     val allBusinessTransactions: Flow<List<BusinessTransactionEntity>> = db.businessTransactionDao().getAllTransactions()
 
-    suspend fun insertBusinessTransaction(tx: BusinessTransactionEntity): Long = db.withTransaction {
-        val id = db.businessTransactionDao().insertTransaction(tx)
+    private suspend fun applyBusinessTransactionBalance(tx: BusinessTransactionEntity, sign: Int) {
+        val factor = sign.toLong()
         when (tx.type) {
             "IN", "INCOME" -> {
                 if (tx.accountName.isNotBlank()) {
-                    db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), tx.amountAr)
+                    db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), tx.amountAr * factor)
                 }
             }
             "OUT", "EXPENSE", "YUAN" -> {
                 if (tx.accountName.isNotBlank()) {
-                    db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), -tx.amountAr)
+                    db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), -tx.amountAr * factor)
                 }
             }
             "TRANSFER" -> {
                 if (tx.accountName.isNotBlank()) {
-                    db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), -tx.amountAr)
+                    db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), -tx.amountAr * factor)
                 }
                 if (tx.destinationAccount.isNotBlank()) {
-                    db.businessAccountDao().adjustBalanceByName(tx.destinationAccount.trim(), tx.amountAr)
+                    db.businessAccountDao().adjustBalanceByName(tx.destinationAccount.trim(), tx.amountAr * factor)
                 }
             }
         }
+    }
+
+    suspend fun insertBusinessTransaction(tx: BusinessTransactionEntity): Long = db.withTransaction {
+        val id = db.businessTransactionDao().insertTransaction(tx)
+        applyBusinessTransactionBalance(tx, 1)
         id
     }
 
+    suspend fun updateBusinessTransaction(
+        oldTx: BusinessTransactionEntity,
+        newTx: BusinessTransactionEntity
+    ) = db.withTransaction {
+        applyBusinessTransactionBalance(oldTx, -1)
+        applyBusinessTransactionBalance(newTx, 1)
+        db.businessTransactionDao().updateTransaction(newTx)
+    }
+
     suspend fun deleteBusinessTransaction(tx: BusinessTransactionEntity) = db.withTransaction {
-        when (tx.type) {
-            "IN", "INCOME" -> {
-                if (tx.accountName.isNotBlank()) {
-                    db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), -tx.amountAr)
-                }
-            }
-            "OUT", "EXPENSE", "YUAN" -> {
-                if (tx.accountName.isNotBlank()) {
-                    db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), tx.amountAr)
-                }
-            }
-            "TRANSFER" -> {
-                if (tx.accountName.isNotBlank()) {
-                    db.businessAccountDao().adjustBalanceByName(tx.accountName.trim(), tx.amountAr)
-                }
-                if (tx.destinationAccount.isNotBlank()) {
-                    db.businessAccountDao().adjustBalanceByName(tx.destinationAccount.trim(), -tx.amountAr)
-                }
-            }
-        }
+        applyBusinessTransactionBalance(tx, -1)
         db.businessTransactionDao().deleteTransactionById(tx.id)
         tx.yuanTransactionId?.let { yuanId ->
             val yuanTx = db.yuanTransactionDao().getAllTransactionsSnapshot().firstOrNull { it.id == yuanId }
@@ -624,5 +623,42 @@ class AppRepository(
                 deleteBusinessTransaction(linkedTx)
             }
         }
+    }
+
+    val allBusinessCategories: Flow<List<BusinessCategoryEntity>> = db.businessCategoryDao().getAllCategories()
+
+    suspend fun getBusinessCategoriesSnapshot(): List<BusinessCategoryEntity> {
+        return db.businessCategoryDao().getAllCategoriesSnapshot()
+    }
+
+    suspend fun seedDefaultBusinessCategoriesIfEmpty() {
+        if (db.businessCategoryDao().getCategoryCount() == 0) {
+            val defaults = listOf(
+                BusinessCategoryEntity(name = "Ventes comptoir", type = "IN", iconKey = "storefront", colorKey = "GREEN", isDefault = true, displayOrder = 1),
+                BusinessCategoryEntity(name = "Règlement client", type = "IN", iconKey = "payments", colorKey = "CYAN", isDefault = true, displayOrder = 2),
+                BusinessCategoryEntity(name = "Remboursement", type = "IN", iconKey = "replay", colorKey = "VIOLET", isDefault = true, displayOrder = 3),
+                BusinessCategoryEntity(name = "Autre entrée", type = "IN", iconKey = "trending_up", colorKey = "BLUE", isDefault = true, displayOrder = 4),
+                BusinessCategoryEntity(name = "Fret & Douane", type = "OUT", iconKey = "local_shipping", colorKey = "ORANGE", isDefault = true, displayOrder = 1),
+                BusinessCategoryEntity(name = "Livraison locale", type = "OUT", iconKey = "directions_car", colorKey = "CYAN", isDefault = true, displayOrder = 2),
+                BusinessCategoryEntity(name = "Emballage & Stock", type = "OUT", iconKey = "inventory_2", colorKey = "VIOLET", isDefault = true, displayOrder = 3),
+                BusinessCategoryEntity(name = "Marketing & Pub", type = "OUT", iconKey = "campaign", colorKey = "ROSE", isDefault = true, displayOrder = 4),
+                BusinessCategoryEntity(name = "Loyer & Charges", type = "OUT", iconKey = "bolt", colorKey = "ORANGE", isDefault = true, displayOrder = 5),
+                BusinessCategoryEntity(name = "Autre dépense", type = "OUT", iconKey = "receipt_long", colorKey = "BLUE", isDefault = true, displayOrder = 6)
+            )
+            db.businessCategoryDao().insertCategories(defaults)
+        }
+    }
+
+    suspend fun insertBusinessCategory(category: BusinessCategoryEntity): Long {
+        return db.businessCategoryDao().insertCategory(category)
+    }
+
+    suspend fun updateBusinessCategory(category: BusinessCategoryEntity) {
+        db.businessCategoryDao().updateCategory(category)
+    }
+
+    suspend fun deleteBusinessCategory(categoryId: Long) = db.withTransaction {
+        db.businessTransactionDao().clearCategoryFromTransactions(categoryId)
+        db.businessCategoryDao().deleteCategoryById(categoryId)
     }
 }
